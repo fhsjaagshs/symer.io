@@ -29,6 +29,17 @@ import           Text.Blaze.Html5.Attributes as A
 import           Text.Blaze.Html.Renderer.Text as R
 import           Text.Blaze.Internal
 
+-- TODO:
+-- 1. Finish editor page
+--   a. load blog post into frontend
+--   b. edit title
+--   c. rework design (procrastinateable)
+-- 2. Pagination
+-- 3. Edit post control in posts page
+-- 3. Tags - figure out how to 
+--   a. Adding tags in editor
+--   b. filter posts by tag
+-- 4. Authentication (multiple users?? How will this affect BlogPosts in the DB?) THIS CAN COME LAST
 
 data BlogPost = BlogPost {
   identifier :: Integer,
