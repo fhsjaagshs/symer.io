@@ -20,6 +20,7 @@ import qualified Database.Redis as Redis
 import           Database.PostgreSQL.Simple as Postgres
 import           Database.PostgreSQL.Simple.FromRow as Postgres.FromRow
 import           Database.PostgreSQL.Simple.Time as Postgres.Time
+import           Network.Wai
 import           Network.Wai.Middleware.Static
 
 import           Crypto.BCrypt
@@ -29,17 +30,20 @@ import           Text.Blaze.Html5.Attributes as A
 import           Text.Blaze.Html.Renderer.Text as R
 import           Text.Blaze.Internal
 
--- TODO:
+import qualified Network.HostName as HostName
+
+-- TODO
 -- 1. Finish editor page
---   a. load blog post into frontend
---   b. edit title
---   c. rework design (procrastinateable)
+--   a. delete post
+--   b. rework design (procrastinateable)
+-- 1.5. New post button
 -- 2. Pagination
 -- 3. Edit post control in posts page
 -- 3. Tags - figure out how to 
 --   a. Adding tags in editor
 --   b. filter posts by tag
 -- 4. Authentication (multiple users?? How will this affect BlogPosts in the DB?) THIS CAN COME LAST
+-- 5. 'Top 5' tags map in side bar?
 
 data BlogPost = BlogPost {
   identifier :: Integer,
@@ -71,11 +75,7 @@ instance FromRow PostTag where
 main = scotty 3000 $ do
   pg <- liftIO $ Postgres.connectPostgreSQL "dbname='nathaniel' user='nathaniel' password='' port='5432'"
  -- redis <- liftIO $ Redis.connect Redis.defaultConnectInfo
-  middleware $ staticPolicy (noDots >-> addBase "public")
- -- get "/assets" $ staticPolicy (addBase "public")
- 
- -- get "/assets/epiceditor/:file" $ do
-    
+  middleware $ staticPolicy (noDots >-> (hasPrefix "assets") >-> addBase "public")
   
   get "/" $ do
     ps <- params
@@ -86,13 +86,21 @@ main = scotty 3000 $ do
     Scotty.html $ R.renderHtml $ docTypeHtml $ do
       renderHead blogTitle
       H.body ! style "text-align: center;" $ do
-        renderTop
+        renderTop $ Just blogTitle
         div ! style "width: 700px; margin: auto;" $ do
           renderPosts res
           
+  delete "/posts/:id" $ do
+    ps <- params
+    case (lookup "id" ps) of
+      (Just identifier) -> do
+        _ <- liftIO $ execute pg "DELETE FROM blogposts WHERE id=?" [identifier]
+        return ()
+      Nothing -> do
+        return ()
+          
   post "/posts" $ do
     ps <- params
-    liftIO $ print ps
     case (lookup "id" ps) of
       Nothing -> do
         res <- liftIO $ query pg "INSERT INTO blogposts (title, bodyText) VALUES (?, ?) RETURNING *" ((TL.toStrict $ fromJust $ lookup "title" ps) :: T.Text, (TL.toStrict $ fromJust $ lookup "body" ps) :: T.Text)
@@ -101,11 +109,9 @@ main = scotty 3000 $ do
           else do
             redirect $ TL.pack $ "/posts/" ++ (show $ Main.identifier $ P.head res)
       Just (identifier) -> do
-        res <- liftIO $ query pg "UPDATE blogposts SET title=? bodyText=? WHERE identifier=? RETURNING *" ((TL.toStrict $ fromJust $ lookup "title" ps) :: T.Text, (TL.toStrict $ fromJust $ lookup "body" ps) :: T.Text, (read $ TL.unpack identifier) :: Integer)
-        if (length res) == 0
-          then redirect "/"
-          else do
-            redirect $ TL.pack $ "/posts/" ++ (show $ Main.identifier $ P.head res)
+        res <- liftIO $ query pg "UPDATE blogposts SET title=?,bodyText=? WHERE identifier=? RETURNING *" ((TL.toStrict $ fromJust $ lookup "title" ps) :: T.Text, (TL.toStrict $ fromJust $ lookup "body" ps) :: T.Text, (read $ TL.unpack identifier) :: Integer)
+        baseurl <- baseURL
+        unless (Prelude.null res) $ addHeader "Location" (TL.pack ((T.unpack baseurl) ++ "/posts/" ++ (show $ Main.identifier $ P.head res)))
   
   get "/posts/during/:year" $ do
     return ()
@@ -120,7 +126,7 @@ main = scotty 3000 $ do
     Scotty.html $ R.renderHtml $ docTypeHtml $ do
       renderHead blogTitle
       H.body ! style "text-align: center;" $ do
-        renderTop
+        renderTop $ Just blogTitle
         div ! style "width: 700px; margin: auto;" $ do
           renderPostEditor Nothing
             
@@ -135,9 +141,9 @@ main = scotty 3000 $ do
           then Scotty.html $ R.renderHtml $ renderNotFound
           else do
            Scotty.html $ R.renderHtml $ docTypeHtml $ do
-              renderHead blogTitle
+              renderHead $ appendedBlogTitle (Main.title $ P.head res)
               H.body ! style "text-align: center;" $ do
-                renderTop
+                renderTop $ Just blogTitle
                 div ! style "width: 700px; margin: auto;" $ do
                   renderPosts res
                   
@@ -151,31 +157,51 @@ main = scotty 3000 $ do
           then Scotty.html $ R.renderHtml $ renderNotFound
           else do
             Scotty.html $ R.renderHtml $ docTypeHtml $ do
-              renderHead blogTitle
+              renderHead $ appendedBlogTitle (Main.title $ P.head res)
               H.body ! style "text-align: center;" $ do
-                renderTop
+                renderTop Nothing
                 div ! style "width: 700px; margin: auto;" $ do
                   renderPostEditor (Just (P.head res))
+                  
+  notFound $ do
+    return ()
 
 -------------------------------------------------------------------------------
 --- | Helpers
 
-blogTitle :: String
+blogTitle :: T.Text
 blogTitle = "Segmentation Fault (core dumped)"
+
+appendedBlogTitle :: T.Text -> T.Text
+appendedBlogTitle text = T.append text (T.append " | " blogTitle)
+
+-- This is a horrible function.
+-- It's waaayyy to imperative in nature
+baseURL :: ActionM T.Text
+baseURL = do
+  h <- Scotty.header "Host"
+  req <- request
+  return $ T.pack $ (if (isSecure req) then "https" else "http") ++ "://" ++ (TL.unpack $ fromJust h)
+  
+-------------------------------------------------------------------------------
+--- | HTML rendering
 
 renderNotFound :: Html
 renderNotFound = do
   return ()
 
-renderHead :: String -> Html
+renderHead :: T.Text -> Html
 renderHead title = H.head $ do
   H.title $ toHtml title
   link ! href "https://symer.io/assets/css/site.css" ! rel "stylesheet" ! type_ "text/css"
-  link ! href "/assets/vue.css" ! rel "stylesheet" ! type_ "text/css"
-  
-renderTop :: Html
-renderTop = do
-  img ! src "https://symer.io/assets/images/philly_skyline.svg" ! width "300" ! height "200"
+  link ! href "/assets/blog.css" ! rel "stylesheet" ! type_ "text/css"
+
+renderTop :: Maybe T.Text -> Html
+renderTop Nothing = do
+  a ! href "/" $ do
+    img ! src "https://symer.io/assets/images/philly_skyline.svg" ! width "300" ! height "200" ! alt (stringValue $ T.unpack blogTitle)
+renderTop (Just title) = do
+  renderTop Nothing
   h2 ! class_ "title" ! style "font-size: 50px; margin-top: 25px" $ toHtml blogTitle
   
 renderPost :: BlogPost -> Html
@@ -189,32 +215,37 @@ renderPosts [] = return ()
 renderPosts [x] = renderPost x
 renderPosts (x:xs) = do
   renderPost x
-  hr ! style "text-align: right; border-top: dashed 3px; width: 700px"
+  hr ! class_ "separator"
   renderPosts xs
   
-renderVue :: Maybe BlogPost -> Html
-renderVue Nothing = do
-  H.div ! style "width: 100%; height: 300px; text-align: left" $ do
+renderMdEditor :: Maybe BlogPost -> Html
+renderMdEditor Nothing = do
+  H.div ! A.id "editor-wrapper" $ do
     H.div ! A.id "editor" $ do
-      textarea ! id "markdown-textarea" ! customAttribute "v-model" "input" $ ""
-      H.div ! customAttribute "v-html" "input | marked" $ ""
+      textarea ! id "markdown-textarea" $ ""
   
-renderVue (Just blogPost) = do
-  H.div ! style "width: 100%; height: 300px; text-align: left" $ do
+renderMdEditor (Just blogPost) = do
+  H.div ! A.id "editor-wrapper" $ do
     H.div ! A.id "editor" ! customAttribute "post-id" (stringValue $ show $ Main.identifier blogPost) $ do
-      textarea ! id "markdown-textarea" ! customAttribute "v-model" "input" $ ""
-      H.div ! customAttribute "v-html" "input | marked" $ ""
+      textarea ! id "markdown-textarea" $ toHtml $ T.unpack $ Main.body blogPost
+      
+renderTitleField :: Maybe BlogPost -> Html
+renderTitleField (Just blogPost) = input ! type_ "text" ! id "title-field" ! value (stringValue $ T.unpack $ Main.title blogPost)
+renderTitleField Nothing = input ! type_ "text" ! id "title-field"
   
 renderPostEditor :: Maybe BlogPost -> Html
 renderPostEditor maybeBlogPost = do
-  script ! src "/assets/vue.min.js" $  ""
-  script ! src "http://cdnjs.cloudflare.com/ajax/libs/marked/0.3.2/marked.min.js" $ ""
-  renderVue maybeBlogPost
+  script ! src "/assets/epiceditor/epiceditor.min.js" $ ""
+  renderTitleField maybeBlogPost
+  renderMdEditor maybeBlogPost
   button ! id "save-button" $ "Save"
   script ! src "/assets/editor.js" $ ""
   
+-------------------------------------------------------------------------------
+--- | Database
+  
 getBlogPosts :: Postgres.Connection -> Maybe Integer -> Maybe Integer -> IO [BlogPost]
-getBlogPosts pg Nothing Nothing = query_ pg "SELECT * FROM blogposts"
-getBlogPosts pg (Just from) Nothing = query pg "SELECT * FROM blogposts WHERE identifier > ? LIMIT 10" [from]
-getBlogPosts pg Nothing (Just untill) = query pg "SELECT * FROM blogposts WHERE identifier < ? LIMIT 10" [untill]
-getBlogPosts pg (Just from) (Just untill) = query pg "SELECT * FROM blogposts WHERE identifier > ? AND identifier < ? LIMIT 10" (from, untill)
+getBlogPosts pg Nothing Nothing = query_ pg "SELECT * FROM blogposts ORDER BY identifier"
+getBlogPosts pg (Just from) Nothing = query pg "SELECT * FROM blogposts WHERE identifier > ? LIMIT 10 ORDER BY identifier" [from]
+getBlogPosts pg Nothing (Just untill) = query pg "SELECT * FROM blogposts WHERE identifier < ? LIMIT 10 ORDER BY identifier" [untill]
+getBlogPosts pg (Just from) (Just untill) = query pg "SELECT * FROM blogposts WHERE identifier > ? AND identifier < ? LIMIT 10 ORDER BY identifier" (from, untill)

@@ -31,6 +31,8 @@ executable blog
                      hedis,
                      cheapskate,
                      datetime,
-                     bcrypt
-  ghc-options: -threaded -Wall -fwarn-tabs -funbox-strict-fields -O2
+                     bcrypt,
+                     hostname
+
+  ghc-options: -threaded -Wall -fwarn-tabs -funbox-strict-fields -O3
                -fno-warn-orphans -fno-warn-unused-do-bind

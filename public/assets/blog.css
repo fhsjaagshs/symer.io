@@ -1,0 +1,34 @@
+.separator {
+  text-align: right;
+  border-top: dashed 3px;
+  width: 700px;
+}
+
+#editor-wrapper {
+  width: 100%;
+  height: 500px;
+  text-align: left;
+}
+
+#editor {
+  height: 100%;
+}
+
+#markdown-textarea {
+  display: none;
+}
+
+#save-button {
+  
+}
+
+#title-field {
+  width: calc(100% - 20px);
+  text-align: center;
+  margin: 25px 0px;
+  font-size: 30pt;
+  border:0;
+  border-bottom: 2px dotted;
+  background-color: transparent;
+  outline: none;
+}
