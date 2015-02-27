@@ -1,13 +1,9 @@
-html { padding:10px; }
-
 body {
-  border:0;
-  background:rgb(41,41,41);
+  background:rgb(61,61,61);
+  color:rgb(200,200,200);
   font-family:monospace;
   font-size:14px;
-  padding:10px;
-  color:#ddd;
+  padding:7px;
+  padding-right: 11px;
   line-height:1.35em;
-  margin:0;
-  padding:0;
 }
