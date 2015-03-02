@@ -1,34 +1,23 @@
 .separator {
-  text-align: right;
-  border-top: dashed 3px;
-  width: 700px;
-}
-
-#editor-wrapper {
-  width: 100%;
-  height: 500px;
-  text-align: left;
-}
-
-#editor {
-  height: 100%;
-}
-
-#markdown-textarea {
-  display: none;
-}
-
-#save-button {
-  
-}
-
-#title-field {
-  width: calc(100% - 20px);
   text-align: center;
-  margin: 25px 0px;
-  font-size: 30pt;
-  border:0;
-  border-bottom: 2px dotted;
-  background-color: transparent;
-  outline: none;
+  border-top: dashed 3px;
+  width: 100%;
+}
+
+#blog-title {
+  font-size: 50px;
+  margin: 25px;
+}
+
+#blog-subtitle {
+}
+
+.post-title {
+  font-size:40px;
+  margin-top: 50px;
+}
+
+.post-content > * {
+  font-size:20px;
+  line-height:1.35em;
 }

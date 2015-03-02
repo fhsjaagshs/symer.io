@@ -198,17 +198,18 @@ renderHead title = H.head $ do
 
 renderTop :: Maybe T.Text -> Html
 renderTop Nothing = do
-  a ! href "/" $ do
+  a ! href "/" $ do 
     img ! src "https://symer.io/assets/images/philly_skyline.svg" ! width "300" ! height "200" ! alt (stringValue $ T.unpack blogTitle)
 renderTop (Just title) = do
   renderTop Nothing
-  h2 ! class_ "title" ! style "font-size: 50px; margin-top: 25px" $ toHtml blogTitle
+  h2 ! class_ "title" ! A.id "blog-title" $ toHtml blogTitle
+  h3 ! A.id "blog-subtitle" $ "a blog about code."
   
 renderPost :: BlogPost -> Html
 renderPost b = do
   div ! class_ "post" $ do
-    h1 $ toHtml $ Main.title b -- BlogPost
-    div ! style "text-align: left;" $ toHtml $ markdown def (Main.body b) -- BlogPost
+    h1 ! class_ "post-title" $ toHtml $ Main.title b -- BlogPost
+    div ! class_ "post-content" ! style "text-align: left;" $ toHtml $ markdown def (Main.body b) -- BlogPost
 
 renderPosts :: [BlogPost] -> Html
 renderPosts [] = return ()
@@ -220,14 +221,12 @@ renderPosts (x:xs) = do
   
 renderMdEditor :: Maybe BlogPost -> Html
 renderMdEditor Nothing = do
-  H.div ! A.id "editor-wrapper" $ do
-    H.div ! A.id "editor" $ do
-      textarea ! id "markdown-textarea" $ ""
-  
+  div ! A.id "preview" $ ""
+  textarea ! A.id "editor" $ ""
+
 renderMdEditor (Just blogPost) = do
-  H.div ! A.id "editor-wrapper" $ do
-    H.div ! A.id "editor" ! customAttribute "post-id" (stringValue $ show $ Main.identifier blogPost) $ do
-      textarea ! id "markdown-textarea" $ toHtml $ T.unpack $ Main.body blogPost
+  div ! A.id "preview" $ ""
+  textarea ! A.id "editor" ! customAttribute "post-id" (stringValue $ show $ Main.identifier blogPost) $ toHtml $ T.unpack $ Main.body blogPost
       
 renderTitleField :: Maybe BlogPost -> Html
 renderTitleField (Just blogPost) = input ! type_ "text" ! id "title-field" ! value (stringValue $ T.unpack $ Main.title blogPost)
@@ -235,10 +234,16 @@ renderTitleField Nothing = input ! type_ "text" ! id "title-field"
   
 renderPostEditor :: Maybe BlogPost -> Html
 renderPostEditor maybeBlogPost = do
-  script ! src "/assets/epiceditor/epiceditor.min.js" $ ""
   renderTitleField maybeBlogPost
   renderMdEditor maybeBlogPost
-  button ! id "save-button" $ "Save"
+  
+  div ! A.id "buttons" $ do
+    button ! A.id "cancel-button" $ "Cancel"
+    button ! A.id "delete-button" $ "Delete"
+    button ! A.id "preview-button" $ "Preview"
+    button ! A.id "save-button" $ "Save"
+    
+  script ! src "/assets/marked.min.js" $ ""
   script ! src "/assets/editor.js" $ ""
   
 -------------------------------------------------------------------------------
