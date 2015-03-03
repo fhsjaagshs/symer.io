@@ -31,10 +31,12 @@ executable blog
                      hedis,
                      cheapskate,
                      datetime,
-                     bcrypt,
                      cookie,
                      blaze-builder,
-                     hashmap
+                     hashmap,
+                     vector,
+                     aeson,
+                     split
 
   ghc-options: -threaded -Wall -fwarn-tabs -funbox-strict-fields -O3
                -fno-warn-orphans -fno-warn-unused-do-bind

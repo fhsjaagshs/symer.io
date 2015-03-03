@@ -11,10 +11,12 @@ import qualified Data.ByteString.Lazy as BL
 import qualified Data.Text as T
 import qualified Data.Text.Lazy as TL
 import qualified Data.List as List
+import qualified Data.List.Split as List
 import           Data.Maybe
 import           Data.DateTime -- fromSqlString :: String -> Maybe DateTime
 import           Data.Text.Encoding as TE
 import           Data.Text.Lazy.Encoding as TLE
+import qualified Data.Vector as Vector
 import qualified Data.HashMap as Map
 import           Prelude hiding (head, id, div) -- hide the functions that may conflict wit Blaze
 import qualified Prelude as P (head, id, div)
@@ -29,35 +31,36 @@ import           Database.PostgreSQL.Simple.Time as Postgres.Time
 import           Network.Wai
 import           Network.Wai.Middleware.Static
 
-import           Crypto.BCrypt
 import           Cheapskate
-import           Text.Blaze.Html5 as H hiding (style)
+import           Text.Blaze.Html5 as H hiding (style, param, map)
 import           Text.Blaze.Html5.Attributes as A
 import           Text.Blaze.Html.Renderer.Text as R
 import           Text.Blaze.Internal
-import           Blaze.ByteString.Builder ( toLazyByteString )
+import           Blaze.ByteString.Builder (toLazyByteString)
+import           Data.Aeson as Aeson
 
 -- TODO:
--- 1. Finish editor frontend (mostly styling)
+-- 1. Finish pages
+--    a. Login
+--    b. not found
+--    c. post editor
+--    d. post representation (Where to put tags, posted time, poster, and edit button?)
+--    e. posts by time
 -- 2. Pagination
--- 3. Post representations -> Where to put tags, posted time, poster, and edit button?
--- 4. Lock down blog with authentication
--- 5. Finish login & not found pages
+-- 3. Lock down blog with authentication
+-- 4. Asset pipeline (minify JS and CSS)
+
+-- POST TODO:
+-- 1. Refactor
 
 -- Miscellania:
 -- 1. 'Top 5' tags map in side bar?
 
-parseArray :: String -> [String]
-parseArray "{}" = []
-parseArray ""   = []
-parseArray (x:xs)
- | x == '{'  = parseArray $ init xs
- | x == '\"' = concat [[takeWhile (\c -> c /= '\"') xs], (parseArray $ tail $ dropWhile (\c -> c /= '\"') xs)]
- | x == ','  = parseArray xs
- | otherwise = concat [[takeWhile (\c -> c /= ',') (x:xs)], (parseArray $ dropWhile (\c -> c /= ',') (x:xs))]
-
 textArrayOid :: Oid
 textArrayOid = Oid 1009
+
+emptyTextArrayOid :: Oid
+emptyTextArrayOid = Oid 17233
 
 data BlogPost = BlogPost {
   identifier :: Integer,
@@ -69,37 +72,43 @@ data BlogPost = BlogPost {
 
 instance Show BlogPost where
   show (BlogPost i t bt ts tags) = 
-    "BlogPost { identifier: " ++ (show i) ++ ", title: " ++ (T.unpack t) ++ ", body: " ++ (T.unpack bt) ++ " }"
+    "BlogPost { identifier: " ++ (show i) ++ ", title: " ++ (T.unpack t) ++ ", body: " ++ (T.unpack bt) ++ ", tags:" ++ (show tags) ++ " }"
 
 instance FromRow BlogPost where
   fromRow = BlogPost <$> field <*> field <*> field <*> field <*> field
-
+  
+instance ToJSON BlogPost where
+  toJSON (BlogPost identifier title body timestamp tags) =
+    Aeson.object [
+      "id" .= identifier,
+      "title" .= title,
+      "body" .= body,
+      "timestamp" .= ((Aeson.String $ TE.decodeUtf8 $ BL.toStrict $ toLazyByteString $ zonedTimestampToBuilder timestamp) :: Value),
+      "tags" .= ((Aeson.Array $ Vector.fromList $ Prelude.map (Aeson.String . T.pack) tags) :: Value)
+    ]
+    
 -- oid 1009, _text
 instance FromField [String] where
   fromField f mdata
-    | (typeOid f) /= textArrayOid = returnError Incompatible f "is not a text array"
+    | ((typeOid f) /= textArrayOid) && ((typeOid f) /= emptyTextArrayOid) = returnError Incompatible f "is not a text array"
     | otherwise = do
       case mdata of
-        Nothing -> returnError UnexpectedNull f "is not a text array"
+        Nothing -> return []
         (Just value) -> return $ parseArray $ B.unpack value
-
-data PostTag = PostTag {
-  postIdentifier :: Integer,
-  tag :: T.Text
-}
-
-instance Show PostTag where
-  show (PostTag i t) = "PostTag { postIdentifier" ++ (show i) ++ ", tag: " ++ (T.unpack t) ++ " }"
-  
-instance FromRow PostTag where
-  fromRow = PostTag <$> field <*> field
 
 
 main = scotty 3000 $ do
   pg <- liftIO $ Postgres.connectPostgreSQL "dbname='nathaniel' user='nathaniel' password='' port='5432'"
  -- redis <- liftIO $ Redis.connect Redis.defaultConnectInfo
+ 
   middleware $ staticPolicy (noDots >-> (hasPrefix "assets") >-> addBase "public")
   
+  -- 
+  -- Posts
+  -- These are HTML pages
+  --
+  
+  -- blog root
   get "/" $ do
     ps <- params
     let mfrom = ((read . T.unpack . TL.toStrict <$> (lookup "from" ps)) :: Maybe Integer)
@@ -110,124 +119,125 @@ main = scotty 3000 $ do
       renderHead blogTitle
       H.body ! style "text-align: center;" $ do
         renderTop $ Just blogTitle
-        div ! style "width: 700px; margin: auto;" $ do
+        div ! A.id "content" $ do
           renderPosts res
           
-  delete "/posts/:id" $ do
-    ps <- params
-    case (lookup "id" ps) of
-      (Just identifier) -> do
-        _ <- liftIO $ execute pg "DELETE FROM blogposts WHERE id=?" [identifier]
-        return ()
-      Nothing -> do
-        return ()
-          
-  post "/posts" $ do
-    ps <- params
-    case (lookup "id" ps) of
-      Nothing -> do
-        res <- liftIO $ query pg "INSERT INTO blogposts (title, bodyText) VALUES (?, ?) RETURNING *" ((TL.toStrict $ fromJust $ lookup "title" ps) :: T.Text, (TL.toStrict $ fromJust $ lookup "body" ps) :: T.Text)
-        if (length res) == 0
-          then redirect "/"
-          else do
-            redirect $ TL.pack $ "/posts/" ++ (show $ Main.identifier $ P.head res)
-      Just (identifier) -> do
-        res <- liftIO $ query pg "UPDATE blogposts SET title=?,bodyText=? WHERE identifier=? RETURNING *" ((TL.toStrict $ fromJust $ lookup "title" ps) :: T.Text, (TL.toStrict $ fromJust $ lookup "body" ps) :: T.Text, (read $ TL.unpack identifier) :: Integer)
-        baseurl <- baseURL
-        unless (Prelude.null res) $ addHeader "Location" (TL.pack ((T.unpack baseurl) ++ "/posts/" ++ (show $ Main.identifier $ P.head res)))
-        
-  -- this one is more webservice-y
-  post "/posts/:id/tag" $ do
-    ps <- params
-    case (lookup "id" ps) of
-      Nothing -> return ()
-      Just identifier -> do
-        case (lookup "tag" ps) of
-          Nothing -> return ()
-          Just tag -> do
-            liftIO $ execute pg "UPDATE blogposts SET tags=array_append(tags,?) WHERE identifier = ? AND ? != all(tags);" (tag, ((read $ TL.unpack identifier) :: Integer), tag)
-            return ()
-            
-  delete "/posts/:id/tag" $ do
-    ps <- params
-    case (lookup "id" ps) of
-      Nothing -> return ()
-      Just identifier -> do
-        case (lookup "tag" ps) of
-          Nothing -> return ()
-          Just tag -> do
-            liftIO $ execute pg "UPDATE blogposts SET tags=array_remove(tags,?) WHERE identifier = ? AND ? = any(tags);" (tag, ((read $ TL.unpack identifier) :: Integer), tag)
-            return ()
-      
-  get "/posts/during/:year" $ do
-    return ()
-    
-  get "/posts/during/:year/:month" $ do
-    return ()
-    
-  get "/posts/during/:year/:month/:day" $ do
-    return ()
-    
+  -- create a post
   get "/posts/new" $ do
     Scotty.html $ R.renderHtml $ docTypeHtml $ do
       renderHead blogTitle
       H.body ! style "text-align: center;" $ do
         renderTop $ Just blogTitle
-        div ! style "width: 700px; margin: auto;" $ do
+        div ! A.id "content" $ do
           renderPostEditor Nothing
-            
+          
+  -- view a specific post
   get "/posts/:id" $ do
-    ps <- params
-    case (lookup "id" ps) of
-      Nothing -> Scotty.html $ R.renderHtml $ renderNotFound
-      Just (identifier) -> do
-        res <- liftIO $ query pg "SELECT * FROM blogposts WHERE identifier = ? LIMIT 1" [identifier]
-      
-        if (length res) == 0
-          then Scotty.html $ R.renderHtml $ renderNotFound
-          else do
-           Scotty.html $ R.renderHtml $ docTypeHtml $ do
-              renderHead $ appendedBlogTitle (Main.title $ P.head res)
-              H.body ! style "text-align: center;" $ do
-                renderTop $ Just blogTitle
-                div ! style "width: 700px; margin: auto;" $ do
-                  renderPosts res
-                  
+    identifier <- param "id"
+    res <- liftIO $ query pg "SELECT * FROM blogposts WHERE identifier=? LIMIT 1" [identifier :: Integer]
+  
+    if (Prelude.null res)
+      then Scotty.html $ R.renderHtml $ renderNotFound
+      else do
+       Scotty.html $ R.renderHtml $ docTypeHtml $ do
+          renderHead $ appendedBlogTitle (Main.title $ P.head res)
+          H.body ! style "text-align: center;" $ do
+            renderTop $ Just blogTitle
+            div ! A.id "content" $ do
+              renderPosts res
+            
+  -- edit a post      
   get "/posts/:id/edit" $ do
+    identifier <- param "id"
+    res <- liftIO $ query pg "SELECT * FROM blogposts WHERE identifier=? LIMIT 1" [identifier :: Integer]
+    if (Prelude.null res)
+      then Scotty.html $ R.renderHtml $ renderNotFound
+      else do
+        Scotty.html $ R.renderHtml $ docTypeHtml $ do
+          renderHead $ appendedBlogTitle (Main.title $ P.head res)
+          H.body ! style "text-align: center;" $ do
+            renderTop Nothing
+            div ! A.id "content" $ do
+              renderPostEditor (Just (P.head res))
+          
+  --
+  -- Post creation/deletion
+  -- These endpoints will return JSON or an empty string
+  --
+  
+  -- deletes a BlogPost from the database
+  delete "/posts/:id" $ do
+    identifier <- param "id"
+    res <-  liftIO $ listToMaybe <$> query pg "DELETE FROM blogposts WHERE id=? RETURNING *" [identifier :: Integer]
+    case res of
+      Nothing -> emptyResponse
+      Just bp -> Scotty.json (bp :: BlogPost)
+
+  -- creates/updates a BlogPost in the database
+  post "/posts" $ do
     ps <- params
-    case (lookup "id" ps) of
-      Nothing -> Scotty.html $ R.renderHtml $ renderNotFound
-      Just (identifier) -> do
-        res <- liftIO $ query pg "SELECT * FROM blogposts WHERE identifier = ? LIMIT 1" [identifier]
-        if (length res) == 0
-          then Scotty.html $ R.renderHtml $ renderNotFound
-          else do
-            Scotty.html $ R.renderHtml $ docTypeHtml $ do
-              renderHead $ appendedBlogTitle (Main.title $ P.head res)
-              H.body ! style "text-align: center;" $ do
-                renderTop Nothing
-                div ! style "width: 700px; margin: auto;" $ do
-                  renderPostEditor (Just (P.head res))
-              
-  get "/token/login" $ do
-    -- TODO: render login page
-    return ()
-    
-  post "/token" $ do
-    ps <- params
-    case (lookup "username" ps) of
-      Nothing -> Scotty.html $ R.renderHtml $ docTypeHtml $ renderNotFound
-      (Just username) -> case (lookup "password" ps) of
-                           Nothing -> Scotty.html $ R.renderHtml $ docTypeHtml $ renderNotFound
-                           (Just password) -> do
-                             return ()
-    
-  post "/token/invalidate" $ do
-      return ()
+    maybeBlogPost <- liftIO $ (upsertBlogPost pg
+                                             (((read . TL.unpack) <$> lookup "id" ps) :: Maybe Integer)
+                                             (TL.toStrict <$> lookup "title" ps)
+                                             (TL.toStrict <$> lookup "body" ps)
+                                             (((List.splitOn ","). TL.unpack) <$> (lookup "tags" ps))
+                                            )
+    case maybeBlogPost of
+      Nothing -> emptyResponse
+      Just bp -> do
+        baseurl <- T.unpack <$> baseURL
+        addHeader "Location" (TL.pack (baseurl ++ "/posts/" ++ (show $ Main.identifier bp)))
+        Scotty.json (bp :: BlogPost)
+        
+  --
+  -- Tags
+  -- each endpoint returns no body
+  --
+  post "/posts/:id/tag" $ do
+    identifier <- param "id"
+    maybeTag <- (lookup "tag") <$> params
+    case maybeTag of
+      Nothing -> emptyResponse
+      Just tag -> do
+        liftIO $ execute pg "UPDATE blogposts SET tags=array_append(tags,?) WHERE identifier = ? AND ? != all(tags);" (tag, ((read $ TL.unpack identifier) :: Integer), tag)
+        emptyResponse
+            
+  delete "/posts/:id/tag" $ do
+    identifier <- param "id"
+    maybeTag <- (lookup "tag") <$> params
+    case maybeTag of
+      Nothing -> emptyResponse
+      Just tag -> do
+        liftIO $ execute pg "UPDATE blogposts SET tags=array_remove(tags,?) WHERE identifier = ? AND ? = any(tags);" (tag, ((read $ TL.unpack identifier) :: Integer), tag)
+        emptyResponse
+        
       
-  notFound $ do
-    Scotty.html $ R.renderHtml $ docTypeHtml $ renderNotFound 
-    return ()
+  -- get "/posts/on/:year" $ do
+  --   return ()
+  --
+  -- get "/posts/on/:year/:month" $ do
+  --   return ()
+  --
+  -- get "/posts/on/:year/:month/:day" $ do
+  --   return ()
+              
+  -- get "/token/login" $ do
+  --   return ()
+  --
+  -- post "/token" $ do
+  --   ps <- params
+  --   case (lookup "username" ps) of
+  --     Nothing -> Scotty.html $ R.renderHtml $ docTypeHtml $ renderNotFound
+  --     (Just username) -> case (lookup "password" ps) of
+  --                          Nothing -> Scotty.html $ R.renderHtml $ docTypeHtml $ renderNotFound
+  --                          (Just password) -> do
+  --                            return ()
+  --
+  -- post "/token/invalidate" $ do
+  --     return ()
+      
+  -- not found handler
+  notFound $ do Scotty.html $ R.renderHtml $ docTypeHtml $ renderNotFound 
 
 -------------------------------------------------------------------------------
 --- | Helpers
@@ -238,13 +248,14 @@ blogTitle = "Segmentation Fault (core dumped)"
 appendedBlogTitle :: T.Text -> T.Text
 appendedBlogTitle text = T.append text (T.append " | " blogTitle)
 
--- This is a horrible function.
--- It's waaayyy to imperative in nature
 baseURL :: ActionM T.Text
 baseURL = do
   h <- Scotty.header "Host"
   req <- request
   return $ T.pack $ (if (isSecure req) then "https" else "http") ++ "://" ++ (TL.unpack $ fromJust h)
+  
+emptyResponse :: ActionM ()
+emptyResponse = Scotty.text ""
 
 accessToken :: ActionM (Maybe T.Text)
 accessToken = do
@@ -320,7 +331,6 @@ renderPostEditor maybeBlogPost = do
   renderTagEditor maybeBlogPost
   
   div ! A.id "buttons" $ do
-    button ! A.id "cancel-button" $ "Cancel"
     button ! A.id "delete-button" $ "Delete"
     button ! A.id "preview-button" $ "Preview"
     button ! A.id "save-button" $ "Save"
@@ -330,6 +340,35 @@ renderPostEditor maybeBlogPost = do
   
 -------------------------------------------------------------------------------
 --- | Database
+
+parseArray :: String -> [String]
+parseArray "{}" = []
+parseArray ""   = []
+parseArray (x:xs)
+ | x == '{'  = parseArray $ init xs
+ | x == '\"' = concat [[takeWhile (\c -> c /= '\"') xs], (parseArray $ tail $ dropWhile (\c -> c /= '\"') xs)]
+ | x == ','  = parseArray xs
+ | otherwise = concat [[takeWhile (\c -> c /= ',') (x:xs)], (parseArray $ dropWhile (\c -> c /= ',') (x:xs))]
+ 
+serializeArray :: [String] -> String
+serializeArray [] = "Array[]"
+serializeArray values = "Array[" ++ (List.intercalate "," (map stringLiteral values)) ++ "]"
+
+stringLiteral :: String -> String
+stringLiteral s = "'" ++ (List.intercalate [] (map quoteFormat s)) ++ "'"
+
+quoteFormat :: Char -> String
+quoteFormat '\'' = "''"
+quoteFormat c = [c]
+
+upsertBlogPost :: Postgres.Connection -> Maybe Integer -> Maybe T.Text -> Maybe T.Text -> Maybe [String] -> IO (Maybe BlogPost)
+upsertBlogPost pg (Just identifier) Nothing Nothing Nothing = listToMaybe <$> query pg "UDPATE blogposts WHERE identifier = ? RETURNING *" [identifier]
+upsertBlogPost pg (Just identifier) (Just title) Nothing Nothing = listToMaybe <$> query pg "UDPATE blogposts SET title = ? WHERE identifier = ? RETURNING *" (title, identifier)
+upsertBlogPost pg (Just identifier) (Just title) (Just body) Nothing = listToMaybe <$> query pg "UDPATE blogposts SET title = ?, bodyText = ? WHERE identifier = ? RETURNING *" (title, body, identifier)
+upsertBlogPost pg (Just identifier) (Just title) (Just body) (Just tags) = listToMaybe <$> query pg "UDPATE blogposts SET title = ?, bodyText = ?, tags = ? WHERE identifier = ? RETURNING *" (title, body, (serializeArray tags), identifier)
+upsertBlogPost pg Nothing (Just title) (Just body) Nothing = listToMaybe <$> query pg "INSERT INTO blogposts (title, bodyText) VALUES (?, ?) RETURNING *" (title, body)
+upsertBlogPost pg Nothing (Just title) (Just body) (Just tags) = listToMaybe <$> query pg "INSERT INTO blogposts (title, bodyText, tags) VALUES (?, ?, ?) RETURNING *" (title, body, (serializeArray tags))
+upsertBlogPost _ _ _ _ _ = return Nothing
   
 getBlogPosts :: Postgres.Connection -> Maybe Integer -> Maybe Integer -> IO [BlogPost]
 getBlogPosts pg Nothing Nothing = query_ pg "SELECT * FROM blogposts ORDER BY identifier"

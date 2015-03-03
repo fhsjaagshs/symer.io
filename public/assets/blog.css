@@ -4,6 +4,11 @@
   width: 100%;
 }
 
+#content {
+  width: 700px;
+  margin: auto;
+}
+
 #blog-title {
   font-size: 50px;
   margin: 25px;

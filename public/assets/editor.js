@@ -15,33 +15,36 @@ var previewButton = document.getElementById("preview-button");
 var deleteButton = document.getElementById("delete-button");
 var saveButton = document.getElementById("save-button");
 
+previewButton.style.marginLeft = document.getElementById("content").offsetWidth-deleteButton.offsetWidth;
+
 var attrPostId = editor.getAttribute("post-id");
 if (attrPostId != null) { postId = parseInt(attrPostId); }
 
 $.getScript( "/assets/wordlist.min.js", function() {
   $(".wordlist").wordlist();
-  
-  $(".wordlist").on("wordlist:addedWord", function(e, word) {
-    var params = "tag=" + encodeURI(word);
-    http.open("POST", "/posts/" + postId + "/tag", true);
-    http.setRequestHeader("Content-type", "application/x-www-form-urlencoded");
-    http.setRequestHeader("Content-length", params.length);
-    http.setRequestHeader("Connection", "close");
-    http.send(params);
-  })
-  
-  $(".wordlist").on("wordlist:deletedWord", function(e,word)) {
-    var params = "tag=" + encodeURI(word);
-    http.open("DELETE", "/posts/" + postId + "/tag", true);
-    http.setRequestHeader("Content-type", "application/x-www-form-urlencoded");
-    http.setRequestHeader("Content-length", params.length);
-    http.setRequestHeader("Connection", "close");
-    http.send(params);
-  }
+  $(".wordlist").on("wordlist:addedWord", function(e, word) { addTag(word); }); 
+  $(".wordlist").on("wordlist:deletedWord", function(e,word) { deleteTag(word); });
 });
 
+var accumulated = []; // accumulate added/deleted tags if the post isn't created yet.
+
+function deleteTag(word) {
+  if (postId == -1) {
+    accumulated.splice(accumulated.indexOf(word), 1);
+  } else {
+    sendHTTP("DELETE", "/posts/"+postId+"/tag", "tag=" + encodeURI(word), function(http) {})
+  }
+}
+
+function addTag(word) {
+  if (postId == -1) {
+    accumulated.push(word);
+  } else {
+    sendHTTP("POST", "/posts/"+postId+"/tag", "tag=" + encodeURI(word), function(http) {})
+  } 
+}
+
 saveButton.onclick = function() {
-  var http = new XMLHttpRequest();
   var markdown = editor.value;
   var title = document.getElementById("title-field").value;
   
@@ -52,16 +55,17 @@ saveButton.onclick = function() {
   var params = "title=" + encodeURI(title);
   if (postId > -1) { params = params + "&id=" + encodeURI(postId.toString()); }
   params = params + "&body=" + encodeURI(markdown);
-  http.open("POST", "/posts", true);
-  http.setRequestHeader("Content-type", "application/x-www-form-urlencoded");
-  http.setRequestHeader("Content-length", params.length);
-  http.setRequestHeader("Connection", "close");
-  http.onreadystatechange = function() {
+
+  sendHTTP("POST", "/posts", params, function(http) {
     if (!(http.readyState == 4 && http.status == 200)) {
+      console.log(http.responseText);
+      postId = JSON.parse(http.responseText).id;
+      for (var word of accumulated) {
+        addTag(word);
+      }
       window.location.href = http.getResponseHeader("Location");
     }
-  }
-  http.send(params);
+  })
 }
 
 previewButton.onclick = function() {
@@ -72,12 +76,23 @@ previewButton.onclick = function() {
 }
 
 deleteButton.onclick = function() {
-  http.open("POST", "/posts/"+postId, true);
-  http.setRequestHeader("Connection", "close");
-  http.onreadystatechange = function() {
-    if (!(http.readyState == 4 && http.status == 200)) {
+  sendHTTP("DELETE", "/posts/" + postId, "", function(http) {
+    if (http.readyState == 4 && http.status == 200) {
       window.location.href = "/"
     }
+  })
+}
+
+// callback: function(http) { ... }
+function sendHTTP(method, url, params, callback) {
+  var http = new XMLHttpRequest();
+  http.open(method, url, true);
+  http.onreadystatechange = function() { callback(http); }
+  
+  if (params.length > 0) {
+    http.setRequestHeader("Content-type", "application/x-www-form-urlencoded");
+    http.send(params)
+  } else {
+    http.send();
   }
-  http.send();
 }
