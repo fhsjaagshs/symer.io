@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE OverloadedStrings, FlexibleInstances #-}
 
 module Main (main) where
 
@@ -7,17 +7,23 @@ import           Control.Monad.IO.Class
 import           Control.Monad
 import           Data.ByteString (ByteString)
 import qualified Data.ByteString.Char8 as B
+import qualified Data.ByteString.Lazy as BL
 import qualified Data.Text as T
 import qualified Data.Text.Lazy as TL
+import qualified Data.List as List
 import           Data.Maybe
 import           Data.DateTime -- fromSqlString :: String -> Maybe DateTime
 import           Data.Text.Encoding as TE
+import           Data.Text.Lazy.Encoding as TLE
+import qualified Data.HashMap as Map
 import           Prelude hiding (head, id, div) -- hide the functions that may conflict wit Blaze
 import qualified Prelude as P (head, id, div)
 
 import           Web.Scotty as Scotty
+import           Web.Cookie as Cookie
 import qualified Database.Redis as Redis
 import           Database.PostgreSQL.Simple as Postgres
+import           Database.PostgreSQL.Simple.FromField as Postgres.FromField
 import           Database.PostgreSQL.Simple.FromRow as Postgres.FromRow
 import           Database.PostgreSQL.Simple.Time as Postgres.Time
 import           Network.Wai
@@ -29,36 +35,53 @@ import           Text.Blaze.Html5 as H hiding (style)
 import           Text.Blaze.Html5.Attributes as A
 import           Text.Blaze.Html.Renderer.Text as R
 import           Text.Blaze.Internal
+import           Blaze.ByteString.Builder ( toLazyByteString )
 
-import qualified Network.HostName as HostName
-
--- TODO
--- 1. Finish editor page
---   a. delete post
---   b. rework design (procrastinateable)
--- 1.5. New post button
+-- TODO:
+-- 1. Finish editor frontend (mostly styling)
 -- 2. Pagination
--- 3. Edit post control in posts page
--- 3. Tags - figure out how to 
---   a. Adding tags in editor
---   b. filter posts by tag
--- 4. Authentication (multiple users?? How will this affect BlogPosts in the DB?) THIS CAN COME LAST
--- 5. 'Top 5' tags map in side bar?
+-- 3. Post representations -> Where to put tags, posted time, poster, and edit button?
+-- 4. Lock down blog with authentication
+-- 5. Finish login & not found pages
+
+-- Miscellania:
+-- 1. 'Top 5' tags map in side bar?
+
+parseArray :: String -> [String]
+parseArray "{}" = []
+parseArray ""   = []
+parseArray (x:xs)
+ | x == '{'  = parseArray $ init xs
+ | x == '\"' = concat [[takeWhile (\c -> c /= '\"') xs], (parseArray $ tail $ dropWhile (\c -> c /= '\"') xs)]
+ | x == ','  = parseArray xs
+ | otherwise = concat [[takeWhile (\c -> c /= ',') (x:xs)], (parseArray $ dropWhile (\c -> c /= ',') (x:xs))]
+
+textArrayOid :: Oid
+textArrayOid = Oid 1009
 
 data BlogPost = BlogPost {
   identifier :: Integer,
   title :: T.Text,
   body :: T.Text,
-  timestamp :: ZonedTimestamp
+  timestamp :: ZonedTimestamp,
+  tags :: [String]
 }
 
 instance Show BlogPost where
-  show (BlogPost i t bt ts) = 
+  show (BlogPost i t bt ts tags) = 
     "BlogPost { identifier: " ++ (show i) ++ ", title: " ++ (T.unpack t) ++ ", body: " ++ (T.unpack bt) ++ " }"
 
 instance FromRow BlogPost where
-  fromRow = BlogPost <$> field <*> field <*> field <*> field
+  fromRow = BlogPost <$> field <*> field <*> field <*> field <*> field
 
+-- oid 1009, _text
+instance FromField [String] where
+  fromField f mdata
+    | (typeOid f) /= textArrayOid = returnError Incompatible f "is not a text array"
+    | otherwise = do
+      case mdata of
+        Nothing -> returnError UnexpectedNull f "is not a text array"
+        (Just value) -> return $ parseArray $ B.unpack value
 
 data PostTag = PostTag {
   postIdentifier :: Integer,
@@ -112,7 +135,30 @@ main = scotty 3000 $ do
         res <- liftIO $ query pg "UPDATE blogposts SET title=?,bodyText=? WHERE identifier=? RETURNING *" ((TL.toStrict $ fromJust $ lookup "title" ps) :: T.Text, (TL.toStrict $ fromJust $ lookup "body" ps) :: T.Text, (read $ TL.unpack identifier) :: Integer)
         baseurl <- baseURL
         unless (Prelude.null res) $ addHeader "Location" (TL.pack ((T.unpack baseurl) ++ "/posts/" ++ (show $ Main.identifier $ P.head res)))
-  
+        
+  -- this one is more webservice-y
+  post "/posts/:id/tag" $ do
+    ps <- params
+    case (lookup "id" ps) of
+      Nothing -> return ()
+      Just identifier -> do
+        case (lookup "tag" ps) of
+          Nothing -> return ()
+          Just tag -> do
+            liftIO $ execute pg "UPDATE blogposts SET tags=array_append(tags,?) WHERE identifier = ? AND ? != all(tags);" (tag, ((read $ TL.unpack identifier) :: Integer), tag)
+            return ()
+            
+  delete "/posts/:id/tag" $ do
+    ps <- params
+    case (lookup "id" ps) of
+      Nothing -> return ()
+      Just identifier -> do
+        case (lookup "tag" ps) of
+          Nothing -> return ()
+          Just tag -> do
+            liftIO $ execute pg "UPDATE blogposts SET tags=array_remove(tags,?) WHERE identifier = ? AND ? = any(tags);" (tag, ((read $ TL.unpack identifier) :: Integer), tag)
+            return ()
+      
   get "/posts/during/:year" $ do
     return ()
     
@@ -162,8 +208,25 @@ main = scotty 3000 $ do
                 renderTop Nothing
                 div ! style "width: 700px; margin: auto;" $ do
                   renderPostEditor (Just (P.head res))
-                  
+              
+  get "/token/login" $ do
+    -- TODO: render login page
+    return ()
+    
+  post "/token" $ do
+    ps <- params
+    case (lookup "username" ps) of
+      Nothing -> Scotty.html $ R.renderHtml $ docTypeHtml $ renderNotFound
+      (Just username) -> case (lookup "password" ps) of
+                           Nothing -> Scotty.html $ R.renderHtml $ docTypeHtml $ renderNotFound
+                           (Just password) -> do
+                             return ()
+    
+  post "/token/invalidate" $ do
+      return ()
+      
   notFound $ do
+    Scotty.html $ R.renderHtml $ docTypeHtml $ renderNotFound 
     return ()
 
 -------------------------------------------------------------------------------
@@ -182,6 +245,17 @@ baseURL = do
   h <- Scotty.header "Host"
   req <- request
   return $ T.pack $ (if (isSecure req) then "https" else "http") ++ "://" ++ (TL.unpack $ fromJust h)
+
+accessToken :: ActionM (Maybe T.Text)
+accessToken = do
+  c <- Scotty.header "Cookie"
+  return $ lookup "access_token" (parseCookiesText $ TE.encodeUtf8 $ TL.toStrict $ fromJust c)
+
+setAccessToken :: T.Text -> ActionM ()
+setAccessToken token = addHeader "Set-Cookie" (TL.fromStrict . TE.decodeUtf8 . BL.toStrict . toLazyByteString $ renderSetCookie def {
+                                                                                                    setCookieName  = "token",
+                                                                                                    setCookieValue = TE.encodeUtf8 token
+                                                                                                  })
   
 -------------------------------------------------------------------------------
 --- | HTML rendering
@@ -195,6 +269,7 @@ renderHead title = H.head $ do
   H.title $ toHtml title
   link ! href "https://symer.io/assets/css/site.css" ! rel "stylesheet" ! type_ "text/css"
   link ! href "/assets/blog.css" ! rel "stylesheet" ! type_ "text/css"
+  script ! src "https://code.jquery.com/jquery-2.1.3.min.js" $ ""
 
 renderTop :: Maybe T.Text -> Html
 renderTop Nothing = do
@@ -208,7 +283,8 @@ renderTop (Just title) = do
 renderPost :: BlogPost -> Html
 renderPost b = do
   div ! class_ "post" $ do
-    h1 ! class_ "post-title" $ toHtml $ Main.title b -- BlogPost
+    a ! href (stringValue $ (++) "/posts/" $ show $ Main.identifier b) $ do
+      h1 ! class_ "post-title" $ toHtml $ Main.title b -- BlogPost
     div ! class_ "post-content" ! style "text-align: left;" $ toHtml $ markdown def (Main.body b) -- BlogPost
 
 renderPosts :: [BlogPost] -> Html
@@ -231,11 +307,17 @@ renderMdEditor (Just blogPost) = do
 renderTitleField :: Maybe BlogPost -> Html
 renderTitleField (Just blogPost) = input ! type_ "text" ! id "title-field" ! value (stringValue $ T.unpack $ Main.title blogPost)
 renderTitleField Nothing = input ! type_ "text" ! id "title-field"
+
+renderTagEditor :: Maybe BlogPost -> Html
+renderTagEditor Nothing = return ()
+renderTagEditor (Just (BlogPost identifier title body timestamp tags)) = do
+  textarea ! A.id "tags" ! class_ "wordlist" $ do toHtml $ List.intercalate ", " tags
   
 renderPostEditor :: Maybe BlogPost -> Html
 renderPostEditor maybeBlogPost = do
   renderTitleField maybeBlogPost
   renderMdEditor maybeBlogPost
+  renderTagEditor maybeBlogPost
   
   div ! A.id "buttons" $ do
     button ! A.id "cancel-button" $ "Cancel"
