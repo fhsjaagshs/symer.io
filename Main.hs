@@ -226,11 +226,13 @@ main = scotty 3000 $ do
   
   get "/assets/js/:filename" $ do
     filename <- param "filename"
+    setHeader "Content-Type" "application/x-javascript"
     minified <- liftIO $ TL.decodeUtf8 <$> Jasmine.minifyFile ("public/assets/" ++ (T.unpack filename))
     Scotty.text minified
     
   get "/assets/css/:filename" $ do
     filename <- param "filename"
+    setHeader "Content-Type" "text/css"
     f <- liftIO $ BL.readFile ("public/assets/" ++ (T.unpack filename))
     case (CSS.renderNestedBlocks <$> (CSS.parseNestedBlocks $ TL.toStrict $ TL.decodeUtf8 f)) of
       Left string -> Scotty.text $ TL.decodeUtf8 f
@@ -391,7 +393,7 @@ renderPostEditor maybeBlogPost = do
   a ! A.id "preview-button" ! class_ "blogbutton" ! rel "nofollow" $ "Preview"
   a ! A.id "save-button" ! class_ "blogbutton" ! rel "nofollow" $ "Save"
 
-  script ! src "/assets/js/marked.min.js" $ ""
+  script ! src "/assets/marked.min.js" $ ""
   script ! src "/assets/js/editor.js" $ ""
   
 -------------------------------------------------------------------------------

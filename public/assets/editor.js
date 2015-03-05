@@ -1,9 +1,10 @@
-for (var stylesheet in ["/assets/css/editor.css","/assets/css/wordlist.css"]) {
+$.each(["/assets/css/editor.css","/assets/css/wordlist.css"], function(i,stylesheet) {
   var l = document.createElement("link");
   l.rel = "stylesheet";
   l.href = stylesheet;
+  l.type = "text/css"
   document.head.appendChild(l);
-}
+})
 
 var postId = -1;
 var editing = true;
