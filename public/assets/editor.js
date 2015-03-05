@@ -1,4 +1,4 @@
-for (var stylesheet of ["/assets/editor.css","/assets/wordlist.css"]) {
+for (var stylesheet in ["/assets/css/editor.css","/assets/css/wordlist.css"]) {
   var l = document.createElement("link");
   l.rel = "stylesheet";
   l.href = stylesheet;
@@ -28,19 +28,13 @@ $.getScript( "/assets/wordlist.js", function() {
 var accumulated = []; // accumulate added/deleted tags if the post isn't created yet.
 
 function deleteTag(word) {
-  if (postId == -1) {
-    accumulated.splice(accumulated.indexOf(word), 1);
-  } else {
-    sendHTTP("DELETE", "/posts/"+postId+"/tag", "tag=" + encodeURI(word), function(http) {})
-  }
+  if (postId == -1) { accumulated.splice(accumulated.indexOf(word), 1); }
+  else { sendHTTP("DELETE", "/posts/"+postId+"/tag", "tag=" + encodeURI(word), function(http) {}); }
 }
 
 function addTag(word) {
-  if (postId == -1) {
-    accumulated.push(word);
-  } else {
-    sendHTTP("POST", "/posts/"+postId+"/tag", "tag=" + encodeURI(word), function(http) {})
-  }
+  if (postId == -1) { accumulated.push(word); }
+  else { sendHTTP("POST", "/posts/"+postId+"/tag", "tag=" + encodeURI(word), function(http) {}); }
 }
 
 saveButton.onclick = function() {

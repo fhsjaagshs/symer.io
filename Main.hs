@@ -5,46 +5,49 @@ module Main (main) where
 import           Control.Applicative
 import           Control.Monad.IO.Class
 import           Control.Monad
-import           Data.ByteString (ByteString)
 import qualified Data.ByteString.Char8 as B
-import qualified Data.ByteString.Lazy as BL
+import qualified Data.ByteString.Lazy.Char8 as BL
 import qualified Data.Text as T
+import qualified Data.Text.Encoding as T
 import qualified Data.Text.Lazy as TL
+import qualified Data.Text.Lazy.Encoding as TL
 import qualified Data.List as List
 import qualified Data.List.Split as List
+import qualified Text.CSS.Parse as CSS
+import qualified Text.CSS.Render as CSS
 import           Data.Maybe
-import           Data.DateTime as DT-- fromSqlString :: String -> Maybe DateTime
 import           Data.Time.Calendar as Calendar
 import           Data.Time.Lens
 import           Data.Time.Clock
-import           Data.Text.Encoding as TE
-import           Data.Text.Lazy.Encoding as TLE
+
 import qualified Data.Vector as Vector
 import qualified Data.HashMap as Map
 import           Prelude hiding (head, id, div) -- hide the functions that may conflict wit Blaze
 import qualified Prelude as P (head, id, div)
 
+import           Text.Jasmine as Jasmine
 import           Web.Scotty as Scotty
 import           Web.Cookie as Cookie
+import           Network.Wai
+import           Network.Wai.Middleware.Static
 import qualified Database.Redis as Redis
 import           Database.PostgreSQL.Simple as Postgres
 import           Database.PostgreSQL.Simple.FromField as Postgres.FromField
 import           Database.PostgreSQL.Simple.ToField as Postgres.ToField
 import           Database.PostgreSQL.Simple.FromRow as Postgres.FromRow
 import           Database.PostgreSQL.Simple.Time as Postgres.Time
-import           Database.PostgreSQL.Simple.Arrays as Postgres
-import           Network.Wai
-import           Network.Wai.Middleware.Static
+import           Database.PostgreSQL.Simple.Arrays as Postgres.Arrays
 
 import           Auth
 
 import           Cheapskate
+import           Data.Aeson as Aeson
 import           Text.Blaze.Html5 as H hiding (style, param, map)
 import           Text.Blaze.Html5.Attributes as A
 import           Text.Blaze.Html.Renderer.Text as R
 import           Text.Blaze.Internal
 import           Blaze.ByteString.Builder (toLazyByteString)
-import           Data.Aeson as Aeson
+import           Data.Text.Lazy.Builder
 
 -- TODO:
 -- 1. Finish pages
@@ -54,7 +57,6 @@ import           Data.Aeson as Aeson
 --    e. posts by time
 -- 2. Pagination
 -- 3. Lock down blog with authentication
--- 4. Asset pipeline (minify JS and CSS)
 
 -- Nitpick todo:
 -- 1. upsertBlogPost: more parameter combinations
@@ -87,7 +89,7 @@ instance ToJSON BlogPost where
       "id" .= identifier,
       "title" .= title,
       "body" .= body,
-      "timestamp" .= ((Aeson.String $ TE.decodeUtf8 $ BL.toStrict $ toLazyByteString $ utcTimeToBuilder timestamp) :: Value),
+      "timestamp" .= ((Aeson.String $ T.decodeUtf8 $ BL.toStrict $ toLazyByteString $ utcTimeToBuilder timestamp) :: Value),
       "tags" .= ((Aeson.Array $ Vector.fromList $ Prelude.map (Aeson.String . T.pack) tags) :: Value)
     ]
     
@@ -122,7 +124,7 @@ main = scotty 3000 $ do
     res <- liftIO $ getBlogPosts pg mfrom muntil
     
     Scotty.html $ R.renderHtml $ docTypeHtml $ do
-      renderHead blogTitle
+      renderHead [] blogTitle
       H.body ! style "text-align: center;" $ do
         renderTop $ Just blogTitle
         div ! A.id "content" $ do
@@ -131,7 +133,7 @@ main = scotty 3000 $ do
   -- create a post
   get "/posts/new" $ do
     Scotty.html $ R.renderHtml $ docTypeHtml $ do
-      renderHead blogTitle
+      renderHead [] blogTitle
       H.body ! style "text-align: center;" $ do
         renderTop $ Just blogTitle
         div ! A.id "content" $ do
@@ -140,31 +142,32 @@ main = scotty 3000 $ do
   -- view a specific post
   get "/posts/:id" $ do
     identifier <- param "id"
-    res <- liftIO $ query pg "SELECT * FROM blogposts WHERE identifier=? LIMIT 1" [identifier :: Integer]
+    res <- liftIO $ listToMaybe <$> query pg "SELECT * FROM blogposts WHERE identifier=? LIMIT 1" [identifier :: Integer]
   
-    if (Prelude.null res)
-      then Scotty.html $ R.renderHtml $ renderNotFound
-      else do
-       Scotty.html $ R.renderHtml $ docTypeHtml $ do
-          renderHead $ appendedBlogTitle (Main.title $ P.head res)
+    case res of
+      Nothing -> Scotty.html $ R.renderHtml $ renderNotFound
+      Just post -> do
+        Scotty.html $ R.renderHtml $ docTypeHtml $ do
+          renderHead (postTags $ Main.tags post) $ appendedBlogTitle $ Main.title post
           H.body ! style "text-align: center;" $ do
             renderTop $ Just blogTitle
             div ! A.id "content" $ do
-              renderPosts res Nothing
-            
+              renderPost post Nothing
+
   -- edit a post      
   get "/posts/:id/edit" $ do
     identifier <- param "id"
-    res <- liftIO $ query pg "SELECT * FROM blogposts WHERE identifier=? LIMIT 1" [identifier :: Integer]
-    if (Prelude.null res)
-      then Scotty.html $ R.renderHtml $ renderNotFound
-      else do
+    res <- liftIO $ listToMaybe <$> query pg "SELECT * FROM blogposts WHERE identifier=? LIMIT 1" [identifier :: Integer]
+    case res of
+      Nothing -> Scotty.html $ R.renderHtml $ renderNotFound
+      Just post -> do
         Scotty.html $ R.renderHtml $ docTypeHtml $ do
-          renderHead $ appendedBlogTitle (Main.title $ P.head res)
+          renderHead [("robots","noindex, nofollow")] (appendedBlogTitle $ Main.title post)
           H.body ! style "text-align: center;" $ do
             renderTop Nothing
             div ! A.id "content" $ do
-              renderPostEditor (Just (P.head res))
+              renderPostEditor $ Just post
+        
           
   --
   -- Post creation/deletion
@@ -217,7 +220,22 @@ main = scotty 3000 $ do
         liftIO $ execute pg "UPDATE blogposts SET tags=array_remove(tags,?) WHERE identifier = ? AND ? = any(tags);" (tag, ((read $ TL.unpack identifier) :: Integer), tag)
         emptyResponse
         
-      
+  --
+  -- assets
+  --
+  
+  get "/assets/js/:filename" $ do
+    filename <- param "filename"
+    minified <- liftIO $ TL.decodeUtf8 <$> Jasmine.minifyFile ("public/assets/" ++ (T.unpack filename))
+    Scotty.text minified
+    
+  get "/assets/css/:filename" $ do
+    filename <- param "filename"
+    f <- liftIO $ BL.readFile ("public/assets/" ++ (T.unpack filename))
+    case (CSS.renderNestedBlocks <$> (CSS.parseNestedBlocks $ TL.toStrict $ TL.decodeUtf8 f)) of
+      Left string -> Scotty.text $ TL.decodeUtf8 f
+      Right cssbuilder -> Scotty.text $ toLazyText cssbuilder
+
   -- get "/posts/on/:year" $ do
   --   return ()
   --
@@ -227,9 +245,9 @@ main = scotty 3000 $ do
   -- get "/posts/on/:year/:month/:day" $ do
   --   return ()
               
-  -- get "/token/login" $ do
-  --   return ()
-  --
+  get "/token/login" $ do
+    return ()
+
   -- post "/token" $ do
   --   ps <- params
   --   case (lookup "username" ps) of
@@ -251,6 +269,16 @@ main = scotty 3000 $ do
 blogTitle :: T.Text
 blogTitle = "Segmentation Fault (core dumped)"
 
+seoTags :: [(T.Text, T.Text)]
+seoTags = [
+            ("revisit-after", "2 days"),
+            ("description", "Rants and raves about computer science, politics, and everything in between."),
+            ("keywords", "computer science, politics, haskell, ruby, web development, art, blogs, money, computers, startups, leftist, opinions, tutorial, rails, ruby on rails, scotty haskell, snap framework")
+            ]
+     
+postTags :: [String] -> [(T.Text, T.Text)]       
+postTags tags = [("keywords", T.append (T.pack $ (List.intercalate ", " tags) ++ ", ") (fromJust $ lookup "keywords" seoTags))]
+
 appendedBlogTitle :: T.Text -> T.Text
 appendedBlogTitle text = T.append text (T.append " | " blogTitle)
 
@@ -266,10 +294,10 @@ emptyResponse = Scotty.text ""
 accessToken :: ActionM (Maybe T.Text)
 accessToken = do
   c <- Scotty.header "Cookie"
-  return $ lookup "access_token" (parseCookiesText $ TE.encodeUtf8 $ TL.toStrict $ fromJust c)
+  return $ lookup "access_token" (parseCookiesText $ BL.toStrict $ TL.encodeUtf8 $ fromJust c)
 
 setAccessToken :: T.Text -> ActionM ()
-setAccessToken token = addHeader "Set-Cookie" (TL.fromStrict . TE.decodeUtf8 . BL.toStrict . toLazyByteString $ renderSetCookie def { setCookieName  = "token", setCookieValue = TE.encodeUtf8 token })
+setAccessToken token = addHeader "Set-Cookie" (TL.decodeUtf8 . toLazyByteString $ renderSetCookie def { setCookieName  = "token", setCookieValue = T.encodeUtf8 token })
 
 showInteger :: Int -> Int -> String
 showInteger numPlaces integer = (replicate (numPlaces-(length $ show integer)) '0') ++ (show integer)
@@ -284,12 +312,22 @@ renderNotFound :: Html
 renderNotFound = do
   return ()
 
-renderHead :: T.Text -> Html
-renderHead title = H.head $ do
+renderTags :: [(T.Text, T.Text)] -> Html
+renderTags [] = return ()
+renderTags (x:xs) = do
+  meta ! A.name (stringValue $ T.unpack $ fst x ) ! content (stringValue $ T.unpack $ snd x )
+  renderTags xs
+
+renderHead :: [(T.Text, T.Text)] -> T.Text -> Html
+renderHead metaTags title = H.head $ do
   H.title $ toHtml title
   link ! href "https://symer.io/assets/css/site.css" ! rel "stylesheet" ! type_ "text/css"
-  link ! href "/assets/blog.css" ! rel "stylesheet" ! type_ "text/css"
+  link ! href "/assets/css/blog.css" ! rel "stylesheet" ! type_ "text/css"
   script ! src "https://code.jquery.com/jquery-2.1.3.min.js" $ ""
+  
+  meta ! httpEquiv "Content-Type" ! content "text/html; charset=UTF-8"
+
+  renderTags $ List.nubBy (\(keyOne, _) (keyTwo, _) -> keyOne == keyTwo) $ metaTags ++ seoTags
 
 renderTop :: Maybe T.Text -> Html
 renderTop Nothing = do
@@ -306,14 +344,14 @@ renderPost b Nothing = do
     a ! href (stringValue $ (++) "/posts/" $ show $ Main.identifier b) $ do
       h1 ! class_ "post-title" $ toHtml $ Main.title b -- BlogPost
     h4 ! class_ "post-subtitle" $ toHtml $ formatDate $ Main.timestamp b
-    a ! class_ "post-edit-button" ! href (stringValue $ ("/posts/" ++ (show $ Main.identifier b) ++ "/edit")) $ "edit"
+    a ! class_ "post-edit-button" ! href (stringValue $ ("/posts/" ++ (show $ Main.identifier b) ++ "/edit")) ! rel "nofollow" $ "edit"
     div ! class_ "post-content" ! style "text-align: left;" $ toHtml $ markdown def (Main.body b) -- BlogPost
 renderPost b (Just authUser) = do
   div ! class_ "post" $ do
     a ! href (stringValue $ (++) "/posts/" $ show $ Main.identifier b) $ do
       h1 ! class_ "post-title" $ toHtml $ Main.title b -- BlogPost
     h4 ! class_ "post-subtitle" $ toHtml $ ((formatDate $ Main.timestamp b))
-    a ! class_ "post-edit-button" ! href (stringValue $ ("/posts/" ++ (show $ Main.identifier b) ++ "/edit")) $ "edit"
+    a ! class_ "post-edit-button" ! href (stringValue $ ("/posts/" ++ (show $ Main.identifier b) ++ "/edit")) ! rel "nofollow" $ "edit"
     div ! class_ "post-content" ! style "text-align: left;" $ toHtml $ markdown def (Main.body b) -- BlogPost
 
 renderPosts :: [BlogPost] -> Maybe AuthUser -> Html
@@ -349,12 +387,12 @@ renderPostEditor maybeBlogPost = do
   renderMdEditor maybeBlogPost
   renderTagEditor maybeBlogPost
   
-  a ! A.id "delete-button" ! class_ "blogbutton" $ "Delete"
-  a ! A.id "preview-button" ! class_ "blogbutton" $ "Preview"
-  a ! A.id "save-button" ! class_ "blogbutton" $ "Save"
+  a ! A.id "delete-button" ! class_ "blogbutton" ! rel "nofollow" $ "Delete"
+  a ! A.id "preview-button" ! class_ "blogbutton" ! rel "nofollow" $ "Preview"
+  a ! A.id "save-button" ! class_ "blogbutton" ! rel "nofollow" $ "Save"
 
-  script ! src "/assets/marked.min.js" $ ""
-  script ! src "/assets/editor.js" $ ""
+  script ! src "/assets/js/marked.min.js" $ ""
+  script ! src "/assets/js/editor.js" $ ""
   
 -------------------------------------------------------------------------------
 --- | Database

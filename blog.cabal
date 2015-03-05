@@ -8,6 +8,7 @@ maintainer:          nate@symer.io
 category:            Web
 build-type:          Simple
 cabal-version:       >=1.8
+data-dir:            public
 
 executable blog
   main-is:           Main.hs
@@ -38,7 +39,9 @@ executable blog
                      aeson,
                      split,
                      random,
-                     time-lens
+                     time-lens,
+                     hjsmin,
+                     css-text
 
   ghc-options: -threaded -Wall -fwarn-tabs -funbox-strict-fields -O3
                -fno-warn-orphans -fno-warn-unused-do-bind
