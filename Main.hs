@@ -13,7 +13,9 @@ import qualified Data.Text.Lazy as TL
 import qualified Data.List as List
 import qualified Data.List.Split as List
 import           Data.Maybe
-import           Data.DateTime -- fromSqlString :: String -> Maybe DateTime
+import           Data.DateTime as DT-- fromSqlString :: String -> Maybe DateTime
+import           Data.Time.Clock as Clock
+import           Data.Time.Calendar as Calendar
 import           Data.Text.Encoding as TE
 import           Data.Text.Lazy.Encoding as TLE
 import qualified Data.Vector as Vector
@@ -26,10 +28,14 @@ import           Web.Cookie as Cookie
 import qualified Database.Redis as Redis
 import           Database.PostgreSQL.Simple as Postgres
 import           Database.PostgreSQL.Simple.FromField as Postgres.FromField
+import           Database.PostgreSQL.Simple.ToField as Postgres.ToField
 import           Database.PostgreSQL.Simple.FromRow as Postgres.FromRow
 import           Database.PostgreSQL.Simple.Time as Postgres.Time
+import           Database.PostgreSQL.Simple.Arrays as Postgres
 import           Network.Wai
 import           Network.Wai.Middleware.Static
+
+import           Auth
 
 import           Cheapskate
 import           Text.Blaze.Html5 as H hiding (style, param, map)
@@ -50,23 +56,20 @@ import           Data.Aeson as Aeson
 -- 3. Lock down blog with authentication
 -- 4. Asset pipeline (minify JS and CSS)
 
+-- Nitpick todo:
+-- 1. upsertBlogPost: more parameter combinations
+
 -- POST TODO:
 -- 1. Refactor
 
 -- Miscellania:
 -- 1. 'Top 5' tags map in side bar?
 
-textArrayOid :: Oid
-textArrayOid = Oid 1009
-
-emptyTextArrayOid :: Oid
-emptyTextArrayOid = Oid 17233
-
 data BlogPost = BlogPost {
   identifier :: Integer,
   title :: T.Text,
   body :: T.Text,
-  timestamp :: ZonedTimestamp,
+  timestamp :: UTCTime,
   tags :: [String]
 }
 
@@ -83,19 +86,21 @@ instance ToJSON BlogPost where
       "id" .= identifier,
       "title" .= title,
       "body" .= body,
-      "timestamp" .= ((Aeson.String $ TE.decodeUtf8 $ BL.toStrict $ toLazyByteString $ zonedTimestampToBuilder timestamp) :: Value),
+      "timestamp" .= ((Aeson.String $ TE.decodeUtf8 $ BL.toStrict $ toLazyByteString $ utcTimeToBuilder timestamp) :: Value),
       "tags" .= ((Aeson.Array $ Vector.fromList $ Prelude.map (Aeson.String . T.pack) tags) :: Value)
     ]
     
 -- oid 1009, _text
 instance FromField [String] where
   fromField f mdata
-    | ((typeOid f) /= textArrayOid) && ((typeOid f) /= emptyTextArrayOid) = returnError Incompatible f "is not a text array"
+    | (typeOid f) /= (Oid 1009) = returnError Incompatible f "Field is not a text array."
     | otherwise = do
-      case mdata of
-        Nothing -> return []
-        (Just value) -> return $ parseArray $ B.unpack value
+        case mdata of
+          Nothing -> return []
+          (Just value) -> return $ parseArray $ B.unpack value
 
+instance ToField [String] where
+  toField value = Many $ map Postgres.ToField.Escape (["{"] ++ (map B.pack value) ++ ["}"])
 
 main = scotty 3000 $ do
   pg <- liftIO $ Postgres.connectPostgreSQL "dbname='nathaniel' user='nathaniel' password='' port='5432'"
@@ -120,7 +125,7 @@ main = scotty 3000 $ do
       H.body ! style "text-align: center;" $ do
         renderTop $ Just blogTitle
         div ! A.id "content" $ do
-          renderPosts res
+          renderPosts res Nothing
           
   -- create a post
   get "/posts/new" $ do
@@ -144,7 +149,7 @@ main = scotty 3000 $ do
           H.body ! style "text-align: center;" $ do
             renderTop $ Just blogTitle
             div ! A.id "content" $ do
-              renderPosts res
+              renderPosts res Nothing
             
   -- edit a post      
   get "/posts/:id/edit" $ do
@@ -168,7 +173,7 @@ main = scotty 3000 $ do
   -- deletes a BlogPost from the database
   delete "/posts/:id" $ do
     identifier <- param "id"
-    res <-  liftIO $ listToMaybe <$> query pg "DELETE FROM blogposts WHERE id=? RETURNING *" [identifier :: Integer]
+    res <-  liftIO $ listToMaybe <$> query pg "DELETE FROM blogposts WHERE identifier=? RETURNING *" [identifier :: Integer]
     case res of
       Nothing -> emptyResponse
       Just bp -> Scotty.json (bp :: BlogPost)
@@ -180,7 +185,7 @@ main = scotty 3000 $ do
                                              (((read . TL.unpack) <$> lookup "id" ps) :: Maybe Integer)
                                              (TL.toStrict <$> lookup "title" ps)
                                              (TL.toStrict <$> lookup "body" ps)
-                                             (((List.splitOn ","). TL.unpack) <$> (lookup "tags" ps))
+                                             (((List.splitOn ",") . TL.unpack) <$> (lookup "tags" ps))
                                             )
     case maybeBlogPost of
       Nothing -> emptyResponse
@@ -263,10 +268,24 @@ accessToken = do
   return $ lookup "access_token" (parseCookiesText $ TE.encodeUtf8 $ TL.toStrict $ fromJust c)
 
 setAccessToken :: T.Text -> ActionM ()
-setAccessToken token = addHeader "Set-Cookie" (TL.fromStrict . TE.decodeUtf8 . BL.toStrict . toLazyByteString $ renderSetCookie def {
-                                                                                                    setCookieName  = "token",
-                                                                                                    setCookieValue = TE.encodeUtf8 token
-                                                                                                  })
+setAccessToken token = addHeader "Set-Cookie" (TL.fromStrict . TE.decodeUtf8 . BL.toStrict . toLazyByteString $ renderSetCookie def { setCookieName  = "token", setCookieValue = TE.encodeUtf8 token })
+
+getHours :: DiffTime -> (Integer, String)
+getHours difftime 
+  | hours == 24 = (12, "am")
+  | hours == 12 = (12, "pm")
+  | hours < 12 = (hours, "am")
+  | otherwise = (hours-12, "pm")
+  where
+    hours = floor $ (difftime/60)/60
+                                                                                                   
+formatDate :: UTCTime -> String
+formatDate date = (show month) ++ " • " ++ (show day) ++ " • " ++ (show year) ++ " at " ++ (show hours) ++ ":" ++ (show minutes) ++ halfOfDay
+  where
+    (year, month, day) = Calendar.toGregorian $ utctDay date
+    seconds = utctDayTime date
+    (hours, halfOfDay) = getHours seconds
+    minutes = floor $ seconds/60
   
 -------------------------------------------------------------------------------
 --- | HTML rendering
@@ -290,21 +309,29 @@ renderTop (Just title) = do
   renderTop Nothing
   h2 ! class_ "title" ! A.id "blog-title" $ toHtml blogTitle
   h3 ! A.id "blog-subtitle" $ "a blog about code."
-  
-renderPost :: BlogPost -> Html
-renderPost b = do
+
+renderPost :: BlogPost -> Maybe AuthUser -> Html
+renderPost b Nothing = do
   div ! class_ "post" $ do
     a ! href (stringValue $ (++) "/posts/" $ show $ Main.identifier b) $ do
       h1 ! class_ "post-title" $ toHtml $ Main.title b -- BlogPost
+    h4 ! class_ "post-subtitle" $ toHtml $ formatDate $ Main.timestamp b
+    div ! class_ "post-content" ! style "text-align: left;" $ toHtml $ markdown def (Main.body b) -- BlogPost
+renderPost b (Just authUser) = do
+  div ! class_ "post" $ do
+    a ! href (stringValue $ (++) "/posts/" $ show $ Main.identifier b) $ do
+      h1 ! class_ "post-title" $ toHtml $ Main.title b -- BlogPost
+    h4 ! class_ "post-subtitle" $ toHtml $ ((formatDate $ Main.timestamp b))
     div ! class_ "post-content" ! style "text-align: left;" $ toHtml $ markdown def (Main.body b) -- BlogPost
 
-renderPosts :: [BlogPost] -> Html
-renderPosts [] = return ()
-renderPosts [x] = renderPost x
-renderPosts (x:xs) = do
-  renderPost x
+renderPosts :: [BlogPost] -> Maybe AuthUser -> Html
+--renderPosts _ Nothing = return ()
+renderPosts [] _ = return ()
+renderPosts [x] authUser = renderPost x authUser
+renderPosts (x:xs) authUser = do
+  renderPost x authUser
   hr ! class_ "separator"
-  renderPosts xs
+  renderPosts xs authUser
   
 renderMdEditor :: Maybe BlogPost -> Html
 renderMdEditor Nothing = do
@@ -320,7 +347,7 @@ renderTitleField (Just blogPost) = input ! type_ "text" ! id "title-field" ! val
 renderTitleField Nothing = input ! type_ "text" ! id "title-field"
 
 renderTagEditor :: Maybe BlogPost -> Html
-renderTagEditor Nothing = return ()
+renderTagEditor Nothing = textarea ! A.id "tags" ! class_ "wordlist" $ do ""
 renderTagEditor (Just (BlogPost identifier title body timestamp tags)) = do
   textarea ! A.id "tags" ! class_ "wordlist" $ do toHtml $ List.intercalate ", " tags
   
@@ -330,11 +357,10 @@ renderPostEditor maybeBlogPost = do
   renderMdEditor maybeBlogPost
   renderTagEditor maybeBlogPost
   
-  div ! A.id "buttons" $ do
-    button ! A.id "delete-button" $ "Delete"
-    button ! A.id "preview-button" $ "Preview"
-    button ! A.id "save-button" $ "Save"
-    
+  a ! A.id "delete-button" ! class_ "blogbutton" $ "Delete"
+  a ! A.id "preview-button" ! class_ "blogbutton" $ "Preview"
+  a ! A.id "save-button" ! class_ "blogbutton" $ "Save"
+
   script ! src "/assets/marked.min.js" $ ""
   script ! src "/assets/editor.js" $ ""
   
@@ -349,29 +375,18 @@ parseArray (x:xs)
  | x == '\"' = concat [[takeWhile (\c -> c /= '\"') xs], (parseArray $ tail $ dropWhile (\c -> c /= '\"') xs)]
  | x == ','  = parseArray xs
  | otherwise = concat [[takeWhile (\c -> c /= ',') (x:xs)], (parseArray $ dropWhile (\c -> c /= ',') (x:xs))]
- 
-serializeArray :: [String] -> String
-serializeArray [] = "Array[]"
-serializeArray values = "Array[" ++ (List.intercalate "," (map stringLiteral values)) ++ "]"
-
-stringLiteral :: String -> String
-stringLiteral s = "'" ++ (List.intercalate [] (map quoteFormat s)) ++ "'"
-
-quoteFormat :: Char -> String
-quoteFormat '\'' = "''"
-quoteFormat c = [c]
 
 upsertBlogPost :: Postgres.Connection -> Maybe Integer -> Maybe T.Text -> Maybe T.Text -> Maybe [String] -> IO (Maybe BlogPost)
-upsertBlogPost pg (Just identifier) Nothing Nothing Nothing = listToMaybe <$> query pg "UDPATE blogposts WHERE identifier = ? RETURNING *" [identifier]
-upsertBlogPost pg (Just identifier) (Just title) Nothing Nothing = listToMaybe <$> query pg "UDPATE blogposts SET title = ? WHERE identifier = ? RETURNING *" (title, identifier)
-upsertBlogPost pg (Just identifier) (Just title) (Just body) Nothing = listToMaybe <$> query pg "UDPATE blogposts SET title = ?, bodyText = ? WHERE identifier = ? RETURNING *" (title, body, identifier)
-upsertBlogPost pg (Just identifier) (Just title) (Just body) (Just tags) = listToMaybe <$> query pg "UDPATE blogposts SET title = ?, bodyText = ?, tags = ? WHERE identifier = ? RETURNING *" (title, body, (serializeArray tags), identifier)
-upsertBlogPost pg Nothing (Just title) (Just body) Nothing = listToMaybe <$> query pg "INSERT INTO blogposts (title, bodyText) VALUES (?, ?) RETURNING *" (title, body)
-upsertBlogPost pg Nothing (Just title) (Just body) (Just tags) = listToMaybe <$> query pg "INSERT INTO blogposts (title, bodyText, tags) VALUES (?, ?, ?) RETURNING *" (title, body, (serializeArray tags))
-upsertBlogPost _ _ _ _ _ = return Nothing
+upsertBlogPost pg (Just identifier) Nothing      Nothing     Nothing     = listToMaybe <$> query pg "SELECT * FROM blogposts WHERE identifier=? LIMIT 1" [identifier]
+upsertBlogPost pg (Just identifier) (Just title) Nothing     Nothing     = listToMaybe <$> query pg "UPDATE blogposts SET title=? WHERE identifier=? RETURNING *" (title, identifier)
+upsertBlogPost pg (Just identifier) (Just title) (Just body) Nothing     = listToMaybe <$> query pg "UPDATE blogposts SET title=?, bodyText=? WHERE identifier = ? RETURNING *" (title, body, identifier)
+upsertBlogPost pg (Just identifier) (Just title) (Just body) (Just tags) = listToMaybe <$> query pg "UPDATE blogposts SET title=?, bodyText=?, tags=? WHERE identifier = ? RETURNING *" (title, body, tags, identifier)
+upsertBlogPost pg Nothing           (Just title) (Just body) Nothing     = listToMaybe <$> query pg "INSERT INTO blogposts (title, bodyText) VALUES (?, ?) RETURNING *" (title, body)
+upsertBlogPost pg Nothing           (Just title) (Just body) (Just tags) = listToMaybe <$> query pg "INSERT INTO blogposts (title, bodyText, tags) VALUES (?, ?, ?) RETURNING *" (title, body, tags)
+upsertBlogPost _  _                 _            _           _           = return Nothing
   
 getBlogPosts :: Postgres.Connection -> Maybe Integer -> Maybe Integer -> IO [BlogPost]
-getBlogPosts pg Nothing Nothing = query_ pg "SELECT * FROM blogposts ORDER BY identifier"
-getBlogPosts pg (Just from) Nothing = query pg "SELECT * FROM blogposts WHERE identifier > ? LIMIT 10 ORDER BY identifier" [from]
-getBlogPosts pg Nothing (Just untill) = query pg "SELECT * FROM blogposts WHERE identifier < ? LIMIT 10 ORDER BY identifier" [untill]
+getBlogPosts pg Nothing     Nothing       = query_ pg "SELECT * FROM blogposts ORDER BY identifier"
+getBlogPosts pg (Just from) Nothing       = query pg "SELECT * FROM blogposts WHERE identifier > ? LIMIT 10 ORDER BY identifier" [from]
+getBlogPosts pg Nothing     (Just untill) = query pg "SELECT * FROM blogposts WHERE identifier < ? LIMIT 10 ORDER BY identifier" [untill]
 getBlogPosts pg (Just from) (Just untill) = query pg "SELECT * FROM blogposts WHERE identifier > ? AND identifier < ? LIMIT 10 ORDER BY identifier" (from, untill)

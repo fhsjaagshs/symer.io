@@ -36,7 +36,8 @@ executable blog
                      hashmap,
                      vector,
                      aeson,
-                     split
+                     split,
+                     random
 
   ghc-options: -threaded -Wall -fwarn-tabs -funbox-strict-fields -O3
                -fno-warn-orphans -fno-warn-unused-do-bind

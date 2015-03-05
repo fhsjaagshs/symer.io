@@ -1,11 +1,9 @@
-var editorcss = document.createElement("link");
-editorcss.rel = "stylesheet";
-editorcss.href = "/assets/editor.css";
-document.head.appendChild(editorcss);
-
-var wordlist = document.createElement("script");
-wordlist.src = "/assets/wordlist.min.js";
-document.head.appendChild(wordlist);
+for (var stylesheet of ["/assets/editor.css","/assets/wordlist.css"]) {
+  var l = document.createElement("link");
+  l.rel = "stylesheet";
+  l.href = stylesheet;
+  document.head.appendChild(l);
+}
 
 var postId = -1;
 var editing = true;
@@ -20,8 +18,9 @@ previewButton.style.marginLeft = document.getElementById("content").offsetWidth-
 var attrPostId = editor.getAttribute("post-id");
 if (attrPostId != null) { postId = parseInt(attrPostId); }
 
-$.getScript( "/assets/wordlist.min.js", function() {
+$.getScript( "/assets/wordlist.js", function() {
   $(".wordlist").wordlist();
+  $(".wordlist").placeholder = "Enter tag"
   $(".wordlist").on("wordlist:addedWord", function(e, word) { addTag(word); }); 
   $(".wordlist").on("wordlist:deletedWord", function(e,word) { deleteTag(word); });
 });
@@ -41,7 +40,7 @@ function addTag(word) {
     accumulated.push(word);
   } else {
     sendHTTP("POST", "/posts/"+postId+"/tag", "tag=" + encodeURI(word), function(http) {})
-  } 
+  }
 }
 
 saveButton.onclick = function() {
@@ -53,16 +52,13 @@ saveButton.onclick = function() {
   
   // the order of this is important because of how JS strings work
   var params = "title=" + encodeURI(title);
-  if (postId > -1) { params = params + "&id=" + encodeURI(postId.toString()); }
+  if (postId != -1) { params = params + "&id=" + encodeURI(postId.toString()); }
+  else { params = params + "&tags=" + encodeURI(accumulated.join()); }
   params = params + "&body=" + encodeURI(markdown);
 
   sendHTTP("POST", "/posts", params, function(http) {
     if (!(http.readyState == 4 && http.status == 200)) {
-      console.log(http.responseText);
       postId = JSON.parse(http.responseText).id;
-      for (var word of accumulated) {
-        addTag(word);
-      }
       window.location.href = http.getResponseHeader("Location");
     }
   })
@@ -76,11 +72,13 @@ previewButton.onclick = function() {
 }
 
 deleteButton.onclick = function() {
-  sendHTTP("DELETE", "/posts/" + postId, "", function(http) {
-    if (http.readyState == 4 && http.status == 200) {
-      window.location.href = "/"
-    }
-  })
+  if (confirm("Are you sure you want to delete this post?")) {
+    sendHTTP("DELETE", "/posts/" + postId, "", function(http) {
+      if (http.readyState == 4 && http.status == 200) {
+        window.location.href = "/"
+      }
+    });
+  }
 }
 
 // callback: function(http) { ... }
