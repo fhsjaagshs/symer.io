@@ -14,8 +14,9 @@ import qualified Data.List as List
 import qualified Data.List.Split as List
 import           Data.Maybe
 import           Data.DateTime as DT-- fromSqlString :: String -> Maybe DateTime
-import           Data.Time.Clock as Clock
 import           Data.Time.Calendar as Calendar
+import           Data.Time.Lens
+import           Data.Time.Clock
 import           Data.Text.Encoding as TE
 import           Data.Text.Lazy.Encoding as TLE
 import qualified Data.Vector as Vector
@@ -49,8 +50,7 @@ import           Data.Aeson as Aeson
 -- 1. Finish pages
 --    a. Login
 --    b. not found
---    c. post editor
---    d. post representation (Where to put tags, posted time, poster, and edit button?)
+--    d. post representation (Where to put tags, poster)
 --    e. posts by time
 -- 2. Pagination
 -- 3. Lock down blog with authentication
@@ -58,6 +58,7 @@ import           Data.Aeson as Aeson
 
 -- Nitpick todo:
 -- 1. upsertBlogPost: more parameter combinations
+-- 2. fix timezone
 
 -- POST TODO:
 -- 1. Refactor
@@ -270,23 +271,12 @@ accessToken = do
 setAccessToken :: T.Text -> ActionM ()
 setAccessToken token = addHeader "Set-Cookie" (TL.fromStrict . TE.decodeUtf8 . BL.toStrict . toLazyByteString $ renderSetCookie def { setCookieName  = "token", setCookieValue = TE.encodeUtf8 token })
 
-getHours :: DiffTime -> (Integer, String)
-getHours difftime 
-  | hours == 24 = (12, "am")
-  | hours == 12 = (12, "pm")
-  | hours < 12 = (hours, "am")
-  | otherwise = (hours-12, "pm")
-  where
-    hours = floor $ (difftime/60)/60
+showInteger :: Int -> Int -> String
+showInteger numPlaces integer = (replicate (numPlaces-(length $ show integer)) '0') ++ (show integer)
                                                                                                    
 formatDate :: UTCTime -> String
-formatDate date = (show month) ++ " • " ++ (show day) ++ " • " ++ (show year) ++ " at " ++ (show hours) ++ ":" ++ (show minutes) ++ halfOfDay
-  where
-    (year, month, day) = Calendar.toGregorian $ utctDay date
-    seconds = utctDayTime date
-    (hours, halfOfDay) = getHours seconds
-    minutes = floor $ seconds/60
-  
+formatDate date = (show $ getL month date) ++ " • " ++ (show $ getL day date) ++ " • " ++ (show $ getL year date) ++ " | " ++ (showInteger 2 (getL hours date)) ++ ":" ++ (showInteger 2 (getL minutes date)) ++  " UTC"
+
 -------------------------------------------------------------------------------
 --- | HTML rendering
 
@@ -316,12 +306,14 @@ renderPost b Nothing = do
     a ! href (stringValue $ (++) "/posts/" $ show $ Main.identifier b) $ do
       h1 ! class_ "post-title" $ toHtml $ Main.title b -- BlogPost
     h4 ! class_ "post-subtitle" $ toHtml $ formatDate $ Main.timestamp b
+    a ! class_ "post-edit-button" ! href (stringValue $ ("/posts/" ++ (show $ Main.identifier b) ++ "/edit")) $ "edit"
     div ! class_ "post-content" ! style "text-align: left;" $ toHtml $ markdown def (Main.body b) -- BlogPost
 renderPost b (Just authUser) = do
   div ! class_ "post" $ do
     a ! href (stringValue $ (++) "/posts/" $ show $ Main.identifier b) $ do
       h1 ! class_ "post-title" $ toHtml $ Main.title b -- BlogPost
     h4 ! class_ "post-subtitle" $ toHtml $ ((formatDate $ Main.timestamp b))
+    a ! class_ "post-edit-button" ! href (stringValue $ ("/posts/" ++ (show $ Main.identifier b) ++ "/edit")) $ "edit"
     div ! class_ "post-content" ! style "text-align: left;" $ toHtml $ markdown def (Main.body b) -- BlogPost
 
 renderPosts :: [BlogPost] -> Maybe AuthUser -> Html
