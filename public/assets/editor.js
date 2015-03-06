@@ -1,11 +1,3 @@
-$.each(["/assets/css/editor.css","/assets/css/wordlist.css"], function(i,stylesheet) {
-  var l = document.createElement("link");
-  l.rel = "stylesheet";
-  l.href = stylesheet;
-  l.type = "text/css"
-  document.head.appendChild(l);
-})
-
 var postId = -1;
 var editing = true;
 var editor = document.getElementById("editor");
@@ -19,7 +11,7 @@ previewButton.style.marginLeft = document.getElementById("content").offsetWidth-
 var attrPostId = editor.getAttribute("post-id");
 if (attrPostId != null) { postId = parseInt(attrPostId); }
 
-$.getScript( "/assets/wordlist.js", function() {
+$.getScript("/assets/wordlist.js", function() {
   $(".wordlist").wordlist();
   $(".wordlist").placeholder = "Enter tag"
   $(".wordlist").on("wordlist:addedWord", function(e, word) { addTag(word); }); 
