@@ -11,8 +11,8 @@ cabal-version:       >=1.8
 data-dir:            public
 
 executable blog
-  main-is:           Main.hs
-  -- other-modules:
+  main-is:           Blog.hs
+  ghc-options:       -threaded -Wall -fwarn-tabs -fno-warn-orphans -fno-warn-unused-do-bind -funbox-strict-fields -O3 
   build-depends:     base,
                      wai,
                      warp,
@@ -29,19 +29,18 @@ executable blog
                      wai-extra,
                      time,
                      postgresql-simple,
+                     postgresql-simple-migration,
                      hedis,
                      cheapskate,
-                     datetime,
                      cookie,
                      blaze-builder,
-                     hashmap,
                      vector,
                      aeson,
                      split,
                      random,
                      time-lens,
                      hjsmin,
-                     css-text
+                     css-text,
+                     bcrypt
 
-  ghc-options: -threaded -Wall -fwarn-tabs -funbox-strict-fields -O3
-               -fno-warn-orphans -fno-warn-unused-do-bind
+  

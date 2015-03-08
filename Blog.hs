@@ -7,6 +7,7 @@ import           GHC.Generics
 import           Control.Applicative
 import           Control.Monad.IO.Class
 import           Control.Monad
+import           Data.Char
 import qualified Data.ByteString.Char8 as B
 import qualified Data.ByteString.Lazy.Char8 as BL
 import qualified Data.Text as T
@@ -23,7 +24,7 @@ import           Data.Time.Lens
 import           Data.Time.Clock
 
 import qualified Data.Vector as Vector
-import qualified Data.HashMap as Map
+-- import qualified Data.HashMap as Map
 import           Prelude hiding (head, id, div) -- hide the functions that may conflict wit Blaze
 import qualified Prelude as P (head, id, div)
 
@@ -32,6 +33,7 @@ import           Web.Scotty as Scotty
 import           Web.Cookie as Cookie
 import           Network.Wai
 import           Network.Wai.Middleware.Static
+import           Network.HTTP.Types.Status
 import qualified Database.Redis as Redis
 import           Database.PostgreSQL.Simple as Postgres
 import           Database.PostgreSQL.Simple.FromField as Postgres.FromField
@@ -39,8 +41,11 @@ import           Database.PostgreSQL.Simple.ToField as Postgres.ToField
 import           Database.PostgreSQL.Simple.FromRow as Postgres.FromRow
 import           Database.PostgreSQL.Simple.Time as Postgres.Time
 import           Database.PostgreSQL.Simple.Arrays as Postgres.Arrays
+import           Database.PostgreSQL.Simple.Migration as Postgres.Migration
+import           Crypto.BCrypt
 
 import           Auth
+import           Config
 
 import           Cheapskate
 import           Data.Aeson as Aeson
@@ -55,10 +60,9 @@ import           Data.Text.Lazy.Builder
 -- 1. Finish pages
 --    a. Login
 --    b. not found
---    d. post representation (Where to put tags, poster)
+--    d. post representation (Where to put tags, poster ***Poster name below post?)
 --    e. posts by time
 -- 2. Pagination
--- 3. Lock down blog with authentication
 
 -- Nitpick todo:
 -- 1. upsertBlogPost: more parameter combinations
@@ -83,20 +87,24 @@ instance ToField [String] where
 --- | Typeclasses
 
 class Composable a where
-  render :: a -> Maybe AuthUser -> Html
+  render :: a -> Maybe User -> Html
   renderBasic :: a -> Html
   renderBasic comp = render comp Nothing
   
 -------------------------------------------------------------------------------
---- | AuthUser data type
+--- | User data type
   
-data AuthUser = AuthUser {
+data User = User {
+  uid :: Integer,
   username :: T.Text,
-  uid :: Integer
+  displayName :: T.Text,
+  passwordHash :: T.Text
 } deriving (Eq, Show, Generic)
 
-instance FromJSON AuthUser
-instance ToJSON AuthUser
+instance FromJSON User
+instance ToJSON User
+instance FromRow User where
+  fromRow = User <$> field <*> field <*> field <*> field
 
 -------------------------------------------------------------------------------
 --- | BlogPost data type
@@ -135,7 +143,7 @@ instance Composable BlogPost where
       h1 ! class_ "post-title" $ toHtml title
     h4 ! class_ "post-subtitle" $ toHtml $ formatDate timestamp
     div ! class_ "post-content" ! style "text-align: left;" $ toHtml $ markdown def body
-  render (BlogPost identifier title body timestamp tags) (Just authUser) = do
+  render (BlogPost identifier title body timestamp tags) (Just user) = do
     a ! href (stringValue $ (++) "/posts/" $ show identifier) $ do
       h1 ! class_ "post-title" $ toHtml title
     h4 ! class_ "post-subtitle" $ toHtml $ formatDate timestamp
@@ -144,17 +152,25 @@ instance Composable BlogPost where
     
 instance Composable [BlogPost] where
   render [] _ = return ()
-  render [x] authUser = render x authUser
-  render (x:xs) authUser = do
-    render x authUser
+  render [x] user = render x user
+  render (x:xs) user = do
+    render x user
     hr ! class_ "separator"
-    render xs authUser
+    render xs user
     
 main = scotty 3000 $ do
-  pg <- liftIO $ Postgres.connectPostgreSQL "dbname='nathaniel' user='nathaniel' password='' port='5432'"
+  pg <- liftIO $ Postgres.connectPostgreSQL $ B.pack $ Config.postgresConnStr
   redis <- liftIO $ Redis.connect Redis.defaultConnectInfo
- 
+  
+  liftIO $ withTransaction pg $ runMigration $ MigrationContext MigrationInitialization True pg
+  liftIO $ withTransaction pg $ runMigration $ MigrationContext (MigrationFile "blog.sql" "./migrations/blog.sql") True pg
+
+  -- Serve files like a Ruby Rack app
   middleware $ staticPolicy (noDots >-> (hasPrefix "assets") >-> addBase "public")
+  
+  -- shortcuts for auth
+  let protected = checkAuth redis
+  let authenticatedUser = getUser redis
   
   -- 
   -- Posts
@@ -163,57 +179,50 @@ main = scotty 3000 $ do
   
   -- blog root
   get "/" $ do
+    maybeUser <- authenticatedUser
     ps <- params
     let mfrom = ((read . T.unpack . TL.toStrict <$> (lookup "from" ps)) :: Maybe Integer)
     let muntil = ((read . T.unpack . TL.toStrict <$> (lookup "until" ps)) :: Maybe Integer)
     posts <- liftIO $ getBlogPosts pg mfrom muntil
-    
     Scotty.html $ R.renderHtml $ docTypeHtml $ do
       renderHead [] [] blogTitle
-      H.body ! style "text-align: center;" $ do
-        renderTop (Just blogTitle) (Just blogSubtitle)
-        div ! A.id "content" $ do
-          renderBasic posts
-          
+      renderBody (Just blogTitle) (Just blogSubtitle) maybeUser $ do
+        render posts maybeUser
+        
   -- create a post
   get "/posts/new" $ do
+    protected
     Scotty.html $ R.renderHtml $ docTypeHtml $ do
       renderHead ["/assets/css/editor.css","/assets/css/wordlist.css"] [("robots","noindex, nofollow")] $ appendedBlogTitle "New Post"
-      H.body ! style "text-align: center;" $ do
-        renderTop Nothing Nothing
-        div ! A.id "content" $ do
-          renderPostEditor Nothing
-          
+      renderBody Nothing Nothing Nothing $ do
+        renderPostEditor Nothing
+  
   -- view a specific post
   get "/posts/:id" $ do
+    maybeUser <- authenticatedUser
     identifier <- param "id"
     res <- liftIO $ listToMaybe <$> query pg "SELECT * FROM blogposts WHERE identifier=? LIMIT 1" [identifier :: Integer]
-  
     case res of
-      Nothing -> Scotty.html $ R.renderHtml $ renderNotFound
+      Nothing -> next
       Just post -> do
         Scotty.html $ R.renderHtml $ docTypeHtml $ do
           renderHead [] (postTags $ Main.tags post) $ appendedBlogTitle $ Main.title post
-          H.body ! style "text-align: center;" $ do
-            renderTop (Just blogTitle) (Just blogSubtitle)
-            div ! A.id "content" $ do
-              renderBasic post
+          renderBody (Just blogTitle) (Just blogSubtitle) maybeUser $ do
+            render post maybeUser
 
-  -- edit a post      
+  -- edit a post
   get "/posts/:id/edit" $ do
+    protected
     identifier <- param "id"
     res <- liftIO $ listToMaybe <$> query pg "SELECT * FROM blogposts WHERE identifier=? LIMIT 1" [identifier :: Integer]
     case res of
-      Nothing -> Scotty.html $ R.renderHtml $ renderNotFound
+      Nothing -> next
       Just post -> do
         Scotty.html $ R.renderHtml $ docTypeHtml $ do
           renderHead ["/assets/css/editor.css","/assets/css/wordlist.css"] [("robots","noindex, nofollow")] (appendedBlogTitle $ Main.title post)
-          H.body ! style "text-align: center;" $ do
-            renderTop Nothing Nothing
-            div ! A.id "content" $ do
-              renderPostEditor $ Just post
-        
-          
+          renderBody Nothing Nothing Nothing $ do
+            renderPostEditor $ Just post
+
   --
   -- Post creation/deletion
   -- These endpoints will return JSON or an empty string
@@ -221,14 +230,16 @@ main = scotty 3000 $ do
   
   -- deletes a BlogPost from the database
   delete "/posts/:id" $ do
+    protected
     identifier <- param "id"
-    res <-  liftIO $ listToMaybe <$> query pg "DELETE FROM blogposts WHERE identifier=? RETURNING *" [identifier :: Integer]
+    res <- liftIO $ listToMaybe <$> query pg "DELETE FROM blogposts WHERE identifier=? RETURNING *" [identifier :: Integer]
     case res of
       Nothing -> emptyResponse
       Just bp -> Scotty.json (bp :: BlogPost)
 
   -- creates/updates a BlogPost in the database
   post "/posts" $ do
+    protected
     ps <- params
     maybeBlogPost <- liftIO $ (upsertBlogPost pg
                                              (((read . TL.unpack) <$> lookup "id" ps) :: Maybe Integer)
@@ -240,7 +251,7 @@ main = scotty 3000 $ do
       Nothing -> emptyResponse
       Just bp -> do
         baseurl <- T.unpack <$> baseURL
-        addHeader "Location" (TL.pack (baseurl ++ "/posts/" ++ (show $ Main.identifier bp)))
+        addHeader "Location" (TL.pack $ (++) "/posts/" $ show $ Main.identifier bp)
         Scotty.json (bp :: BlogPost)
         
   --
@@ -248,6 +259,7 @@ main = scotty 3000 $ do
   -- each endpoint returns no body
   --
   post "/posts/:id/tag" $ do
+    protected
     identifier <- param "id"
     maybeTag <- (lookup "tag") <$> params
     case maybeTag of
@@ -257,6 +269,7 @@ main = scotty 3000 $ do
         emptyResponse
             
   delete "/posts/:id/tag" $ do
+    protected
     identifier <- param "id"
     maybeTag <- (lookup "tag") <$> params
     case maybeTag of
@@ -291,42 +304,78 @@ main = scotty 3000 $ do
   --
   -- get "/posts/on/:year/:month/:day" $ do
   --   return ()
-  
-  get "/token/login" $ do
+
+  get "/login" $ do
+    maybeUser <- (getUser redis)
+    when (isJust maybeUser) (redirect "/")
+    ps <- params
     Scotty.html $ R.renderHtml $ docTypeHtml $ do
       renderHead [] [("robots","noindex, nofollow")] $ appendedBlogTitle "Login"
-      H.body ! style "text-align: center;" $ do
-        renderTop (Just "Login") Nothing
-        div ! A.id "content" $ do
-          H.form ! action "/token" ! method "POST" $ do
-            input ! A.id "usernameinput" ! type_ "text" ! A.name "username" ! placeholder "Username"
-            input ! A.id "passwordinput" ! type_ "password" ! A.name "password" ! placeholder "Password"
+      renderBody (Just "Login") Nothing Nothing $ do
+        case (lookup "error_message" ps) of
+          Nothing -> return ()
+          (Just msg) -> h5 $ toHtml msg
+        H.form ! action "/login" ! method "POST" $ do
+          input ! type_ "hidden" ! A.name "source" ! value "form" 
+          input ! A.id "usernameinput" ! type_ "text" ! A.name "username" ! placeholder "Username" 
+          input ! A.id "passwordinput" ! type_ "password" ! A.name "password" ! placeholder "Password"
+          input ! A.id "submitinput" ! type_ "submit" ! value "Submit"
+          
+  get "/logout" $ do
+    atoken <- accessToken
+    liftIO $ Auth.deleteObject redis (T.encodeUtf8 <$> atoken)
+    redirect "/"
 
-  -- post "/token" $ do
-  --   ps <- params
-  --   case (lookup "username" ps) of
-  --     Nothing -> Scotty.html $ R.renderHtml $ docTypeHtml $ renderNotFound
-  --     (Just username) -> case (lookup "password" ps) of
-  --                          Nothing -> Scotty.html $ R.renderHtml $ docTypeHtml $ renderNotFound
-  --                          (Just password) -> do
-  --                            return ()
-  --
-  -- post "/token/invalidate" $ do
-  --     return ()
+  post "/login" $ do
+    pUsername <- param "username" :: ActionM T.Text
+    pPassword <- param "password" :: ActionM T.Text
+
+    res <- liftIO $ listToMaybe <$> (query pg "SELECT * FROM users WHERE username=? LIMIT 1" [pUsername] :: IO [User])
+    
+    case res of
+      (Just user) -> do
+        if validatePassword (T.encodeUtf8 $ Main.passwordHash user) (T.encodeUtf8 pPassword)
+          then do
+            token <- liftIO $ Auth.saveObject redis user
+            setAccessToken (T.decodeUtf8 token)
+            redirect "/"
+          else redirect "/login?error_message=Invalid%20password%2E"
+      _           -> redirect "/login?error_message=Username%20not%20found%2E"
       
-  -- not found handler
-  notFound $ do Scotty.html $ R.renderHtml $ docTypeHtml $ renderNotFound 
+  matchAny "/unauthorized" $ do
+    status $ Status 401 "Unauthorized"
+    Scotty.html $ R.renderHtml $ docTypeHtml $ do
+      renderHead [] [("robots","noindex, nofollow")] (appendedBlogTitle "Unauthorized")
+      renderBody (Just "Unauthorized") Nothing Nothing $ do
+        h1 $ "Authorization is required beyond this point."
+
+  notFound $ Scotty.html $ R.renderHtml $ docTypeHtml $ h1 $ toHtml $ ("Not Found." :: T.Text)
 
 -------------------------------------------------------------------------------
 --- | Authentication
 
 accessToken :: ActionM (Maybe T.Text)
-accessToken = do
-  c <- Scotty.header "Cookie"
-  return $ lookup "access_token" $ parseCookiesText $ BL.toStrict $ TL.encodeUtf8 $ fromJust c
+accessToken = (Scotty.header "Cookie") >>= \v -> return $ if isNothing v then Nothing else (lookup "token" $ parseCookiesText $ BL.toStrict $ TL.encodeUtf8 $ fromJust v)
 
 setAccessToken :: T.Text -> ActionM ()
 setAccessToken token = addHeader "Set-Cookie" (TL.decodeUtf8 . toLazyByteString $ renderSetCookie def { setCookieName  = "token", setCookieValue = T.encodeUtf8 token })
+
+getUser :: Redis.Connection -> ActionM (Maybe User)
+getUser redis = do
+  atoken <- accessToken
+  liftIO $ Auth.refreshObject redis (T.encodeUtf8 <$> atoken)
+  maybeUser <- liftIO $ Auth.getObject redis (T.encodeUtf8 <$> atoken)
+  return maybeUser
+  
+checkAuth :: Redis.Connection -> ActionM (Maybe User)
+checkAuth redis = do
+  maybeUser <- (getUser redis)
+  case maybeUser of
+    (Just user) -> return $ Just user
+    _ -> do
+      return Nothing
+      redirect "/unauthorized"
+  -- fromJust maybeUser
 
 -------------------------------------------------------------------------------
 --- | Helpers
@@ -336,6 +385,9 @@ blogTitle = "Segmentation Fault (core dumped)"
 
 blogSubtitle :: T.Text
 blogSubtitle = "a blog about code."
+
+appendedBlogTitle :: T.Text -> T.Text
+appendedBlogTitle text = T.append text (T.append " | " blogTitle)
 
 seoTags :: [(T.Text, T.Text)]
 seoTags = [
@@ -347,9 +399,6 @@ seoTags = [
 postTags :: [String] -> [(T.Text, T.Text)]       
 postTags tags = [("keywords", T.append (T.pack $ (List.intercalate ", " tags) ++ ", ") (fromJust $ lookup "keywords" seoTags))]
 
-appendedBlogTitle :: T.Text -> T.Text
-appendedBlogTitle text = T.append text (T.append " | " blogTitle)
-
 baseURL :: ActionM T.Text
 baseURL = do
   h <- Scotty.header "Host"
@@ -358,19 +407,15 @@ baseURL = do
   
 emptyResponse :: ActionM ()
 emptyResponse = Scotty.text ""
-
-showInteger :: Int -> Int -> String
-showInteger numPlaces integer = (replicate (numPlaces-(length $ show integer)) '0') ++ (show integer)
                                                                                                    
 formatDate :: UTCTime -> String
 formatDate date = (show $ getL month date) ++ " • " ++ (show $ getL day date) ++ " • " ++ (show $ getL year date) ++ " | " ++ (showInteger 2 (getL hours date)) ++ ":" ++ (showInteger 2 (getL minutes date)) ++  " UTC"
 
+showInteger :: Int -> Int -> String
+showInteger numPlaces integer = (replicate (numPlaces-(length $ show integer)) '0') ++ (show integer)
+
 -------------------------------------------------------------------------------
 --- | HTML rendering
-
-renderNotFound :: Html
-renderNotFound = do
-  return ()
 
 renderTags :: [(T.Text, T.Text)] -> Html
 renderTags [] = return ()
@@ -389,21 +434,19 @@ renderHead cssFiles metaTags title = H.head $ do
   H.title $ toHtml title
   renderCssLinks $ cssFiles ++ ["https://symer.io/assets/css/site.css", "/assets/css/blog.css"]
   script ! src "https://code.jquery.com/jquery-2.1.3.min.js" $ ""
-  
   meta ! httpEquiv "Content-Type" ! content "text/html; charset=UTF-8"
-
   renderTags $ List.nubBy (\(keyOne, _) (keyTwo, _) -> keyOne == keyTwo) $ metaTags ++ seoTags
 
-renderTop :: Maybe T.Text -> Maybe T.Text -> Html
-renderTop Nothing Nothing = do
-  a ! href "/" $ do 
+renderBody :: Maybe T.Text -> Maybe T.Text -> Maybe User -> Html -> Html
+renderBody maybeTitle maybeSubtitle maybeUser bodyHtml = H.body ! style "text-align: center;" $ do
+  a ! href "/" $ do
     img ! src "https://symer.io/assets/images/philly_skyline.svg" ! width "300" ! height "200" ! alt (textValue blogTitle)
-renderTop (Just title) Nothing = do
-  renderTop Nothing Nothing
-  h2 ! class_ "title" ! A.id "blog-title" $ toHtml title
-renderTop (Just title) (Just subtitle) = do
-  renderTop (Just title) Nothing
-  h3 ! A.id "blog-subtitle" $ toHtml subtitle
+  
+  when (isJust maybeTitle) (h2 ! class_ "title" ! A.id "blog-title" $ toHtml $ fromJust maybeTitle)
+  when (isJust maybeSubtitle) (h3 ! A.id "blog-subtitle" $ toHtml $ fromJust maybeSubtitle)
+  when (isJust maybeUser) (a ! href "/logout" ! class_ "blogbutton" ! rel "nofollow" $ "Logout")
+  when (isJust maybeUser) (a ! href "/posts/new" ! class_ "blogbutton" ! rel "nofollow" $ "New Post")
+  div ! A.id "content" $ bodyHtml
   
 renderMdEditor :: Maybe BlogPost -> Html
 renderMdEditor Nothing = do
@@ -419,8 +462,7 @@ renderTitleField Nothing = input ! type_ "text" ! id "title-field" ! placeholder
 
 renderTagEditor :: Maybe BlogPost -> Html
 renderTagEditor Nothing = textarea ! A.id "tags" ! class_ "wordlist" $ do ""
-renderTagEditor (Just (BlogPost _ _ _ _ tags)) = do
-  textarea ! A.id "tags" ! class_ "wordlist" $ do toHtml $ List.intercalate ", " tags
+renderTagEditor (Just (BlogPost _ _ _ _ tags)) = textarea ! A.id "tags" ! class_ "wordlist" $ do toHtml $ List.intercalate ", " tags
   
 renderPostEditor :: Maybe BlogPost -> Html
 renderPostEditor maybeBlogPost = do
