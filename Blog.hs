@@ -58,15 +58,19 @@ import           Data.Text.Lazy.Builder
 
 -- TODO:
 -- 1. Finish pages
---    a. Login
+--    a. login
 --    b. not found
---    d. post representation (Where to put tags, poster ***Poster name below post?)
---    e. posts by time
+--    c. unauthorized
+--    d. Where to put tags, poster ***Poster name below post?
+--    e. posts by tag
+--    f. search posts? (duplicated by Google?)
 -- 2. Pagination
+-- 3. Allow upsertBlogPosts to insert multiple tags (for post editor's sake)
 
 -- Nitpick todo:
 -- 1. upsertBlogPost: more parameter combinations
 -- 2. fix timezone
+-- 3. Rewrite using a state monad?
 
 -- Miscellania:
 -- 1. 'Top 5' tags map in side bar?
@@ -225,7 +229,7 @@ main = scotty 3000 $ do
 
   --
   -- Post creation/deletion
-  -- These endpoints will return JSON or an empty string
+  -- Returns json or nothing
   --
   
   -- deletes a BlogPost from the database
@@ -256,7 +260,7 @@ main = scotty 3000 $ do
         
   --
   -- Tags
-  -- each endpoint returns no body
+  -- Returns nothing
   --
   post "/posts/:id/tag" $ do
     protected
@@ -280,6 +284,7 @@ main = scotty 3000 $ do
         
   --
   -- assets
+  -- JS & CSS
   --
   
   get "/assets/js/:filename" $ do
@@ -296,15 +301,10 @@ main = scotty 3000 $ do
       Left string -> Scotty.text $ TL.decodeUtf8 f
       Right cssbuilder -> Scotty.text $ toLazyText cssbuilder
 
-  -- get "/posts/on/:year" $ do
-  --   return ()
   --
-  -- get "/posts/on/:year/:month" $ do
-  --   return ()
+  -- Login and Auth
+  -- HTML pages
   --
-  -- get "/posts/on/:year/:month/:day" $ do
-  --   return ()
-
   get "/login" $ do
     maybeUser <- (getUser redis)
     when (isJust maybeUser) (redirect "/")
@@ -489,6 +489,7 @@ parseArray (x:xs)
  | x == ','  = parseArray xs
  | otherwise = concat [[takeWhile (\c -> c /= ',') (x:xs)], (parseArray $ dropWhile (\c -> c /= ',') (x:xs))]
 
+-- TODO: insert into tags, not overwrite tags
 upsertBlogPost :: Postgres.Connection -> Maybe Integer -> Maybe T.Text -> Maybe T.Text -> Maybe [String] -> IO (Maybe BlogPost)
 upsertBlogPost pg (Just identifier) Nothing      Nothing     Nothing     = listToMaybe <$> query pg "SELECT * FROM blogposts WHERE identifier=? LIMIT 1" [identifier]
 upsertBlogPost pg (Just identifier) (Just title) Nothing     Nothing     = listToMaybe <$> query pg "UPDATE blogposts SET title=? WHERE identifier=? RETURNING *" (title, identifier)
