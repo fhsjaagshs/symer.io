@@ -63,16 +63,11 @@ import           Data.Text.Lazy.Builder
 --    b. not found
 --    c. unauthorized
 --    d. Where to put tags, poster ***Poster name below post?
---    e. posts by tag
---    f. search posts? (duplicated by Google?)
 -- 2. Pagination
--- 3. Allow upsertBlogPosts to insert multiple tags (for post editor's sake)
--- 4. Reverse order of post fetching (newest to oldest vs oldest to newest)
 
 -- Nitpick todo:
--- 1. upsertBlogPost: more parameter combinations
--- 2. fix timezone
--- 3. Rewrite using a state monad?
+-- 1. fix timezone
+-- 2. Rewrite using a state monad?
 
 -- Miscellania:
 -- 1. 'Top 5' tags map in side bar?
@@ -227,8 +222,7 @@ main = scotty 3000 $ do
   get "/posts/by/tag/:tag" $ do
     tag <- param "tag"
     maybeUser <- authenticatedUser
-    posts <- liftIO $ (query pg "SELECT * FROM blogposts WHERE ? = any(tags);" [tag :: T.Text])
-    liftIO $ print posts
+    posts <- liftIO $ getBlogPostsByTag tag Nothing Nothing
     Scotty.html $ R.renderHtml $ docTypeHtml $ do
       renderHead [] [] blogTitle
       renderBody Nothing Nothing Nothing $ do
@@ -504,8 +498,14 @@ upsertBlogPost pg Nothing           (Just title) (Just body) Nothing     _      
 upsertBlogPost pg Nothing           (Just title) (Just body) (Just tags) _                  = listToMaybe <$> query pg "INSERT INTO blogposts (title, bodyText, tags) VALUES (?, ?, ?) RETURNING *" (title, body, tags)
 upsertBlogPost _  _                 _            _           _           _                  = return Nothing
 
+getBlogPostsByTag :: PG.Connection -> T.Text -> Maybe Integer -> Maybe Integer -> IO [BlogPost]
+getBlogPostsByTag pg tag Nothing     Nothing       = query_ pg "SELECT * FROM blogposts WHERE ?=any(tags) ORDER BY identifier DESC" [tag]
+getBlogPostsByTag pg tag (Just from) Nothing       = query pg "SELECT * FROM blogposts WHERE ?=any(tags) AND identifier > ? LIMIT 10 ORDER BY identifier DESC" (tag, from)
+getBlogPostsByTag pg tag Nothing     (Just untill) = query pg "SELECT * FROM blogposts WHERE ?=any(tags) AND identifier < ? LIMIT 10 ORDER BY identifier DESC" (tag, untill)
+getBlogPostsByTag pg tag (Just from) (Just untill) = query pg "SELECT * FROM blogposts WHERE ?=any(tags) AND identifier > ? AND identifier < ? LIMIT 10 ORDER BY identifier DESC" (tag, from, untill)
+
 getBlogPosts :: PG.Connection -> Maybe Integer -> Maybe Integer -> IO [BlogPost]
-getBlogPosts pg Nothing     Nothing       = query_ pg "SELECT * FROM blogposts ORDER BY identifier"
-getBlogPosts pg (Just from) Nothing       = query pg "SELECT * FROM blogposts WHERE identifier > ? LIMIT 10 ORDER BY identifier" [from]
-getBlogPosts pg Nothing     (Just untill) = query pg "SELECT * FROM blogposts WHERE identifier < ? LIMIT 10 ORDER BY identifier" [untill]
-getBlogPosts pg (Just from) (Just untill) = query pg "SELECT * FROM blogposts WHERE identifier > ? AND identifier < ? LIMIT 10 ORDER BY identifier" (from, untill)
+getBlogPosts pg Nothing     Nothing       = query_ pg "SELECT * FROM blogposts ORDER BY identifier DESC"
+getBlogPosts pg (Just from) Nothing       = query pg "SELECT * FROM blogposts WHERE identifier > ? LIMIT 10 ORDER BY identifier DESC" [from]
+getBlogPosts pg Nothing     (Just untill) = query pg "SELECT * FROM blogposts WHERE identifier < ? LIMIT 10 ORDER BY identifier DESC" [untill]
+getBlogPosts pg (Just from) (Just untill) = query pg "SELECT * FROM blogposts WHERE identifier > ? AND identifier < ? LIMIT 10 ORDER BY identifier DESC" (from, untill)
