@@ -8,6 +8,9 @@ import           Control.Applicative
 import           Control.Monad.IO.Class
 import           Control.Monad
 import           Control.Exception
+import           Data.Monoid
+import           Data.Maybe
+
 import           Data.Char
 import qualified Data.ByteString.Char8 as B
 import qualified Data.ByteString.Lazy.Char8 as BL
@@ -17,19 +20,17 @@ import qualified Data.Text.Lazy as TL
 import qualified Data.Text.Lazy.Encoding as TL
 import qualified Data.List as List
 import qualified Data.List.Split as List
+import qualified Data.Vector as Vector
 import qualified Text.CSS.Parse as CSS
 import qualified Text.CSS.Render as CSS
-import           Data.Maybe
-import           Data.Time.Calendar as Calendar
+import           Text.Jasmine as Jasmine
+
 import           Data.Time.Lens
 import           Data.Time.Clock
 
-import qualified Data.Vector as Vector
--- import qualified Data.HashMap as Map
 import           Prelude hiding (head, id, div) -- hide the functions that may conflict wit Blaze
 import qualified Prelude as P (head, id, div)
 
-import           Text.Jasmine as Jasmine
 import           Web.Scotty as Scotty
 import           Web.Cookie as Cookie
 import           Network.Wai
@@ -41,7 +42,6 @@ import           Database.PostgreSQL.Simple.FromField as PG.FromField
 import           Database.PostgreSQL.Simple.ToField as PG.ToField
 import           Database.PostgreSQL.Simple.FromRow as PG.FromRow
 import           Database.PostgreSQL.Simple.Time as PG.Time
-import           Database.PostgreSQL.Simple.Arrays as PG.Arrays
 import           Database.PostgreSQL.Simple.Migration as PG.Migration
 import           Crypto.BCrypt
 
@@ -53,7 +53,6 @@ import           Data.Aeson as Aeson
 import           Text.Blaze.Html5 as H hiding (style, param, map)
 import           Text.Blaze.Html5.Attributes as A
 import           Text.Blaze.Html.Renderer.Text as R
-import           Text.Blaze.Internal
 import           Blaze.ByteString.Builder (toLazyByteString, fromByteString)
 import           Data.Text.Lazy.Builder
 
@@ -62,12 +61,12 @@ import           Data.Text.Lazy.Builder
 --    a. login
 --    b. not found
 --    c. unauthorized
---    d. Where to put tags, poster ***Poster name below post?
 -- 2. Pagination
 
 -- Nitpick todo:
 -- 1. fix timezone
 -- 2. Rewrite using a state monad?
+-- 3. blog post author
 
 -- Miscellania:
 -- 1. 'Top 5' tags map in side bar?
@@ -150,11 +149,13 @@ instance Composable BlogPost where
     a ! href (stringValue $ (++) "/posts/" $ show identifier) $ do
       h1 ! class_ "post-title" $ toHtml title
     h4 ! class_ "post-subtitle" $ toHtml $ formatDate timestamp
+    h4 ! class_ "post-subtitle" $ toHtml $ mconcat tags
     div ! class_ "post-content" ! style "text-align: left;" $ toHtml $ markdown def body
   render (BlogPost identifier title body timestamp tags) (Just user) = do
     a ! href (stringValue $ (++) "/posts/" $ show identifier) $ do
       h1 ! class_ "post-title" $ toHtml title
     h4 ! class_ "post-subtitle" $ toHtml $ formatDate timestamp
+    h4 ! class_ "post-subtitle" $ toHtml $ List.intercalate ", " tags
     a ! class_ "post-edit-button" ! href (stringValue $ ("/posts/" ++ (show identifier) ++ "/edit")) ! rel "nofollow" $ "edit"
     div ! class_ "post-content" ! style "text-align: left;" $ toHtml $ markdown def body
     
@@ -222,7 +223,7 @@ main = scotty 3000 $ do
   get "/posts/by/tag/:tag" $ do
     tag <- param "tag"
     maybeUser <- authenticatedUser
-    posts <- liftIO $ getBlogPostsByTag tag Nothing Nothing
+    posts <- liftIO $ getBlogPostsByTag pg tag Nothing Nothing
     Scotty.html $ R.renderHtml $ docTypeHtml $ do
       renderHead [] [] blogTitle
       renderBody Nothing Nothing Nothing $ do
@@ -499,7 +500,7 @@ upsertBlogPost pg Nothing           (Just title) (Just body) (Just tags) _      
 upsertBlogPost _  _                 _            _           _           _                  = return Nothing
 
 getBlogPostsByTag :: PG.Connection -> T.Text -> Maybe Integer -> Maybe Integer -> IO [BlogPost]
-getBlogPostsByTag pg tag Nothing     Nothing       = query_ pg "SELECT * FROM blogposts WHERE ?=any(tags) ORDER BY identifier DESC" [tag]
+getBlogPostsByTag pg tag Nothing     Nothing       = query pg "SELECT * FROM blogposts WHERE ?=any(tags) ORDER BY identifier DESC" [tag]
 getBlogPostsByTag pg tag (Just from) Nothing       = query pg "SELECT * FROM blogposts WHERE ?=any(tags) AND identifier > ? LIMIT 10 ORDER BY identifier DESC" (tag, from)
 getBlogPostsByTag pg tag Nothing     (Just untill) = query pg "SELECT * FROM blogposts WHERE ?=any(tags) AND identifier < ? LIMIT 10 ORDER BY identifier DESC" (tag, untill)
 getBlogPostsByTag pg tag (Just from) (Just untill) = query pg "SELECT * FROM blogposts WHERE ?=any(tags) AND identifier > ? AND identifier < ? LIMIT 10 ORDER BY identifier DESC" (tag, from, untill)
