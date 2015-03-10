@@ -171,9 +171,12 @@ main = scotty 3000 $ do
   pg <- liftIO $ PG.connectPostgreSQL $ B.pack $ Config.postgresConnStr
   redis <- liftIO $ Redis.connect Redis.defaultConnectInfo
   
+  liftIO $ execute_ pg "SET client_min_messages=WARNING;"
   liftIO $ withTransaction pg $ runMigration $ MigrationContext MigrationInitialization True pg
+  liftIO $ execute_ pg "SET client_min_messages=NOTICE;"
   liftIO $ withTransaction pg $ runMigration $ MigrationContext (MigrationFile "blog.sql" "./migrations/blog.sql") True pg
   liftIO $ withTransaction pg $ runMigration $ MigrationContext (MigrationFile "array_funcs.sql" "./migrations/array_funcs.sql") True pg
+  
 
   -- Serve files like a Ruby Rack app
   middleware $ staticPolicy (noDots >-> (hasPrefix "assets") >-> addBase "public")
@@ -301,17 +304,17 @@ main = scotty 3000 $ do
     when (isJust maybeUser) (redirect "/")
     ps <- params
     Scotty.html $ R.renderHtml $ docTypeHtml $ do
-      renderHead [] [("robots","noindex, nofollow")] $ appendedBlogTitle "Login"
+      renderHead ["/assets/css/login.css"] [("robots","noindex, nofollow")] $ appendedBlogTitle "Login"
       renderBody (Just "Login") Nothing Nothing $ do
         case (lookup "error_message" ps) of
           Nothing -> return ()
           (Just msg) -> h5 $ toHtml msg
-        H.form ! action "/login" ! method "POST" $ do
-          input ! type_ "hidden" ! A.name "source" ! value "form" 
-          input ! A.id "usernameinput" ! type_ "text" ! A.name "username" ! placeholder "Username" 
-          input ! A.id "passwordinput" ! type_ "password" ! A.name "password" ! placeholder "Password"
-          input ! A.id "submitinput" ! type_ "submit" ! value "Submit"
-          
+        H.form ! A.id "loginform" ! action "/login" ! method "POST" $ do
+          input ! type_ "hidden" ! A.name "source" ! value "form"
+          renderButton "text" ! A.id "username" ! placeholder "Username" ! A.name "username" ! onkeydown "if(event.keyCode==13)document.getElementById('password').focus()"
+          renderButton "password" ! A.id "password" ! placeholder "Password" ! A.name "password" ! onkeydown "if(event.keyCode==13)document.getElementById('submit').click()"
+        a ! A.id "submit" ! onclick "document.getElementById('loginform').submit();" ! class_ "blogbutton" ! rel "nofollow" $ "Login"
+
   get "/logout" $ do
     atoken <- accessToken
     liftIO $ Auth.deleteObject redis (T.encodeUtf8 <$> atoken)
@@ -468,6 +471,9 @@ renderPostEditor maybeBlogPost = do
 
   script ! src "/assets/marked.min.js" $ ""
   script ! src "/assets/editor.js" $ ""
+  
+renderButton :: String -> Html
+renderButton kind = input ! customAttribute "autocorrect" "off" ! customAttribute "autocapitalize" "off" ! customAttribute "spellcheck" "false" ! type_ (stringValue kind)
   
 -------------------------------------------------------------------------------
 --- | Database

@@ -47,7 +47,7 @@ saveButton.onclick = function() {
   } else delete post.deleted_tags;
 
   sendHTTP("POST", "/posts", post, function(http) {
-    if (http.readyState == 4 && http.status == 200) {
+    if (http.status == 200) {
       window.location.href = http.getResponseHeader("Location");
     }
   })
@@ -62,8 +62,8 @@ previewButton.onclick = function() {
 
 deleteButton.onclick = function() {
   if (confirm("Are you sure you want to delete this post?")) {
-    sendHTTP("DELETE", "/posts/" + postId, {}, function(http) {
-      if (http.readyState == 4 && http.status == 200) {
+    sendHTTP("DELETE", "/posts/" + post.id, {}, function(http) {
+      if (http.status == 200) {
         window.location.href = "/"
       }
     });
@@ -74,7 +74,13 @@ deleteButton.onclick = function() {
 function sendHTTP(method, url, params, callback) {  
   var http = new XMLHttpRequest();
   http.open(method, url, true);
-  http.onreadystatechange = function() { callback(http); }
+  http.onreadystatechange = function() { 
+    if (method == "HEAD" && http.readyState == 2) {
+      callback(http);
+    } else if (http.readyState == 4) {
+      callback(http);
+    }
+  }
   
   if (Object.size(params) > 0) {
     var body = Object.keys(params).map(function(key, _) { return key + "=" + encodeURI(params[key]); }).join("&");
@@ -85,10 +91,4 @@ function sendHTTP(method, url, params, callback) {
   }
 }
 
-Object.size = function(obj) {
-    var size = 0, key;
-    for (key in obj) {
-        if (obj.hasOwnProperty(key)) size++;
-    }
-    return size;
-};
+Object.size = function(obj) { return Object.keys(obj).filter(function(v,idx,ary) { return obj.hasOwnProperty(v); }).length; };
