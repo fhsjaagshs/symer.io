@@ -57,16 +57,16 @@ import           Blaze.ByteString.Builder (toLazyByteString, fromByteString)
 import           Data.Text.Lazy.Builder
 
 -- TODO:
--- 1. Finish pages
---    a. login
---    b. not found
---    c. unauthorized
+-- 1. Finish pages (procrastinateable)
+--    a. not found
+--    b. unauthorized
 -- 2. Pagination
 
 -- Nitpick todo:
 -- 1. fix timezone
 -- 2. Rewrite using a state monad?
 -- 3. blog post author
+-- 4. cache minification
 
 -- Miscellania:
 -- 1. 'Top 5' tags map in side bar?
@@ -128,8 +128,7 @@ instance Eq BlogPost where
   (==) (BlogPost idOne _ _ _ _) (BlogPost idTwo _ _ _ _) = ((==) idOne idTwo)
 
 instance Show BlogPost where
-  show (BlogPost i t bt ts tags) = 
-    "BlogPost { identifier: " ++ (show i) ++ ", title: " ++ (T.unpack t) ++ ", body: " ++ (show $ T.length bt) ++ " characters, tags:" ++ (show tags) ++ " }"
+  show (BlogPost i t bt ts tags) = "BlogPost { id: " ++ (show i) ++ ", title: " ++ (T.unpack t) ++ ", body: " ++ (show $ T.length bt) ++ " characters, tags:" ++ (show tags) ++ " }"
 
 instance FromRow BlogPost where
   fromRow = BlogPost <$> field <*> field <*> field <*> field <*> field
@@ -176,9 +175,7 @@ main = scotty 3000 $ do
   liftIO $ execute_ pg "SET client_min_messages=NOTICE;"
   liftIO $ withTransaction pg $ runMigration $ MigrationContext (MigrationFile "blog.sql" "./migrations/blog.sql") True pg
   liftIO $ withTransaction pg $ runMigration $ MigrationContext (MigrationFile "array_funcs.sql" "./migrations/array_funcs.sql") True pg
-  
 
-  -- Serve files like a Ruby Rack app
   middleware $ staticPolicy (noDots >-> (hasPrefix "assets") >-> addBase "public")
   
   -- shortcuts for auth
@@ -244,61 +241,7 @@ main = scotty 3000 $ do
           renderHead ["/assets/css/editor.css","/assets/css/wordlist.css"] [("robots","noindex, nofollow")] (appendedBlogTitle $ Main.title post)
           renderBody Nothing Nothing Nothing $ do
             renderPostEditor $ Just post
-
-  --
-  -- Post creation/deletion
-  -- Returns json or nothing
-  --
-  
-  -- deletes a BlogPost from the database
-  delete "/posts/:id" $ do
-    protected
-    identifier <- param "id"
-    res <- liftIO $ listToMaybe <$> query pg "DELETE FROM blogposts WHERE identifier=? RETURNING *" [identifier :: Integer]
-    case res of
-      Nothing -> emptyResponse
-      Just bp -> Scotty.json (bp :: BlogPost)
-
-  -- creates/updates a BlogPost in the database
-  post "/posts" $ do
-    protected
-    ps <- params
-    maybeBlogPost <- liftIO $ (upsertBlogPost pg
-                                             (((read . TL.unpack) <$> lookup "id" ps) :: Maybe Integer)
-                                             (TL.toStrict <$> lookup "title" ps)
-                                             (TL.toStrict <$> lookup "body" ps)
-                                             (((List.splitOn ",") . TL.unpack) <$> (lookup "tags" ps))
-                                             (((List.splitOn ",") . TL.unpack) <$> (lookup "deleted_tags" ps))
-                                            )
-    case maybeBlogPost of
-      Nothing -> emptyResponse
-      Just bp -> do
-        addHeader "Location" $ TL.pack $ "/posts/" ++ (show $ Main.identifier bp)
-        Scotty.json (bp :: BlogPost)
-
-  --
-  -- assets
-  -- JS & CSS
-  --
-  
-  get "/assets/js/:filename" $ do
-    filename <- param "filename"
-    setHeader "Content-Type" "application/x-javascript"
-    minified <- liftIO $ TL.decodeUtf8 <$> Jasmine.minifyFile ("public/assets/" ++ (T.unpack filename))
-    Scotty.text minified
-    
-  get "/assets/css/:filename" $ do
-    filename <- param "filename"
-    setHeader "Content-Type" "text/css"
-    f <- liftIO $ BL.readFile ("public/assets/" ++ (T.unpack filename))
-    case (CSS.renderNestedBlocks <$> (CSS.parseNestedBlocks $ TL.toStrict $ TL.decodeUtf8 f)) of
-      Left string -> Scotty.text $ TL.decodeUtf8 f
-      Right cssbuilder -> Scotty.text $ toLazyText cssbuilder
-
-  --
-  -- Login and Auth
-  -- HTML pages
-  --
+            
   get "/login" $ do
     maybeUser <- (getUser redis)
     when (isJust maybeUser) (redirect "/")
@@ -324,6 +267,7 @@ main = scotty 3000 $ do
     res <- liftIO $ listToMaybe <$> (query pg "SELECT * FROM users WHERE username=? LIMIT 1" [pUsername] :: IO [User])
     
     case res of
+      Nothing     -> redirect "/login?error_message=Username%20not%20found%2E"
       (Just user) -> do
         if validatePassword (T.encodeUtf8 $ Main.passwordHash user) (T.encodeUtf8 pPassword)
           then do
@@ -331,7 +275,6 @@ main = scotty 3000 $ do
             setAccessToken (T.decodeUtf8 token)
             redirect "/"
           else redirect "/login?error_message=Invalid%20password%2E"
-      _           -> redirect "/login?error_message=Username%20not%20found%2E"
       
   matchAny "/unauthorized" $ do
     status $ Status 401 "Unauthorized"
@@ -339,8 +282,53 @@ main = scotty 3000 $ do
       renderHead [] [("robots","noindex, nofollow")] (appendedBlogTitle "Unauthorized")
       renderBody (Just "Unauthorized") Nothing Nothing $ do
         h1 $ "Authorization is required beyond this point."
-        
-  defaultHandler (\e -> liftIO $ print e)
+
+  -- deletes a BlogPost from the database
+  -- returns JSON
+  delete "/posts/:id" $ do
+    protected
+    identifier <- param "id"
+    res <- liftIO $ listToMaybe <$> query pg "DELETE FROM blogposts WHERE identifier=? RETURNING *" [identifier :: Integer]
+    case res of
+      Nothing -> emptyResponse
+      Just bp -> Scotty.json (bp :: BlogPost)
+
+  -- creates/updates a BlogPost in the database
+  -- returns JSON
+  post "/posts" $ do
+    protected
+    ps <- params
+    maybeBlogPost <- liftIO $ (upsertBlogPost pg
+                                             (((read . TL.unpack) <$> lookup "id" ps) :: Maybe Integer)
+                                             (TL.toStrict <$> lookup "title" ps)
+                                             (TL.toStrict <$> lookup "body" ps)
+                                             (((List.splitOn ",") . TL.unpack) <$> (lookup "tags" ps))
+                                             (((List.splitOn ",") . TL.unpack) <$> (lookup "deleted_tags" ps))
+                                            )
+    case maybeBlogPost of
+      Nothing -> emptyResponse
+      Just bp -> do
+        addHeader "Location" $ TL.pack $ "/posts/" ++ (show $ Main.identifier bp)
+        Scotty.json (bp :: BlogPost)
+
+  -- returns minified JS
+  get "/assets/js/:filename" $ do
+    filename <- param "filename"
+    setHeader "Content-Type" "application/x-javascript"
+    minified <- liftIO $ TL.decodeUtf8 <$> Jasmine.minifyFile ("public/assets/" ++ (T.unpack filename))
+    Scotty.text minified
+    
+  -- returns minified CSS
+  get "/assets/css/:filename" $ do
+    filename <- param "filename"
+    setHeader "Content-Type" "text/css"
+    f <- liftIO $ BL.readFile ("public/assets/" ++ (T.unpack filename))
+    case (CSS.renderNestedBlocks <$> (CSS.parseNestedBlocks $ TL.toStrict $ TL.decodeUtf8 f)) of
+      Left string -> Scotty.text $ TL.decodeUtf8 f
+      Right cssbuilder -> Scotty.text $ toLazyText cssbuilder
+
+  defaultHandler $ \e -> do
+    liftIO $ print e
 
   notFound $ Scotty.html $ R.renderHtml $ docTypeHtml $ h1 $ toHtml $ ("Not Found." :: T.Text)
 
@@ -391,12 +379,6 @@ seoTags = [
 postTags :: [String] -> [(T.Text, T.Text)]       
 postTags tags = [("keywords", T.append (T.pack $ (List.intercalate ", " tags) ++ ", ") (fromJust $ lookup "keywords" seoTags))]
 
-baseURL :: ActionM T.Text
-baseURL = do
-  h <- Scotty.header "Host"
-  req <- request
-  return $ T.pack $ (if (isSecure req) then "https" else "http") ++ "://" ++ (TL.unpack $ fromJust h)
-  
 emptyResponse :: ActionM ()
 emptyResponse = Scotty.text ""
                                                                                                    
@@ -502,10 +484,6 @@ upsertBlogPost pg (Just identifier) (Just title) (Just body) Nothing     (Just d
 upsertBlogPost pg Nothing           (Just title) (Just body) Nothing     _                  = listToMaybe <$> query pg "INSERT INTO blogposts (title, bodyText) VALUES (?, ?) RETURNING *" (title, body)
 upsertBlogPost pg Nothing           (Just title) (Just body) (Just tags) _                  = listToMaybe <$> query pg "INSERT INTO blogposts (title, bodyText, tags) VALUES (?, ?, ?) RETURNING *" (title, body, tags)
 upsertBlogPost _  _                 _            _           _           _                  = return Nothing
-  
-  -- body tags
-  -- body deletedTags
-  -- tags deletedTags
 
 getBlogPostsByTag :: PG.Connection -> T.Text -> Maybe Integer -> Maybe Integer -> IO [BlogPost]
 getBlogPostsByTag pg tag Nothing     Nothing       = query pg "SELECT * FROM blogposts WHERE ?=any(tags) ORDER BY identifier DESC" [tag]
