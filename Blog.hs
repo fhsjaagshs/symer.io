@@ -489,13 +489,20 @@ upsertBlogPost pg (Just identifier) (Just title) (Just body) (Just tags) Nothing
 upsertBlogPost pg (Just identifier) (Just title) (Just body) (Just tags) (Just deletedTags) = listToMaybe <$> query pg "UPDATE blogposts SET title=?, bodyText=?, tags=array_diff(uniq_cat(tags, ?),?) WHERE identifier = ? RETURNING *" (title, body, tags, deletedTags, identifier)
 upsertBlogPost pg (Just identifier) Nothing      (Just body) Nothing     Nothing            = listToMaybe <$> query pg "UPDATE blogposts SET bodyText=? WHERE identifier=? RETURNING *" (body, identifier)
 upsertBlogPost pg (Just identifier) Nothing      Nothing     (Just tags) Nothing            = listToMaybe <$> query pg "UPDATE blogposts SET tags=uniq_cat(tags,?) WHERE identifier=? RETURNING *" (tags, identifier)
+upsertBlogPost pg (Just identifier) Nothing      (Just body) (Just tags) Nothing            = listToMaybe <$> query pg "UPDATE blogposts SET bodyText=?, tags=uniq_cat(tags,?) WHERE identifier=? RETURNING *" (body, tags, identifier)
 upsertBlogPost pg (Just identifier) (Just title) Nothing     (Just tags) Nothing            = listToMaybe <$> query pg "UPDATE blogposts SET title=?, tags=uniq_cat(tags,?) WHERE identifier=? RETURNING *" (title, tags, identifier)
 upsertBlogPost pg (Just identifier) Nothing      Nothing     Nothing     (Just deletedTags) = listToMaybe <$> query pg "UPDATE blogposts SET tags=array_diff(tags,?) WHERE identifier=? RETURNING *" (deletedTags, identifier)
+upsertBlogPost pg (Just identifier) Nothing      Nothing     (Just tags) (Just deletedTags) = listToMaybe <$> query pg "UPDATE blogposts SET tags=uniq_cat(array_diff(tags,?),?) WHERE identifier=? RETURNING *" (deletedTags, tags, identifier)
+upsertBlogPost pg (Just identifier) Nothing      (Just body) Nothing     (Just deletedTags) = listToMaybe <$> query pg "UPDATE blogposts SET bodyText=?, tags=array_diff(tags,?) WHERE identifier=? RETURNING *" (body, deletedTags, identifier)
 upsertBlogPost pg (Just identifier) (Just title) Nothing     Nothing     (Just deletedTags) = listToMaybe <$> query pg "UPDATE blogposts SET title=?, tags=array_diff(tags,?) WHERE identifier=? RETURNING *" (title, deletedTags, identifier)
 upsertBlogPost pg (Just identifier) (Just title) (Just body) Nothing     (Just deletedTags) = listToMaybe <$> query pg "UPDATE blogposts SET title=?, bodyText=?, tags=array_diff(tags,?) WHERE identifier=? RETURNING *" (title, body, deletedTags, identifier)
 upsertBlogPost pg Nothing           (Just title) (Just body) Nothing     _                  = listToMaybe <$> query pg "INSERT INTO blogposts (title, bodyText) VALUES (?, ?) RETURNING *" (title, body)
 upsertBlogPost pg Nothing           (Just title) (Just body) (Just tags) _                  = listToMaybe <$> query pg "INSERT INTO blogposts (title, bodyText, tags) VALUES (?, ?, ?) RETURNING *" (title, body, tags)
 upsertBlogPost _  _                 _            _           _           _                  = return Nothing
+  
+  -- body tags
+  -- body deletedTags
+  -- tags deletedTags
 
 getBlogPostsByTag :: PG.Connection -> T.Text -> Maybe Integer -> Maybe Integer -> IO [BlogPost]
 getBlogPostsByTag pg tag Nothing     Nothing       = query pg "SELECT * FROM blogposts WHERE ?=any(tags) ORDER BY identifier DESC" [tag]

@@ -1,4 +1,3 @@
-var postId = -1;
 var editing = true;
 var editor = document.getElementById("editor");
 var preview = document.getElementById("preview");
@@ -6,8 +5,6 @@ var previewButton = document.getElementById("preview-button");
 var deleteButton = document.getElementById("delete-button");
 var saveButton = document.getElementById("save-button");
 var titleField = document.getElementById("title-field");
-
-previewButton.style.marginLeft = document.getElementById("content").offsetWidth-deleteButton.offsetWidth;
 
 $.getScript("/assets/wordlist.js", function() {
   $(".wordlist").wordlist();
@@ -48,13 +45,10 @@ saveButton.onclick = function() {
     if (post.id == -1) delete post.deleted_tags;
     else post.deleted_tags = post.deleted_tags.join();
   } else delete post.deleted_tags;
-  
-  console.log(post);
 
   sendHTTP("POST", "/posts", post, function(http) {
     if (http.readyState == 4 && http.status == 200) {
-      console.log(http.responseText);
-  //    window.location.href = http.getResponseHeader("Location");
+      window.location.href = http.getResponseHeader("Location");
     }
   })
 }
@@ -84,7 +78,6 @@ function sendHTTP(method, url, params, callback) {
   
   if (Object.size(params) > 0) {
     var body = Object.keys(params).map(function(key, _) { return key + "=" + encodeURI(params[key]); }).join("&");
-    console.log(body);
     http.setRequestHeader("Content-type", "application/x-www-form-urlencoded");
     http.send(body);
   } else {
