@@ -1,5 +1,6 @@
 .wordlist-view {
   margin: 30px;
+  width: auto;
 }
 
 .wordlist-view * {

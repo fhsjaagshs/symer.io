@@ -10,6 +10,7 @@ $.fn.wordlist = function () {
         
     var refresh = function() {
       _self.val(words.join(','));
+      _view.width = _view.children
       
       $.each(spans, function(i,span) { span.remove(); });
       spans = $.map(words, function(word) { return $("<div class=\"wordlist-item\"><span>"+word.trim()+"</span></div>") });
@@ -17,17 +18,20 @@ $.fn.wordlist = function () {
     };
     
     var addWord = function(word) {
-      if (word != undefined && word != null && word != "") {
+      if (word && word.length > 0 && words.indexOf(word) == -1) {
         words.push(word.trim());
         refresh();
         _self.trigger("wordlist:addedWord",[word]);
+        return true;
       }
+      return false;
     }
     
     var deleteWord = function(word) {
       words.splice(words.indexOf(word), 1);
       refresh();
       _self.trigger("wordlist:deletedWord",[word]);
+      return true;
     }
   
     _view.insertAfter(_self);
@@ -36,11 +40,9 @@ $.fn.wordlist = function () {
     refresh();
 
     _view.on("click","span",function(e) {
-      console.log("width: " + e.target.offsetWidth + "offset: " + e.clientX);
-   //   if (e.offsetX > e.target.offsetWidth) {
+      if (e.pageX > $(e.target).outerWidth()-25 + $(e.target).position().left) {
         deleteWord($(e.target).text().trim());
-        refresh();
-    //  }
+      }
     });
     
 		_label.click(function(e){
@@ -51,12 +53,10 @@ $.fn.wordlist = function () {
   	_input.on("keypress", function(e) {
       if (e.which == 13 || e.which == 44) { // enter key
         var word = _input.val().trim();
-        _input.val("");
-        if (word.length > 0) {
+        if (addWord(word)) {
   				e.preventDefault();
   				e.stopPropagation();
-  				
-          addWord(word);
+          _input.val("");
         }
       }
   	});

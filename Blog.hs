@@ -271,9 +271,7 @@ main = scotty 3000 $ do
       Nothing -> emptyResponse
       Just bp -> do
         addHeader "Location" $ TL.pack $ "/posts/" ++ (show $ Main.identifier bp)
-        liftIO $ print bp
         Scotty.json (bp :: BlogPost)
-        -- redirect $ TL.pack $ "/posts/" ++ (show $ Main.identifier bp)
 
   --
   -- assets
