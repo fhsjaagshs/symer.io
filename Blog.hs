@@ -302,13 +302,10 @@ main = scotty 3000 $ do
   get "/login" $ do
     maybeUser <- (getUser redis)
     when (isJust maybeUser) (redirect "/")
-    ps <- params
+    maybeErrorMessage <- (rescue (Just <$> param "error_message") (\e -> return Nothing))
     Scotty.html $ R.renderHtml $ docTypeHtml $ do
       renderHead ["/assets/css/login.css"] [("robots","noindex, nofollow")] $ appendedBlogTitle "Login"
-      renderBody (Just "Login") Nothing Nothing $ do
-        case (lookup "error_message" ps) of
-          Nothing -> return ()
-          (Just msg) -> h5 $ toHtml msg
+      renderBody (Just "Login") maybeErrorMessage Nothing $ do
         H.form ! A.id "loginform" ! action "/login" ! method "POST" $ do
           input ! type_ "hidden" ! A.name "source" ! value "form"
           renderButton "text" ! A.id "username" ! placeholder "Username" ! A.name "username" ! onkeydown "if(event.keyCode==13)document.getElementById('password').focus()"
