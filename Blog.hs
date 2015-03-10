@@ -7,6 +7,7 @@ import           GHC.Generics
 import           Control.Applicative
 import           Control.Monad.IO.Class
 import           Control.Monad
+import           Control.Exception
 import           Data.Char
 import qualified Data.ByteString.Char8 as B
 import qualified Data.ByteString.Lazy.Char8 as BL
@@ -35,13 +36,13 @@ import           Network.Wai
 import           Network.Wai.Middleware.Static
 import           Network.HTTP.Types.Status
 import qualified Database.Redis as Redis
-import           Database.PostgreSQL.Simple as Postgres
-import           Database.PostgreSQL.Simple.FromField as Postgres.FromField
-import           Database.PostgreSQL.Simple.ToField as Postgres.ToField
-import           Database.PostgreSQL.Simple.FromRow as Postgres.FromRow
-import           Database.PostgreSQL.Simple.Time as Postgres.Time
-import           Database.PostgreSQL.Simple.Arrays as Postgres.Arrays
-import           Database.PostgreSQL.Simple.Migration as Postgres.Migration
+import           Database.PostgreSQL.Simple as PG
+import           Database.PostgreSQL.Simple.FromField as PG.FromField
+import           Database.PostgreSQL.Simple.ToField as PG.ToField
+import           Database.PostgreSQL.Simple.FromRow as PG.FromRow
+import           Database.PostgreSQL.Simple.Time as PG.Time
+import           Database.PostgreSQL.Simple.Arrays as PG.Arrays
+import           Database.PostgreSQL.Simple.Migration as PG.Migration
 import           Crypto.BCrypt
 
 import           Auth
@@ -53,7 +54,7 @@ import           Text.Blaze.Html5 as H hiding (style, param, map)
 import           Text.Blaze.Html5.Attributes as A
 import           Text.Blaze.Html.Renderer.Text as R
 import           Text.Blaze.Internal
-import           Blaze.ByteString.Builder (toLazyByteString)
+import           Blaze.ByteString.Builder (toLazyByteString, fromByteString)
 import           Data.Text.Lazy.Builder
 
 -- TODO:
@@ -66,6 +67,7 @@ import           Data.Text.Lazy.Builder
 --    f. search posts? (duplicated by Google?)
 -- 2. Pagination
 -- 3. Allow upsertBlogPosts to insert multiple tags (for post editor's sake)
+-- 4. Reverse order of post fetching (newest to oldest vs oldest to newest)
 
 -- Nitpick todo:
 -- 1. upsertBlogPost: more parameter combinations
@@ -76,7 +78,7 @@ import           Data.Text.Lazy.Builder
 -- 1. 'Top 5' tags map in side bar?
 
 -------------------------------------------------------------------------------
---- | Make more Postgres types available
+--- | Make more PG types available
 
 -- oid 1009, _text
 instance FromField [String] where
@@ -85,7 +87,14 @@ instance FromField [String] where
     | otherwise = (if (isJust mdata) then return (parseArray $ B.unpack $ fromJust mdata) else return [])
 
 instance ToField [String] where
-  toField strValue = Many $ map Postgres.ToField.Escape (["{"] ++ (map B.pack strValue) ++ ["}"])
+  toField [] = PG.ToField.Plain $ fromByteString "ARRAY[]"
+  toField v = Many [PG.ToField.Plain $ fromByteString "ARRAY[",
+                    Many $ map (\str -> do
+                      Many [(Escape $ B.pack str), PG.ToField.Plain $ fromByteString ","]
+                    ) (Prelude.init v),
+                    Escape $ B.pack $ last v,
+                    PG.ToField.Plain $ fromByteString "]"
+                    ]
 
 -------------------------------------------------------------------------------
 --- | Typeclasses
@@ -163,11 +172,12 @@ instance Composable [BlogPost] where
     render xs user
     
 main = scotty 3000 $ do
-  pg <- liftIO $ Postgres.connectPostgreSQL $ B.pack $ Config.postgresConnStr
+  pg <- liftIO $ PG.connectPostgreSQL $ B.pack $ Config.postgresConnStr
   redis <- liftIO $ Redis.connect Redis.defaultConnectInfo
   
   liftIO $ withTransaction pg $ runMigration $ MigrationContext MigrationInitialization True pg
   liftIO $ withTransaction pg $ runMigration $ MigrationContext (MigrationFile "blog.sql" "./migrations/blog.sql") True pg
+  liftIO $ withTransaction pg $ runMigration $ MigrationContext (MigrationFile "array_funcs.sql" "./migrations/array_funcs.sql") True pg
 
   -- Serve files like a Ruby Rack app
   middleware $ staticPolicy (noDots >-> (hasPrefix "assets") >-> addBase "public")
@@ -203,8 +213,8 @@ main = scotty 3000 $ do
   
   -- view a specific post
   get "/posts/:id" $ do
-    maybeUser <- authenticatedUser
     identifier <- param "id"
+    maybeUser <- authenticatedUser
     res <- liftIO $ listToMaybe <$> query pg "SELECT * FROM blogposts WHERE identifier=? LIMIT 1" [identifier :: Integer]
     case res of
       Nothing -> next
@@ -213,6 +223,16 @@ main = scotty 3000 $ do
           renderHead [] (postTags $ Main.tags post) $ appendedBlogTitle $ Main.title post
           renderBody (Just blogTitle) (Just blogSubtitle) maybeUser $ do
             render post maybeUser
+  
+  get "/posts/by/tag/:tag" $ do
+    tag <- param "tag"
+    maybeUser <- authenticatedUser
+    posts <- liftIO $ (query pg "SELECT * FROM blogposts WHERE ? = any(tags);" [tag :: T.Text])
+    liftIO $ print posts
+    Scotty.html $ R.renderHtml $ docTypeHtml $ do
+      renderHead [] [] blogTitle
+      renderBody Nothing Nothing Nothing $ do
+        render (posts :: [BlogPost]) maybeUser
 
   -- edit a post
   get "/posts/:id/edit" $ do
@@ -250,38 +270,16 @@ main = scotty 3000 $ do
                                              (TL.toStrict <$> lookup "title" ps)
                                              (TL.toStrict <$> lookup "body" ps)
                                              (((List.splitOn ",") . TL.unpack) <$> (lookup "tags" ps))
+                                             (((List.splitOn ",") . TL.unpack) <$> (lookup "deleted_tags" ps))
                                             )
     case maybeBlogPost of
       Nothing -> emptyResponse
       Just bp -> do
-        baseurl <- T.unpack <$> baseURL
-        addHeader "Location" (TL.pack $ (++) "/posts/" $ show $ Main.identifier bp)
+        addHeader "Location" $ TL.pack $ "/posts/" ++ (show $ Main.identifier bp)
+        liftIO $ print bp
         Scotty.json (bp :: BlogPost)
-        
-  --
-  -- Tags
-  -- Returns nothing
-  --
-  post "/posts/:id/tag" $ do
-    protected
-    identifier <- param "id"
-    maybeTag <- (lookup "tag") <$> params
-    case maybeTag of
-      Nothing -> emptyResponse
-      Just tag -> do
-        liftIO $ execute pg "UPDATE blogposts SET tags=array_append(tags,?) WHERE identifier = ? AND ? != all(tags);" (tag, ((read $ TL.unpack identifier) :: Integer), tag)
-        emptyResponse
-            
-  delete "/posts/:id/tag" $ do
-    protected
-    identifier <- param "id"
-    maybeTag <- (lookup "tag") <$> params
-    case maybeTag of
-      Nothing -> emptyResponse
-      Just tag -> do
-        liftIO $ execute pg "UPDATE blogposts SET tags=array_remove(tags,?) WHERE identifier = ? AND ? = any(tags);" (tag, ((read $ TL.unpack identifier) :: Integer), tag)
-        emptyResponse
-        
+        -- redirect $ TL.pack $ "/posts/" ++ (show $ Main.identifier bp)
+
   --
   -- assets
   -- JS & CSS
@@ -348,6 +346,8 @@ main = scotty 3000 $ do
       renderHead [] [("robots","noindex, nofollow")] (appendedBlogTitle "Unauthorized")
       renderBody (Just "Unauthorized") Nothing Nothing $ do
         h1 $ "Authorization is required beyond this point."
+        
+  defaultHandler (\e -> liftIO $ print e)
 
   notFound $ Scotty.html $ R.renderHtml $ docTypeHtml $ h1 $ toHtml $ ("Not Found." :: T.Text)
 
@@ -375,7 +375,6 @@ checkAuth redis = do
     _ -> do
       return Nothing
       redirect "/unauthorized"
-  -- fromJust maybeUser
 
 -------------------------------------------------------------------------------
 --- | Helpers
@@ -475,7 +474,7 @@ renderPostEditor maybeBlogPost = do
   a ! A.id "save-button" ! class_ "blogbutton" ! rel "nofollow" $ "Save"
 
   script ! src "/assets/marked.min.js" $ ""
-  script ! src "/assets/js/editor.js" $ ""
+  script ! src "/assets/editor.js" $ ""
   
 -------------------------------------------------------------------------------
 --- | Database
@@ -489,17 +488,23 @@ parseArray (x:xs)
  | x == ','  = parseArray xs
  | otherwise = concat [[takeWhile (\c -> c /= ',') (x:xs)], (parseArray $ dropWhile (\c -> c /= ',') (x:xs))]
 
--- TODO: insert into tags, not overwrite tags
-upsertBlogPost :: Postgres.Connection -> Maybe Integer -> Maybe T.Text -> Maybe T.Text -> Maybe [String] -> IO (Maybe BlogPost)
-upsertBlogPost pg (Just identifier) Nothing      Nothing     Nothing     = listToMaybe <$> query pg "SELECT * FROM blogposts WHERE identifier=? LIMIT 1" [identifier]
-upsertBlogPost pg (Just identifier) (Just title) Nothing     Nothing     = listToMaybe <$> query pg "UPDATE blogposts SET title=? WHERE identifier=? RETURNING *" (title, identifier)
-upsertBlogPost pg (Just identifier) (Just title) (Just body) Nothing     = listToMaybe <$> query pg "UPDATE blogposts SET title=?, bodyText=? WHERE identifier = ? RETURNING *" (title, body, identifier)
-upsertBlogPost pg (Just identifier) (Just title) (Just body) (Just tags) = listToMaybe <$> query pg "UPDATE blogposts SET title=?, bodyText=?, tags=? WHERE identifier = ? RETURNING *" (title, body, tags, identifier)
-upsertBlogPost pg Nothing           (Just title) (Just body) Nothing     = listToMaybe <$> query pg "INSERT INTO blogposts (title, bodyText) VALUES (?, ?) RETURNING *" (title, body)
-upsertBlogPost pg Nothing           (Just title) (Just body) (Just tags) = listToMaybe <$> query pg "INSERT INTO blogposts (title, bodyText, tags) VALUES (?, ?, ?) RETURNING *" (title, body, tags)
-upsertBlogPost _  _                 _            _           _           = return Nothing
-  
-getBlogPosts :: Postgres.Connection -> Maybe Integer -> Maybe Integer -> IO [BlogPost]
+upsertBlogPost :: PG.Connection -> Maybe Integer -> Maybe T.Text -> Maybe T.Text -> Maybe [String] -> Maybe [String] -> IO (Maybe BlogPost)
+upsertBlogPost pg (Just identifier) Nothing      Nothing     Nothing     Nothing            = listToMaybe <$> query pg "SELECT * FROM blogposts WHERE identifier=? LIMIT 1" [identifier]
+upsertBlogPost pg (Just identifier) (Just title) Nothing     Nothing     Nothing            = listToMaybe <$> query pg "UPDATE blogposts SET title=? WHERE identifier=? RETURNING *" (title, identifier)
+upsertBlogPost pg (Just identifier) (Just title) (Just body) Nothing     Nothing            = listToMaybe <$> query pg "UPDATE blogposts SET title=?, bodyText=? WHERE identifier=? RETURNING *" (title, body, identifier)
+upsertBlogPost pg (Just identifier) (Just title) (Just body) (Just tags) Nothing            = listToMaybe <$> query pg "UPDATE blogposts SET title=?, bodyText=?, tags=uniq_cat(tags,?)  WHERE identifier=? RETURNING *" (title, body, tags, identifier)
+upsertBlogPost pg (Just identifier) (Just title) (Just body) (Just tags) (Just deletedTags) = listToMaybe <$> query pg "UPDATE blogposts SET title=?, bodyText=?, tags=array_diff(uniq_cat(tags, ?),?) WHERE identifier = ? RETURNING *" (title, body, tags, deletedTags, identifier)
+upsertBlogPost pg (Just identifier) Nothing      (Just body) Nothing     Nothing            = listToMaybe <$> query pg "UPDATE blogposts SET bodyText=? WHERE identifier=? RETURNING *" (body, identifier)
+upsertBlogPost pg (Just identifier) Nothing      Nothing     (Just tags) Nothing            = listToMaybe <$> query pg "UPDATE blogposts SET tags=uniq_cat(tags,?) WHERE identifier=? RETURNING *" (tags, identifier)
+upsertBlogPost pg (Just identifier) (Just title) Nothing     (Just tags) Nothing            = listToMaybe <$> query pg "UPDATE blogposts SET title=?, tags=uniq_cat(tags,?) WHERE identifier=? RETURNING *" (title, tags, identifier)
+upsertBlogPost pg (Just identifier) Nothing      Nothing     Nothing     (Just deletedTags) = listToMaybe <$> query pg "UPDATE blogposts SET tags=array_diff(tags,?) WHERE identifier=? RETURNING *" (deletedTags, identifier)
+upsertBlogPost pg (Just identifier) (Just title) Nothing     Nothing     (Just deletedTags) = listToMaybe <$> query pg "UPDATE blogposts SET title=?, tags=array_diff(tags,?) WHERE identifier=? RETURNING *" (title, deletedTags, identifier)
+upsertBlogPost pg (Just identifier) (Just title) (Just body) Nothing     (Just deletedTags) = listToMaybe <$> query pg "UPDATE blogposts SET title=?, bodyText=?, tags=array_diff(tags,?) WHERE identifier=? RETURNING *" (title, body, deletedTags, identifier)
+upsertBlogPost pg Nothing           (Just title) (Just body) Nothing     _                  = listToMaybe <$> query pg "INSERT INTO blogposts (title, bodyText) VALUES (?, ?) RETURNING *" (title, body)
+upsertBlogPost pg Nothing           (Just title) (Just body) (Just tags) _                  = listToMaybe <$> query pg "INSERT INTO blogposts (title, bodyText, tags) VALUES (?, ?, ?) RETURNING *" (title, body, tags)
+upsertBlogPost _  _                 _            _           _           _                  = return Nothing
+
+getBlogPosts :: PG.Connection -> Maybe Integer -> Maybe Integer -> IO [BlogPost]
 getBlogPosts pg Nothing     Nothing       = query_ pg "SELECT * FROM blogposts ORDER BY identifier"
 getBlogPosts pg (Just from) Nothing       = query pg "SELECT * FROM blogposts WHERE identifier > ? LIMIT 10 ORDER BY identifier" [from]
 getBlogPosts pg Nothing     (Just untill) = query pg "SELECT * FROM blogposts WHERE identifier < ? LIMIT 10 ORDER BY identifier" [untill]

@@ -13,21 +13,21 @@ if (attrPostId != null) { postId = parseInt(attrPostId); }
 
 $.getScript("/assets/wordlist.js", function() {
   $(".wordlist").wordlist();
-  $(".wordlist").placeholder = "Enter tag"
-  $(".wordlist").on("wordlist:addedWord", function(e, word) { addTag(word); }); 
+  $(".wordlist").on("wordlist:addedWord", function(e,word) { addTag(word); }); 
   $(".wordlist").on("wordlist:deletedWord", function(e,word) { deleteTag(word); });
 });
 
-var accumulated = []; // accumulate added/deleted tags if the post isn't created yet.
+var newTags = []
+var deletedTags = []
 
 function deleteTag(word) {
-  if (postId == -1) { accumulated.splice(accumulated.indexOf(word), 1); }
-  else { sendHTTP("DELETE", "/posts/"+postId+"/tag", "tag=" + encodeURI(word), function(http) {}); }
+  deletedTags.push(word);
+  newTags.splice(newTags.indexOf(word), 1);
 }
 
 function addTag(word) {
-  if (postId == -1) { accumulated.push(word); }
-  else { sendHTTP("POST", "/posts/"+postId+"/tag", "tag=" + encodeURI(word), function(http) {}); }
+  newTags.push(word);
+  deletedTags.splice(deletedTags.indexOf(word), 1);
 }
 
 saveButton.onclick = function() {
@@ -37,15 +37,16 @@ saveButton.onclick = function() {
   if (title == undefined) { title = ""; }
   if (markdown == undefined) { markdown = ""; }
   
-  // the order of this is important because of how JS strings work
   var params = "title=" + encodeURI(title);
-  if (postId != -1) { params = params + "&id=" + encodeURI(postId.toString()); }
-  else { params = params + "&tags=" + encodeURI(accumulated.join()); }
-  params = params + "&body=" + encodeURI(markdown);
+  if (postId != -1) { params += "&id=" + encodeURI(postId.toString()); }
+  if (newTags.length > 0) { params += "&tags=" + ((postId == -1) ? encodeURI(newTags.filter(function(e) {return !deletedTags.indexOf(e) > -1;}).join()) : encodeURI(newTags.join())); }
+  if (deletedTags.length > 0) { params += "&deleted_tags=" + encodeURI(deletedTags.join()); }
+  params += "&body=" + encodeURI(markdown); // appended last because of how JS strings work
+  
+  console.log(params)
 
   sendHTTP("POST", "/posts", params, function(http) {
-    if (!(http.readyState == 4 && http.status == 200)) {
-      postId = JSON.parse(http.responseText).id;
+    if (http.readyState == 4 && http.status == 200) {
       window.location.href = http.getResponseHeader("Location");
     }
   })
