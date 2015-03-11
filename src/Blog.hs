@@ -37,6 +37,7 @@ import           Prelude as P hiding (head, id, div)
 --    a. not found
 --    b. unauthorized
 -- 2. Pagination
+-- 3. click tags for posts by tag page
 
 -- Nitpick todo:
 -- 1. fix timezone
