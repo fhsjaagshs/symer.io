@@ -31,7 +31,7 @@ import qualified Crypto.BCrypt as BCrypt
 --- | Authentication
 
 checkPassword :: T.Text -> T.Text -> Bool
-checkPassword passwd hash = BCrypt.validatePassword (T.encodeUtf8 hash) (T.encodeUtf8 passwd)
+checkPassword hash passwd = BCrypt.validatePassword (T.encodeUtf8 hash) (T.encodeUtf8 passwd)
 
 accessToken :: ActionM (Maybe T.Text)
 accessToken = (Scotty.header "Cookie") >>= \v -> return $ if isNothing v then Nothing else (lookup "token" $ parseCookiesText $ BL.toStrict $ TL.encodeUtf8 $ fromJust v)
