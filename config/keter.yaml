@@ -1,0 +1,9 @@
+exec: ../dist/build/blog/blog
+host: blog.symer.io
+#ssl : true
+env:
+  FROM_KETER_CONFIG: foo bar baz
+# rewrites:
+#   - header: Location
+#     from:   ^http://blog.symer.io
+#     to:     https://blog.symer.io

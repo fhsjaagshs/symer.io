@@ -7,8 +7,7 @@
 --
 
 module PGExtensions where
-  
-import           Data.Maybe
+
 import qualified Data.ByteString.Char8 as B
 import           Database.PostgreSQL.Simple.FromField as PG.FromField
 import           Database.PostgreSQL.Simple.ToField as PG.ToField
