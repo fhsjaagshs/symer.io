@@ -15,5 +15,5 @@ cd /deploy;
 mv blog.symer.io blog.symer.io.old;
 mv blog.symer.io.new blog.symer.io;
 chmod +x /deploy/blog.symer.io/blog
-/etc/init.d/blog restart;
+/etc/init.d/blog try-restart;
 EOT
