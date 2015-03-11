@@ -1,19 +1,9 @@
 {-# LANGUAGE OverloadedStrings #-}
 
 module Config (postgresConfig, postgresURL, postgresConnStr) where
-  
-import Control.Exception
-import System.IO.Unsafe
 
 import Data.List
-  
-import System.Environment
-
-catchAny :: IO a -> (SomeException -> IO a) -> IO a
-catchAny = Control.Exception.catch
-
-unsafeGetEnv :: String -> String -> String
-unsafeGetEnv key defaultValue = unsafePerformIO $ catchAny (getEnv key) $ \_ -> return defaultValue
+import Helpers
 
 appEnv :: String
 appEnv = unsafeGetEnv "ENVIRONMENT" "development"

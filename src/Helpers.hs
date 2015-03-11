@@ -27,6 +27,20 @@ import           Web.Scotty as Scotty
 
 import qualified Crypto.BCrypt as BCrypt
 
+import           System.Environment
+import           Control.Exception
+import           System.IO.Unsafe
+
+
+catchAny :: IO a -> (SomeException -> IO a) -> IO a
+catchAny = Control.Exception.catch
+
+unsafeGetEnv :: String -> String -> String
+unsafeGetEnv key defaultValue = unsafePerformIO $ catchAny (getEnv key) $ \_ -> return defaultValue
+
+safeGetEnv :: String -> String -> IO String
+safeGetEnv key defaultValue = catchAny (getEnv key) $ \_ -> return defaultValue
+
 -------------------------------------------------------------------------------
 --- | Authentication
 

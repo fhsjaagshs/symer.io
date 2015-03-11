@@ -12,8 +12,6 @@ import           Control.Monad.IO.Class
 import           Control.Monad
 import           Data.Maybe
 
-import           System.Environment
-
 import qualified Data.ByteString.Char8 as B
 import qualified Data.ByteString.Lazy.Char8 as BL
 import qualified Data.Text as T
@@ -40,15 +38,6 @@ import           Prelude as P hiding (head, id, div)
 --    b. unauthorized
 -- 2. Pagination
 
--- DEPLOYMENT!!!
--- behind nginx (an alternative would be to run it by itself)
--- write deployment tool in Haskell
--- DEPLOYMENT TODO:
--- 1. reissue ssl cert with blog.symer.io
--- 2. write provisioning script to install haskell & nginx & do security
--- 3. write deployment tool
--- 4. PROFIT!!!
-
 -- Nitpick todo:
 -- 1. fix timezone
 -- 2. Rewrite using a state monad?
@@ -60,10 +49,7 @@ import           Prelude as P hiding (head, id, div)
     
 main :: IO ()
 main = do
-  port <- read <$> getEnv "PORT"
-  -- certfile <- read <$> getEnv "CERTFILE"
-  -- keyfilefile <- read <$> getEnv "KEYFILE"
-  -- scottyTLS port certfile keyfile $ do
+  port <- read <$> Helpers.safeGetEnv "PORT" "3000"
   scotty port $ do
     liftIO $ putStrLn "--| establishing database connections"
     pg <- liftIO $ PG.connectPostgreSQL $ B.pack $ Config.postgresConnStr
