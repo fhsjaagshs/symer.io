@@ -8,18 +8,36 @@ import System.IO.Unsafe
 import Data.List
   
 import System.Environment
-  
+
 catchAny :: IO a -> (SomeException -> IO a) -> IO a
 catchAny = Control.Exception.catch
+
+unsafeGetEnv :: String -> String -> String
+unsafeGetEnv key defaultValue = unsafePerformIO $ catchAny (getEnv key) $ \_ -> return defaultValue
+
+appEnv :: String
+appEnv = unsafeGetEnv "ENVIRONMENT" "development"
   
-postgresConfig :: [(String, String)]
-postgresConfig = [
+postgresConfigs :: String -> [(String, String)]
+postgresConfigs "development" = [
                     ("user", "nathaniel"),
-                    ("password", unsafePerformIO $ catchAny (getEnv "DB_PASSWORD") $ \_ -> return ""),
+                    ("password", ""),
                     ("host", "localhost"),
                     ("port", "5432"),
                     ("dbname", "blog")
                     ]
+postgresConfigs "production" = [
+                    ("user", "symerdotio"),
+                    ("password", unsafeGetEnv "PGPASSWORD" "development"),
+                    ("host", "db.symer.io"),
+                    ("port", "5432"),
+                    ("dbname", "blog"),
+                    ("sslmode", "require")
+                    ]
+postgresConfigs _ = []
+                    
+postgresConfig :: [(String, String)]
+postgresConfig = postgresConfigs appEnv
 
 configFor :: String -> String
 configFor "port" = do
