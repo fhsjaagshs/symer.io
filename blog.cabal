@@ -8,10 +8,11 @@ maintainer:          nate@symer.io
 category:            Web  
 build-type:          Simple
 cabal-version:       >=1.8
-data-dir:            public
+data-dir:            assets
 
 executable blog
   main-is:           Blog.hs
+  hs-source-dirs:    src
   ghc-options:       -threaded -Wall -fwarn-tabs -fno-warn-orphans -fno-warn-unused-do-bind -funbox-strict-fields -O
   build-depends:     base,
                      wai,
@@ -21,7 +22,6 @@ executable blog
                      bytestring,
                      blaze-html,
                      transformers,
-                     wai-middleware-static,
                      time,
                      postgresql-simple,
                      postgresql-simple-migration,

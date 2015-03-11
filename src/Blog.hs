@@ -1,8 +1,11 @@
-{-# LANGUAGE OverloadedStrings, FlexibleInstances, DeriveGeneric #-}
+{-# LANGUAGE OverloadedStrings, FlexibleInstances #-}
 
 module Main (main) where
 
-import           GHC.Generics
+import           Auth
+import           Config
+import           Types
+import           Helpers
 
 import           Control.Applicative
 import           Control.Monad.IO.Class
@@ -20,41 +23,20 @@ import qualified Data.Text.Lazy as TL
 import qualified Data.Text.Lazy.Encoding as TL
 import qualified Data.List as List
 import qualified Data.List.Split as List
-import qualified Data.Vector as Vector
-import qualified Text.CSS.Parse as CSS
-import qualified Text.CSS.Render as CSS
-import           Text.Jasmine as Jasmine
-
-import           Data.Time.Lens
 import           Data.Time.Clock
 
-import           Prelude hiding (head, id, div) -- hide the functions that may conflict wit Blaze
-import qualified Prelude as P (head, id, div)
-
 import           Web.Scotty as Scotty
-import           Web.Cookie as Cookie
 import           Network.Wai
-import           Network.Wai.Middleware.Static
 import           Network.HTTP.Types.Status
 import qualified Database.Redis as Redis
 import           Database.PostgreSQL.Simple as PG
-import           Database.PostgreSQL.Simple.FromField as PG.FromField
-import           Database.PostgreSQL.Simple.ToField as PG.ToField
-import           Database.PostgreSQL.Simple.FromRow as PG.FromRow
-import           Database.PostgreSQL.Simple.Time as PG.Time
 import           Database.PostgreSQL.Simple.Migration as PG.Migration
-import           Crypto.BCrypt
 
-import           Auth
-import           Config
-
-import           Cheapskate
 import           Data.Aeson as Aeson
 import           Text.Blaze.Html5 as H hiding (style, param, map)
 import           Text.Blaze.Html5.Attributes as A
 import           Text.Blaze.Html.Renderer.Text as R
-import           Blaze.ByteString.Builder (toLazyByteString, fromByteString)
-import           Data.Text.Lazy.Builder
+import           Prelude as P hiding (head, id, div)
 
 -- TODO:
 -- 1. Finish pages (procrastinateable)
@@ -70,101 +52,6 @@ import           Data.Text.Lazy.Builder
 
 -- Miscellania:
 -- 1. 'Top 5' tags map in side bar?
-
--------------------------------------------------------------------------------
---- | Make more PG types available
-
--- oid 1009, _text
-instance FromField [String] where
-  fromField f mdata
-    | (typeOid f) /= (Oid 1009) = returnError Incompatible f "Field is not a text array."
-    | otherwise = (if (isJust mdata) then return (parseArray $ B.unpack $ fromJust mdata) else return [])
-
-instance ToField [String] where
-  toField [] = PG.ToField.Plain $ fromByteString "ARRAY[]"
-  toField v = Many [PG.ToField.Plain $ fromByteString "ARRAY[",
-                    Many $ map (\str -> do
-                      Many [(Escape $ B.pack str), PG.ToField.Plain $ fromByteString ","]
-                    ) (Prelude.init v),
-                    Escape $ B.pack $ last v,
-                    PG.ToField.Plain $ fromByteString "]"
-                    ]
-
--------------------------------------------------------------------------------
---- | Typeclasses
-
-class Composable a where
-  render :: a -> Maybe User -> Html
-  renderBasic :: a -> Html
-  renderBasic comp = render comp Nothing
-  
--------------------------------------------------------------------------------
---- | User data type
-  
-data User = User {
-  uid :: Integer,
-  username :: T.Text,
-  displayName :: T.Text,
-  passwordHash :: T.Text
-} deriving (Eq, Show, Generic)
-
-instance FromJSON User
-instance ToJSON User
-instance FromRow User where
-  fromRow = User <$> field <*> field <*> field <*> field
-
--------------------------------------------------------------------------------
---- | BlogPost data type
-
-data BlogPost = BlogPost {
-  identifier :: Integer,
-  title :: T.Text,
-  body :: T.Text,
-  timestamp :: UTCTime,
-  tags :: [String]
-}
-
-instance Eq BlogPost where
-  (==) (BlogPost idOne _ _ _ _) (BlogPost idTwo _ _ _ _) = ((==) idOne idTwo)
-
-instance Show BlogPost where
-  show (BlogPost i t bt ts tags) = "BlogPost { id: " ++ (show i) ++ ", title: " ++ (T.unpack t) ++ ", body: " ++ (show $ T.length bt) ++ " characters, tags:" ++ (show tags) ++ " }"
-
-instance FromRow BlogPost where
-  fromRow = BlogPost <$> field <*> field <*> field <*> field <*> field
-  
-instance ToJSON BlogPost where
-  toJSON (BlogPost identifier title body timestamp tags) =
-    Aeson.object [
-      "id" .= identifier,
-      "title" .= title,
-      "body" .= body,
-      "timestamp" .= ((Aeson.String $ T.decodeUtf8 $ BL.toStrict $ toLazyByteString $ utcTimeToBuilder timestamp) :: Value),
-      "tags" .= ((Aeson.Array $ Vector.fromList $ Prelude.map (Aeson.String . T.pack) tags) :: Value)
-    ]
-    
-instance Composable BlogPost where
-  render (BlogPost identifier title body timestamp tags) Nothing = do
-    a ! href (stringValue $ (++) "/posts/" $ show identifier) $ do
-      h1 ! class_ "post-title" $ toHtml title
-    h4 ! class_ "post-subtitle" $ toHtml $ formatDate timestamp
-    h4 ! class_ "post-subtitle" $ toHtml $ mconcat tags
-    div ! class_ "post-content" ! style "text-align: left;" $ toHtml $ markdown def body
-  render (BlogPost identifier title body timestamp tags) (Just user) = do
-    a ! href (stringValue $ (++) "/posts/" $ show identifier) $ do
-      h1 ! class_ "post-title" $ toHtml title
-    h4 ! class_ "post-subtitle" $ toHtml $ formatDate timestamp
-    h4 ! class_ "post-subtitle" $ toHtml $ List.intercalate ", " tags
-    a ! class_ "post-edit-button" ! href (stringValue $ ("/posts/" ++ (show identifier) ++ "/edit")) ! rel "nofollow" $ "edit"
-    div ! class_ "post-content" ! style "text-align: left;" $ toHtml $ markdown def body
-    
-instance Composable [BlogPost] where
-  render [] _ = return ()
-  render [x] user = render x user
-  render (x:xs) user = do
-    render x user
-    hr ! class_ "separator"
-    render xs user
     
 main = scotty 3000 $ do
   pg <- liftIO $ PG.connectPostgreSQL $ B.pack $ Config.postgresConnStr
@@ -176,8 +63,6 @@ main = scotty 3000 $ do
   liftIO $ withTransaction pg $ runMigration $ MigrationContext (MigrationFile "blog.sql" "./migrations/blog.sql") True pg
   liftIO $ withTransaction pg $ runMigration $ MigrationContext (MigrationFile "array_funcs.sql" "./migrations/array_funcs.sql") True pg
 
-  middleware $ staticPolicy (noDots >-> (hasPrefix "assets") >-> addBase "public")
-  
   -- shortcuts for auth
   let protected = checkAuth redis
   let authenticatedUser = getUser redis
@@ -216,7 +101,7 @@ main = scotty 3000 $ do
       Nothing -> next
       Just post -> do
         Scotty.html $ R.renderHtml $ docTypeHtml $ do
-          renderHead [] (postTags $ Main.tags post) $ appendedBlogTitle $ Main.title post
+          renderHead [] (postTags $ Types.tags post) $ appendedBlogTitle $ Types.title post
           renderBody (Just blogTitle) (Just blogSubtitle) maybeUser $ do
             render post maybeUser
   
@@ -238,7 +123,7 @@ main = scotty 3000 $ do
       Nothing -> next
       Just post -> do
         Scotty.html $ R.renderHtml $ docTypeHtml $ do
-          renderHead ["/assets/css/editor.css","/assets/css/wordlist.css"] [("robots","noindex, nofollow")] (appendedBlogTitle $ Main.title post)
+          renderHead ["/assets/css/editor.css","/assets/css/wordlist.css"] [("robots","noindex, nofollow")] (appendedBlogTitle $ Types.title post)
           renderBody Nothing Nothing Nothing $ do
             renderPostEditor $ Just post
             
@@ -251,8 +136,8 @@ main = scotty 3000 $ do
       renderBody (Just "Login") maybeErrorMessage Nothing $ do
         H.form ! A.id "loginform" ! action "/login" ! method "POST" $ do
           input ! type_ "hidden" ! A.name "source" ! value "form"
-          renderButton "text" ! A.id "username" ! placeholder "Username" ! A.name "username" ! onkeydown "if(event.keyCode==13)document.getElementById('password').focus()"
-          renderButton "password" ! A.id "password" ! placeholder "Password" ! A.name "password" ! onkeydown "if(event.keyCode==13)document.getElementById('submit').click()"
+          renderInput "text" ! A.id "username" ! placeholder "Username" ! A.name "username" ! onkeydown "if(event.keyCode==13)document.getElementById('password').focus()"
+          renderInput "password" ! A.id "password" ! placeholder "Password" ! A.name "password" ! onkeydown "if(event.keyCode==13)document.getElementById('submit').click()"
         a ! A.id "submit" ! onclick "document.getElementById('loginform').submit();" ! class_ "blogbutton" ! rel "nofollow" $ "Login"
 
   get "/logout" $ do
@@ -269,7 +154,7 @@ main = scotty 3000 $ do
     case res of
       Nothing     -> redirect "/login?error_message=Username%20not%20found%2E"
       (Just user) -> do
-        if validatePassword (T.encodeUtf8 $ Main.passwordHash user) (T.encodeUtf8 pPassword)
+        if Helpers.checkPassword (Types.passwordHash user) pPassword
           then do
             token <- liftIO $ Auth.saveObject redis user
             setAccessToken (T.decodeUtf8 token)
@@ -308,24 +193,24 @@ main = scotty 3000 $ do
     case maybeBlogPost of
       Nothing -> emptyResponse
       Just bp -> do
-        addHeader "Location" $ TL.pack $ "/posts/" ++ (show $ Main.identifier bp)
+        addHeader "Location" $ TL.pack $ "/posts/" ++ (show $ Types.identifier bp)
         Scotty.json (bp :: BlogPost)
 
   -- returns minified JS
   get "/assets/js/:filename" $ do
     filename <- param "filename"
     setHeader "Content-Type" "application/x-javascript"
-    minified <- liftIO $ TL.decodeUtf8 <$> Jasmine.minifyFile ("public/assets/" ++ (T.unpack filename))
-    Scotty.text minified
+    js <- liftIO $ BL.readFile $ "assets/" ++ (T.unpack filename)
+    Scotty.text $ TL.decodeUtf8 $ Helpers.minifyJS js
     
   -- returns minified CSS
   get "/assets/css/:filename" $ do
     filename <- param "filename"
     setHeader "Content-Type" "text/css"
-    f <- liftIO $ BL.readFile ("public/assets/" ++ (T.unpack filename))
-    case (CSS.renderNestedBlocks <$> (CSS.parseNestedBlocks $ TL.toStrict $ TL.decodeUtf8 f)) of
-      Left string -> Scotty.text $ TL.decodeUtf8 f
-      Right cssbuilder -> Scotty.text $ toLazyText cssbuilder
+    css <- liftIO $ B.readFile $ "assets/" ++ (T.unpack filename)
+    Scotty.text $ TL.decodeUtf8 $ minifyCSS css
+    
+  get (regex "/(assets/.+)") $ param "1" >>= Scotty.file
 
   defaultHandler $ \e -> do
     liftIO $ print e
@@ -333,32 +218,7 @@ main = scotty 3000 $ do
   notFound $ Scotty.html $ R.renderHtml $ docTypeHtml $ h1 $ toHtml $ ("Not Found." :: T.Text)
 
 -------------------------------------------------------------------------------
---- | Authentication
-
-accessToken :: ActionM (Maybe T.Text)
-accessToken = (Scotty.header "Cookie") >>= \v -> return $ if isNothing v then Nothing else (lookup "token" $ parseCookiesText $ BL.toStrict $ TL.encodeUtf8 $ fromJust v)
-
-setAccessToken :: T.Text -> ActionM ()
-setAccessToken token = addHeader "Set-Cookie" (TL.decodeUtf8 . toLazyByteString $ renderSetCookie def { setCookieName  = "token", setCookieValue = T.encodeUtf8 token })
-
-getUser :: Redis.Connection -> ActionM (Maybe User)
-getUser redis = do
-  atoken <- accessToken
-  liftIO $ Auth.refreshObject redis (T.encodeUtf8 <$> atoken)
-  maybeUser <- liftIO $ Auth.getObject redis (T.encodeUtf8 <$> atoken)
-  return maybeUser
-  
-checkAuth :: Redis.Connection -> ActionM (Maybe User)
-checkAuth redis = do
-  maybeUser <- (getUser redis)
-  case maybeUser of
-    (Just user) -> return $ Just user
-    _ -> do
-      return Nothing
-      redirect "/unauthorized"
-
--------------------------------------------------------------------------------
---- | Helpers
+--- | Constants
 
 blogTitle :: T.Text
 blogTitle = "Segmentation Fault (core dumped)"
@@ -366,42 +226,15 @@ blogTitle = "Segmentation Fault (core dumped)"
 blogSubtitle :: T.Text
 blogSubtitle = "a blog about code."
 
-appendedBlogTitle :: T.Text -> T.Text
-appendedBlogTitle text = T.append text (T.append " | " blogTitle)
-
 seoTags :: [(T.Text, T.Text)]
 seoTags = [
             ("revisit-after", "2 days"),
             ("description", "Rants and raves about computer science, functional programming, politics, and everything in between."),
             ("keywords", "computer science, politics, haskell, ruby, web development, art, blogs, money, computers, startups, tutorial, rails, ruby on rails, scotty haskell, snap framework")
             ]
-
-postTags :: [String] -> [(T.Text, T.Text)]       
-postTags tags = [("keywords", T.append (T.pack $ (List.intercalate ", " tags) ++ ", ") (fromJust $ lookup "keywords" seoTags))]
-
-emptyResponse :: ActionM ()
-emptyResponse = Scotty.text ""
-                                                                                                   
-formatDate :: UTCTime -> String
-formatDate date = (show $ getL month date) ++ " • " ++ (show $ getL day date) ++ " • " ++ (show $ getL year date) ++ " | " ++ (showInteger 2 (getL hours date)) ++ ":" ++ (showInteger 2 (getL minutes date)) ++  " UTC"
-
-showInteger :: Int -> Int -> String
-showInteger numPlaces integer = (replicate (numPlaces-(length $ show integer)) '0') ++ (show integer)
-
+            
 -------------------------------------------------------------------------------
---- | HTML rendering
-
-renderTags :: [(T.Text, T.Text)] -> Html
-renderTags [] = return ()
-renderTags (x:xs) = do
-  meta ! A.name (textValue $ fst x) ! content (textValue $ snd x)
-  renderTags xs
-  
-renderCssLinks :: [T.Text] -> Html
-renderCssLinks [] = return ()
-renderCssLinks (x:xs) = do
-  link ! href (textValue x) ! rel "stylesheet" ! type_ "text/css"
-  renderCssLinks xs
+--- | DRY Rendering
 
 renderHead :: [T.Text] -> [(T.Text, T.Text)] -> T.Text -> Html
 renderHead cssFiles metaTags title = H.head $ do
@@ -450,21 +283,37 @@ renderPostEditor maybeBlogPost = do
 
   script ! src "/assets/marked.min.js" $ ""
   script ! src "/assets/editor.js" $ ""
+
+-------------------------------------------------------------------------------
+--- | Specialized Helpers
+
+appendedBlogTitle :: T.Text -> T.Text
+appendedBlogTitle text = T.append text (T.append " | " blogTitle)
+
+postTags :: [String] -> [(T.Text, T.Text)]
+postTags tags = [("keywords", T.append (T.pack $ (List.intercalate ", " tags) ++ ", ") (fromJust $ lookup "keywords" seoTags))]
+
+-------------------------------------------------------------------------------
+--- | Authentication
   
-renderButton :: String -> Html
-renderButton kind = input ! customAttribute "autocorrect" "off" ! customAttribute "autocapitalize" "off" ! customAttribute "spellcheck" "false" ! type_ (stringValue kind)
+getUser :: Redis.Connection -> ActionM (Maybe User)
+getUser redis = do
+  atoken <- Helpers.accessToken
+  liftIO $ Auth.refreshObject redis (T.encodeUtf8 <$> atoken)
+  maybeUser <- liftIO $ Auth.getObject redis (T.encodeUtf8 <$> atoken)
+  return maybeUser
   
+checkAuth :: Redis.Connection -> ActionM (Maybe User)
+checkAuth redis = do
+  maybeUser <- (getUser redis)
+  case maybeUser of
+    (Just user) -> return $ Just user
+    _ -> do
+      return Nothing
+      redirect "/unauthorized"
+
 -------------------------------------------------------------------------------
 --- | Database
-
-parseArray :: String -> [String]
-parseArray "{}" = []
-parseArray ""   = []
-parseArray (x:xs)
- | x == '{'  = parseArray $ init xs
- | x == '\"' = concat [[takeWhile (\c -> c /= '\"') xs], (parseArray $ tail $ dropWhile (\c -> c /= '\"') xs)]
- | x == ','  = parseArray xs
- | otherwise = concat [[takeWhile (\c -> c /= ',') (x:xs)], (parseArray $ dropWhile (\c -> c /= ',') (x:xs))]
 
 upsertBlogPost :: PG.Connection -> Maybe Integer -> Maybe T.Text -> Maybe T.Text -> Maybe [String] -> Maybe [String] -> IO (Maybe BlogPost)
 upsertBlogPost pg (Just identifier) Nothing      Nothing     Nothing     Nothing            = listToMaybe <$> query pg "SELECT * FROM blogposts WHERE identifier=? LIMIT 1" [identifier]
