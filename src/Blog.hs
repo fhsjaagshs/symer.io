@@ -330,7 +330,7 @@ cachedText redis key valueFunc = do
           liftIO $ Redis.runRedis redis $ do
             Redis.set (BL.toStrict $ TL.encodeUtf8 key) (BL.toStrict $ TL.encodeUtf8 v)
             Redis.expire (BL.toStrict $ TL.encodeUtf8 key) (3600)
-          Scotty.text value
+          Scotty.text v
     else
       valueFunc >>= \v -> Scotty.text v
   return ()
