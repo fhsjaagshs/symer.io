@@ -83,7 +83,7 @@ function sendHTTP(method, url, params, callback) {
   }
   
   if (Object.size(params) > 0) {
-    var body = Object.keys(params).map(function(key, _) { return key + "=" + encodeURI(params[key]); }).join("&");
+    var body = Object.keys(params).map(function(key, _) { return key + "=" + encodeURIComponent(params[key]); }).join("&");
     http.setRequestHeader("Content-type", "application/x-www-form-urlencoded");
     http.send(body);
   } else {
