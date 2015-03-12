@@ -1,14 +1,16 @@
 {-# LANGUAGE OverloadedStrings #-}
 
 module Helpers where
-  
+
 import           Control.Applicative
+import           Control.Exception
   
 import           Data.Maybe
 import qualified Data.ByteString.Char8 as B
 import qualified Data.ByteString.Lazy.Char8 as BL
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
+import qualified Data.Text.Lazy as TL
 import qualified Data.Text.Lazy.Encoding as TL
 import qualified Data.Text.Lazy.Builder as TL
 import           Data.Time.Clock
@@ -16,6 +18,7 @@ import           Data.Time.Lens as TLens
 
 import qualified Text.CSS.Parse as CSS
 import qualified Text.CSS.Render as CSS
+
 import qualified Text.Jasmine as Jasmine
 
 import           Text.Blaze.Html5 as H hiding (style, param, map)
@@ -28,7 +31,6 @@ import           Web.Scotty as Scotty
 import qualified Crypto.BCrypt as BCrypt
 
 import           System.Environment
-import           Control.Exception
 import           System.IO.Unsafe
 
 
@@ -70,6 +72,9 @@ minifyCSS css = case (CSS.renderNestedBlocks <$> (CSS.parseNestedBlocks $ T.deco
 
 emptyResponse :: ActionM ()
 emptyResponse = Scotty.text ""
+
+maybeParam :: TL.Text -> ActionM (Maybe TL.Text)
+maybeParam key = params >>= \ps -> return (lookup key ps)
                                                                                                    
 formatDate :: UTCTime -> String
 formatDate d = (show $ getL month d) ++ " • " ++ (show $ getL day d) ++ " • " ++ (show $ getL year d) ++ " | " ++ (showInteger 2 $ getL hours d) ++ ":" ++ (showInteger 2 $ getL minutes d) ++  " UTC"

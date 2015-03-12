@@ -56,7 +56,8 @@ main = do
     liftIO $ putStrLn "--| establishing database connections"
     pg <- liftIO $ PG.connectPostgreSQL $ B.pack $ Config.postgresConnStr
     redis <- liftIO $ Redis.connect Redis.defaultConnectInfo
-    
+
+    liftIO $ putStrLn ("--| starting blog: " ++ unsafeGetEnv "ENVIRONMENT" "development")
     liftIO $ putStrLn "--| running database migrations"
     liftIO $ execute_ pg "SET client_min_messages=WARNING;"
     liftIO $ withTransaction pg $ runMigration $ MigrationContext MigrationInitialization True pg
@@ -200,21 +201,20 @@ main = do
     -- returns minified JS
     get "/assets/js/:filename" $ do
       filename <- param "filename"
-      setHeader "Content-Type" "application/x-javascript"
-      js <- liftIO $ BL.readFile $ "assets/" ++ (T.unpack filename)
-      Scotty.text $ TL.decodeUtf8 $ Helpers.minifyJS js
-      
+      setHeader "Content-Type" "text/javascript"
+      cachedText redis filename $ do
+        js <- liftIO $ BL.readFile $ "assets/js/" ++ (TL.unpack filename)
+        return $ TL.decodeUtf8 $ (if (List.isInfixOf ".min." $ TL.unpack filename) then js else (Helpers.minifyJS js))
+
     -- returns minified CSS
     get "/assets/css/:filename" $ do
       filename <- param "filename"
       setHeader "Content-Type" "text/css"
-      css <- liftIO $ B.readFile $ "assets/" ++ (T.unpack filename)
-      Scotty.text $ TL.decodeUtf8 $ minifyCSS css
+      cachedText redis filename $ do
+        css <- liftIO $ B.readFile $ "assets/css/" ++ (TL.unpack filename)
+        return (if (List.isInfixOf ".min." $ TL.unpack filename) then (TL.fromStrict $ T.decodeUtf8 css) else (TL.decodeUtf8 $ Helpers.minifyCSS css))
       
-    get (regex "/(assets/.+)") $ param "1" >>= Scotty.file
-  
-    defaultHandler $ \e -> do
-      liftIO $ print e
+    get (regex "/(assets/.*[^/])") $ param "1" >>= Scotty.file
   
     notFound $ Scotty.html $ R.renderHtml $ docTypeHtml $ h1 $ toHtml $ ("Not Found." :: T.Text)
 
@@ -282,8 +282,9 @@ renderPostEditor maybeBlogPost = do
   a ! A.id "preview-button" ! class_ "blogbutton" ! rel "nofollow" $ "Preview"
   a ! A.id "save-button" ! class_ "blogbutton" ! rel "nofollow" $ "Save"
 
-  script ! src "/assets/marked.min.js" $ ""
-  script ! src "/assets/editor.js" $ ""
+  script ! src "/assets/js/marked.min.js" $ ""
+  script ! src "/assets/js/wordlist.js" $ ""
+  script ! src "/assets/js/editor.js" $ ""
 
 -------------------------------------------------------------------------------
 --- | Specialized Helpers
@@ -312,6 +313,27 @@ checkAuth redis = do
     _ -> do
       return Nothing
       redirect "/unauthorized"
+
+-------------------------------------------------------------------------------
+--- | Caching
+
+cachedText :: Redis.Connection -> TL.Text -> ActionM TL.Text -> ActionM ()
+cachedText redis key valueFunc = do
+  env <- liftIO $ safeGetEnv "ENVIRONMENT" "development"
+  if env == "production"
+    then do
+      redisValue <- liftIO $ Redis.runRedis redis $ Redis.get $ BL.toStrict $ TL.encodeUtf8 key
+      case redisValue of
+        Right (Just cached) -> Scotty.text $ TL.decodeUtf8 $ BL.fromStrict cached
+        _ -> do
+          value <- valueFunc
+          liftIO $ Redis.runRedis redis $ do
+            Redis.set (BL.toStrict $ TL.encodeUtf8 key) (BL.toStrict $ TL.encodeUtf8 value)
+            Redis.expire (BL.toStrict $ TL.encodeUtf8 key) (3600)
+          Scotty.text value
+    else
+      valueFunc >>= \v -> Scotty.text v
+  return ()
 
 -------------------------------------------------------------------------------
 --- | Database

@@ -43,4 +43,4 @@ postgresURL :: String
 postgresURL = "postgresql://" ++ (configFor "user") ++ (if (configFor "password") == "" then "" else ":" ++ (configFor "password")) ++ "@" ++ (configFor "host") ++ ":" ++ (configFor "port") ++ "/" ++ (configFor "dbname")
 
 postgresConnStr :: String
-postgresConnStr = intercalate " " $ (map (\(k,v) -> k ++ "='" ++ v ++ "'") (map (\(k,v) -> (k, configFor k) ) postgresConfig))
+postgresConnStr = intercalate " " $ (map (\(k,_) -> k ++ "='" ++ (configFor k) ++ "'") postgresConfig)

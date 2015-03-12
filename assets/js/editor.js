@@ -1,3 +1,7 @@
+$(".wordlist").wordlist();
+$(".wordlist").on("wordlist:addedWord", function(e,word) { addTag(word); }); 
+$(".wordlist").on("wordlist:deletedWord", function(e,word) { deleteTag(word); });
+
 var editing = true;
 var editor = document.getElementById("editor");
 var preview = document.getElementById("preview");
@@ -5,12 +9,6 @@ var previewButton = document.getElementById("preview-button");
 var deleteButton = document.getElementById("delete-button");
 var saveButton = document.getElementById("save-button");
 var titleField = document.getElementById("title-field");
-
-$.getScript("/assets/wordlist.js", function() {
-  $(".wordlist").wordlist();
-  $(".wordlist").on("wordlist:addedWord", function(e,word) { addTag(word); }); 
-  $(".wordlist").on("wordlist:deletedWord", function(e,word) { deleteTag(word); });
-});
 
 var post = {}
 post.tags = []
