@@ -326,9 +326,9 @@ cachedText redis key valueFunc = do
       case redisValue of
         Right (Just cached) -> Scotty.text $ TL.decodeUtf8 $ BL.fromStrict cached
         _ -> do
-          value <- valueFunc
+          v <- valueFunc
           liftIO $ Redis.runRedis redis $ do
-            Redis.set (BL.toStrict $ TL.encodeUtf8 key) (BL.toStrict $ TL.encodeUtf8 value)
+            Redis.set (BL.toStrict $ TL.encodeUtf8 key) (BL.toStrict $ TL.encodeUtf8 v)
             Redis.expire (BL.toStrict $ TL.encodeUtf8 key) (3600)
           Scotty.text value
     else
