@@ -3,21 +3,20 @@
     src: url(/assets/fonts/refrigerator-light.ttf);
 }
 
-/*@font-face {
+@font-face {
     font-family: oxygen-regular;
     src: url(/assets/fonts/oxygen/Oxygen-Regular.ttf);
 }
 
-@font-face {
+/*@font-face {
     font-family: oxygen-bold;
     src: url(/assets/fonts/oxygen/Oxygen-Bold.ttf);
 }
-*/
 
 @font-face {
     font-family: oxygen-light;
     src: url(/assets/fonts/oxygen/Oxygen-Light.ttf);
-}
+}*/
 
 body {
   background: #F0F0F0;
