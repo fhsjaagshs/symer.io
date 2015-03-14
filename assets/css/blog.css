@@ -12,45 +12,34 @@
     font-family: oxygen-bold;
     src: url(/assets/fonts/oxygen/Oxygen-Bold.ttf);
 }
+*/
 
 @font-face {
     font-family: oxygen-light;
     src: url(/assets/fonts/oxygen/Oxygen-Light.ttf);
-}*/
+}
 
 body {
   background: #F0F0F0;
   margin: 0px;
-  font-family: arial,helvetica,sans-serif;
-  text-align: center;
   padding: 10px;
+  font-family: helvetica, sans-serif;
+  text-align: center;
   color: #333;
 }
 
-a:link, a:visited, a:active, a:hover {
+a {
+  text-decoration: none;
   color: gray;
 }
 
 a:hover {
-  color: #969696;
-}
-
-p {
-  font-size:13px;
+  color: #979797;
 }
 
 a < img {
   border: none;
   outline: none;
-}
-
-
-
-
-.separator {
-  text-align: center;
-  border-top: dashed 3px;
-  width: 100%;
 }
 
 #content {
@@ -61,12 +50,13 @@ a < img {
 #blog-title {
   font-size: 50px;
   margin: 25px;
-  font-family: refrigerator-light, arial,helvetica,sans-serif;
+  font-family: refrigerator-light,helvetica,sans-serif;
 }
 
 #blog-subtitle {
   font-size: 20px;
   margin: 20px;
+  font-family: menlo,helvetica,sans-serif;
 }
   
 #prevbutton {
@@ -76,27 +66,38 @@ a < img {
 
 #nextbutton {
   float: right;
+  margin: 20px;
+}
+
+.separator {
+  text-align: center;
+  border-top: dashed 3px;
+  width: 100%;
 }
 
 .post-title {
   font-size:40px;
   margin-top: 50px;
+  font-family: oxygen-regular,sans-serif;
 }
 
 .post-content > * {
-  font-size:20px;
-  line-height:1.35em;
+  font-size: 20px;
+  line-height: 1.35em;
+}
+
+.post-tags > a {
+  color: inherit;
 }
 
 a.blogbutton {
   display: inline-block;
   cursor: pointer;
   padding: 10px 30px;
-  background-color: #A9A9A9;
+  background-color: #888;
   margin: 10px;
   color: #F0F0F0;
   text-decoration: none;
-  transition: background-color 0.3s;
 }
 
 a.blogbutton:hover {

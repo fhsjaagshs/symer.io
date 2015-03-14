@@ -69,6 +69,9 @@ main = do
     liftIO $ execute_ pg "SET client_min_messages=NOTICE;"
     liftIO $ withTransaction pg $ runMigration $ MigrationContext (MigrationFile "blog.sql" "./migrations/blog.sql") True pg
     liftIO $ withTransaction pg $ runMigration $ MigrationContext (MigrationFile "array_funcs.sql" "./migrations/array_funcs.sql") True pg
+    liftIO $ putStrLn "--| clearing cached data from Redis"
+    liftIO $ Redis.runRedis redis $ Redis.flushall
+    liftIO $ putStrLn "--| done |--"
   
     -- shortcuts for auth
     let protected = checkAuth redis
@@ -120,7 +123,7 @@ main = do
       posts <- liftIO $ getBlogPostsByTag pg tag mPageNum
       Scotty.html $ R.renderHtml $ docTypeHtml $ do
         renderHead [] [] (appendedBlogTitle $ tag)
-        renderBody (Just $ T.append "Posts with: " tag) Nothing maybeUser $ do
+        renderBody (Just $ T.append "Posts tagged '" $ T.append tag "'") Nothing maybeUser $ do
           -- render (posts :: [BlogPost]) maybeUser
           render (take postsPerPage posts) maybeUser
           renderPageControls mPageNum (length posts > postsPerPage)
