@@ -251,7 +251,7 @@ renderHead :: [T.Text] -> [(T.Text, T.Text)] -> T.Text -> Html
 renderHead cssFiles metaTags title_ = H.head $ do
   H.title $ toHtml title_
   renderCssLinks $ cssFiles ++ ["/assets/css/blog.css"]
-  script ! src "https://code.jquery.com/jquery-2.1.3.min.js" $ ""
+  script ! src "/assets/js/jquery-2.1.3.min.js" $ ""
   meta ! httpEquiv "Content-Type" ! content "text/html; charset=UTF-8"
   renderTags $ List.nubBy (\(keyOne, _) (keyTwo, _) -> keyOne == keyTwo) $ metaTags ++ seoTags
 
