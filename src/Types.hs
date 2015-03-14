@@ -14,7 +14,6 @@ import qualified Data.Text.Encoding as T
 import qualified Data.Vector as Vector
 import qualified Data.List as List
 import           Data.Time.Clock
-import           Data.Monoid
 
 import           Cheapskate
 import           Data.Aeson as Aeson
