@@ -88,8 +88,8 @@ main = do
       Scotty.html $ R.renderHtml $ docTypeHtml $ do
         renderHead [] [] blogTitle
         renderBody (Just blogTitle) (Just blogSubtitle) maybeUser $ do
-          render (init posts) maybeUser
-          renderPageControls mPageNum (length posts == 11)
+          render (take postsPerPage posts) maybeUser
+          renderPageControls mPageNum (length posts > postsPerPage)
           
     -- create a post
     get "/posts/new" $ do
@@ -121,8 +121,9 @@ main = do
       Scotty.html $ R.renderHtml $ docTypeHtml $ do
         renderHead [] [] (appendedBlogTitle $ tag)
         renderBody (Just $ T.append "Posts with: " tag) Nothing maybeUser $ do
-          render (posts :: [BlogPost]) maybeUser
-          renderPageControls mPageNum (length posts == 11)
+          -- render (posts :: [BlogPost]) maybeUser
+          render (take postsPerPage posts) maybeUser
+          renderPageControls mPageNum (length posts > postsPerPage)
   
     -- edit a post
     get "/posts/:id/edit" $ do
@@ -238,6 +239,9 @@ blogTitle = "Segmentation Fault (core dumped)"
 
 blogSubtitle :: T.Text
 blogSubtitle = "a blog about code."
+
+postsPerPage :: Int
+postsPerPage = 10
 
 seoTags :: [(T.Text, T.Text)]
 seoTags = [
@@ -378,15 +382,9 @@ upsertBlogPost _  _                 _            _            _           _     
 
 getBlogPostsByTag :: PG.Connection -> T.Text -> Maybe Integer -> IO [BlogPost]
 getBlogPostsByTag pg tag Nothing = getBlogPostsByTag pg tag (Just 1)
-getBlogPostsBytag pg tag (Just pageNum) = query pg "SELECT * FROM blogposts WHERE ?=any(tags) LIMIT 11 ORDER BY identifier DESC OFFSET ? LIMIT 11" (tag,(pageNum-1)*10)
-
---
--- getBlogPostsByTag :: PG.Connection -> T.Text -> Maybe Integer -> Maybe Integer -> IO [BlogPost]
--- getBlogPostsByTag pg tag Nothing     Nothing       = query pg "SELECT * FROM blogposts WHERE ?=any(tags) LIMIT 11 ORDER BY identifier DESC" [tag]
--- getBlogPostsByTag pg tag (Just from) Nothing       = query pg "SELECT * FROM blogposts WHERE ?=any(tags) AND identifier > ? LIMIT 11 ORDER BY identifier DESC" (tag, from)
--- getBlogPostsByTag pg tag Nothing     (Just untill) = query pg "SELECT * FROM blogposts WHERE ?=any(tags) AND identifier < ? LIMIT 11 ORDER BY identifier DESC" (tag, untill)
--- getBlogPostsByTag pg tag (Just from) (Just untill) = query pg "SELECT * FROM blogposts WHERE ?=any(tags) AND identifier > ? AND identifier < ? LIMIT 11 ORDER BY identifier DESC" (tag, from, untill)
+getBlogPostsBytag pg tag (Just pageNum) = query pg "SELECT * FROM blogposts WHERE ?=any(tags) ORDER BY identifier DESC OFFSET ? LIMIT ?" (tag,(pageNum-1)*(fromIntegral postsPerPage),postsPerPage+1)
 
 getBlogPosts :: PG.Connection -> Maybe Integer -> IO [BlogPost]
-getBlogPosts pg (Just pageNum) = query pg "SELECT * FROM blogposts ORDER BY identifier DESC OFFSET ? LIMIT 11" [(pageNum-1)*10]
-getBlogPosts pg Nothing = getBlogPosts pg (Just 1)
+-- getBlogPosts pg (Just 1)       = query pg "SELECT * FROM blogposts ORDER BY identifier DESC LIMIT ?" [postsPerPage+1]
+getBlogPosts pg (Just pageNum) = query pg "SELECT * FROM blogposts ORDER BY identifier DESC OFFSET ? LIMIT ?" ((pageNum-1)*(fromIntegral postsPerPage), postsPerPage+1)
+getBlogPosts pg Nothing        = getBlogPosts pg (Just 1)
