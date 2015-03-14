@@ -39,7 +39,6 @@ import           Magic -- for mimetypes
 --    a. not found
 --    b. unauthorized
 -- 2. Page numbers at bottom (would require extra request)
--- 3. click tags for posts by tag page
 -- 4. drafts
 -- 5. blog post author
 -- 6. Site footer (copyright etc)
