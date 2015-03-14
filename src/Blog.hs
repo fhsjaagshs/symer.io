@@ -224,10 +224,10 @@ main = do
         return (if (List.isInfixOf ".min." $ TL.unpack filename) then (TL.fromStrict $ T.decodeUtf8 css) else (TL.decodeUtf8 $ Helpers.minifyCSS css))
       
     get (regex "/(assets/.*)") $ do
-      p <- param "1"
-      mimeType <- liftIO $ TL.pack <$> magicFile magic p
+      relPath <- param "1"
+      mimeType <- liftIO $ TL.pack <$> magicFile magic relPath
       setHeader "Content-Type" mimeType
-      Scotty.file p
+      Scotty.file relPath
   
     notFound $ Scotty.html $ R.renderHtml $ docTypeHtml $ h1 $ toHtml $ ("Not Found." :: T.Text)
 
@@ -381,10 +381,9 @@ upsertBlogPost pg Nothing            (Just title_) (Just body_) (Just tags_) _  
 upsertBlogPost _  _                 _            _            _           _                      = return Nothing
 
 getBlogPostsByTag :: PG.Connection -> T.Text -> Maybe Integer -> IO [BlogPost]
-getBlogPostsByTag pg tag Nothing = getBlogPostsByTag pg tag (Just 1)
-getBlogPostsBytag pg tag (Just pageNum) = query pg "SELECT * FROM blogposts WHERE ?=any(tags) ORDER BY identifier DESC OFFSET ? LIMIT ?" (tag,(pageNum-1)*(fromIntegral postsPerPage),postsPerPage+1)
+getBlogPostsByTag pg tag Nothing        = getBlogPostsByTag pg tag (Just 1)
+getBlogPostsByTag pg tag (Just pageNum) = query pg "SELECT * FROM blogposts WHERE ?=any(tags) ORDER BY identifier DESC OFFSET ? LIMIT ?" (tag,(pageNum-1)*(fromIntegral postsPerPage),postsPerPage+1)
 
 getBlogPosts :: PG.Connection -> Maybe Integer -> IO [BlogPost]
--- getBlogPosts pg (Just 1)       = query pg "SELECT * FROM blogposts ORDER BY identifier DESC LIMIT ?" [postsPerPage+1]
 getBlogPosts pg (Just pageNum) = query pg "SELECT * FROM blogposts ORDER BY identifier DESC OFFSET ? LIMIT ?" ((pageNum-1)*(fromIntegral postsPerPage), postsPerPage+1)
 getBlogPosts pg Nothing        = getBlogPosts pg (Just 1)
