@@ -18,15 +18,6 @@
     src: url(/assets/fonts/oxygen/Oxygen-Light.ttf);
 }*/
 
-.tagline {
-  font-size: 11px;
-}
-
-.title {
-  font-family: refrigerator-light, arial,helvetica,sans-serif;
-  font-size:50px;
-}
-
 body {
   background: #F0F0F0;
   margin: 0px;
@@ -70,9 +61,22 @@ a < img {
 #blog-title {
   font-size: 50px;
   margin: 25px;
+  font-family: refrigerator-light, arial,helvetica,sans-serif;
 }
 
-#blog-subtitle {}
+#blog-subtitle {
+  font-size: 20px;
+  margin: 20px;
+}
+  
+#prevbutton {
+  float: left;
+  margin: 20px;
+}
+
+#nextbutton {
+  float: right;
+}
 
 .post-title {
   font-size:40px;
