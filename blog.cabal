@@ -36,6 +36,7 @@ executable blog
                      time-lens,
                      hjsmin,
                      css-text,
-                     bcrypt
+                     bcrypt,
+                     magic
 
   

@@ -32,18 +32,20 @@ import           Text.Blaze.Html5.Attributes as A
 import           Text.Blaze.Html.Renderer.Text as R
 import           Prelude as P hiding (head, id, div)
 
+import           Magic
+
 -- TODO:
 -- 1. Finish pages (procrastinateable)
 --    a. not found
 --    b. unauthorized
--- 2. Pagination
+-- 2. Page numbers at bottom
 -- 3. click tags for posts by tag page
 -- 4. drafts
+-- 5. blog post author
 
 -- Nitpick todo:
 -- 1. fix timezone
 -- 2. Rewrite using a state monad?
--- 3. blog post author
 -- 4. cache minification results
 
 -- Miscellania:
@@ -56,6 +58,8 @@ main = do
     liftIO $ putStrLn "--| establishing database connections"
     pg <- liftIO $ PG.connectPostgreSQL $ B.pack $ Config.postgresConnStr
     redis <- liftIO $ Redis.connect Redis.defaultConnectInfo
+    magic <- liftIO $ magicOpen [MagicMime]
+    liftIO $ magicLoadDefault magic
 
     liftIO $ putStrLn ("--| starting blog: " ++ unsafeGetEnv "ENVIRONMENT" "development")
     liftIO $ putStrLn "--| running database migrations"
@@ -78,13 +82,15 @@ main = do
     get "/" $ do
       maybeUser <- authenticatedUser
       ps <- params
-      let mfrom = ((read . T.unpack . TL.toStrict <$> (lookup "from" ps)) :: Maybe Integer)
-      let muntil = ((read . T.unpack . TL.toStrict <$> (lookup "until" ps)) :: Maybe Integer)
-      posts <- liftIO $ getBlogPosts pg mfrom muntil
+      let mPageNum = ((read . T.unpack . TL.toStrict <$> (lookup "page" ps)) :: Maybe Integer)
+      posts <- liftIO $ getBlogPosts pg mPageNum
       Scotty.html $ R.renderHtml $ docTypeHtml $ do
         renderHead [] [] blogTitle
         renderBody (Just blogTitle) (Just blogSubtitle) maybeUser $ do
-          render posts maybeUser
+          render (init posts) maybeUser
+          let pageNum = (if (isJust mPageNum) then (fromJust mPageNum) else 1)
+          when (length posts == 11) (a ! class_ "blogbutton" ! href (stringValue $ "/?page=" ++ (show $ pageNum+1)) $ "Next")
+          when (pageNum > 1) (a ! class_ "blogbutton" ! href (stringValue $ "/?page=" ++ (show $ pageNum-1)) $ "Prev")
           
     -- create a post
     get "/posts/new" $ do
@@ -214,7 +220,11 @@ main = do
         css <- liftIO $ B.readFile $ "assets/css/" ++ (TL.unpack filename)
         return (if (List.isInfixOf ".min." $ TL.unpack filename) then (TL.fromStrict $ T.decodeUtf8 css) else (TL.decodeUtf8 $ Helpers.minifyCSS css))
       
-    get (regex "/(assets/.*[^/])") $ param "1" >>= Scotty.file
+    get (regex "/(assets/.*)") $ do
+      p <- param "1"
+      mimeType <- liftIO $ TL.pack <$> magicFile magic p
+      setHeader "Content-Type" mimeType
+      Scotty.file p
   
     notFound $ Scotty.html $ R.renderHtml $ docTypeHtml $ h1 $ toHtml $ ("Not Found." :: T.Text)
 
@@ -240,7 +250,7 @@ seoTags = [
 renderHead :: [T.Text] -> [(T.Text, T.Text)] -> T.Text -> Html
 renderHead cssFiles metaTags title_ = H.head $ do
   H.title $ toHtml title_
-  renderCssLinks $ cssFiles ++ ["https://symer.io/assets/css/site.css", "/assets/css/blog.css"]
+  renderCssLinks $ cssFiles ++ ["/assets/css/blog.css"]
   script ! src "https://code.jquery.com/jquery-2.1.3.min.js" $ ""
   meta ! httpEquiv "Content-Type" ! content "text/html; charset=UTF-8"
   renderTags $ List.nubBy (\(keyOne, _) (keyTwo, _) -> keyOne == keyTwo) $ metaTags ++ seoTags
@@ -248,7 +258,7 @@ renderHead cssFiles metaTags title_ = H.head $ do
 renderBody :: Maybe T.Text -> Maybe T.Text -> Maybe User -> Html -> Html
 renderBody maybeTitle maybeSubtitle maybeUser bodyHtml = H.body ! style "text-align: center;" $ do
   a ! href "/" $ do
-    img ! src "https://symer.io/assets/images/philly_skyline.svg" ! width "300" ! height "200" ! alt (textValue blogTitle)
+    img ! src "/assets/images/philly_skyline.svg" ! width "300" ! height "200" ! alt (textValue blogTitle)
   
   when (isJust maybeTitle) (h2 ! class_ "title" ! A.id "blog-title" $ toHtml $ fromJust maybeTitle)
   when (isJust maybeSubtitle) (h3 ! A.id "blog-subtitle" $ toHtml $ fromJust maybeSubtitle)
@@ -358,13 +368,11 @@ upsertBlogPost pg Nothing            (Just title_) (Just body_) (Just tags_) _  
 upsertBlogPost _  _                 _            _            _           _                      = return Nothing
 
 getBlogPostsByTag :: PG.Connection -> T.Text -> Maybe Integer -> Maybe Integer -> IO [BlogPost]
-getBlogPostsByTag pg tag Nothing     Nothing       = query pg "SELECT * FROM blogposts WHERE ?=any(tags) ORDER BY identifier DESC" [tag]
-getBlogPostsByTag pg tag (Just from) Nothing       = query pg "SELECT * FROM blogposts WHERE ?=any(tags) AND identifier > ? LIMIT 10 ORDER BY identifier DESC" (tag, from)
-getBlogPostsByTag pg tag Nothing     (Just untill) = query pg "SELECT * FROM blogposts WHERE ?=any(tags) AND identifier < ? LIMIT 10 ORDER BY identifier DESC" (tag, untill)
-getBlogPostsByTag pg tag (Just from) (Just untill) = query pg "SELECT * FROM blogposts WHERE ?=any(tags) AND identifier > ? AND identifier < ? LIMIT 10 ORDER BY identifier DESC" (tag, from, untill)
+getBlogPostsByTag pg tag Nothing     Nothing       = query pg "SELECT * FROM blogposts WHERE ?=any(tags) LIMIT 11 ORDER BY identifier DESC" [tag]
+getBlogPostsByTag pg tag (Just from) Nothing       = query pg "SELECT * FROM blogposts WHERE ?=any(tags) AND identifier > ? LIMIT 11 ORDER BY identifier DESC" (tag, from)
+getBlogPostsByTag pg tag Nothing     (Just untill) = query pg "SELECT * FROM blogposts WHERE ?=any(tags) AND identifier < ? LIMIT 11 ORDER BY identifier DESC" (tag, untill)
+getBlogPostsByTag pg tag (Just from) (Just untill) = query pg "SELECT * FROM blogposts WHERE ?=any(tags) AND identifier > ? AND identifier < ? LIMIT 11 ORDER BY identifier DESC" (tag, from, untill)
 
-getBlogPosts :: PG.Connection -> Maybe Integer -> Maybe Integer -> IO [BlogPost]
-getBlogPosts pg Nothing     Nothing       = query_ pg "SELECT * FROM blogposts ORDER BY identifier DESC"
-getBlogPosts pg (Just from) Nothing       = query pg "SELECT * FROM blogposts WHERE identifier > ? LIMIT 10 ORDER BY identifier DESC" [from]
-getBlogPosts pg Nothing     (Just untill) = query pg "SELECT * FROM blogposts WHERE identifier < ? LIMIT 10 ORDER BY identifier DESC" [untill]
-getBlogPosts pg (Just from) (Just untill) = query pg "SELECT * FROM blogposts WHERE identifier > ? AND identifier < ? LIMIT 10 ORDER BY identifier DESC" (from, untill)
+getBlogPosts :: PG.Connection -> Maybe Integer -> IO [BlogPost]
+getBlogPosts pg (Just pageNum) = query pg "SELECT * FROM blogposts ORDER BY identifier DESC OFFSET ? LIMIT 11" [(pageNum-1)*10]
+getBlogPosts pg Nothing = getBlogPosts pg (Just 1)

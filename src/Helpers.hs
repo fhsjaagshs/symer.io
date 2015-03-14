@@ -33,7 +33,6 @@ import qualified Crypto.BCrypt as BCrypt
 import           System.Environment
 import           System.IO.Unsafe
 
-
 catchAny :: IO a -> (SomeException -> IO a) -> IO a
 catchAny = Control.Exception.catch
 

@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg width="600px" height="400px" viewBox="0 0 600 400" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns:sketch="http://www.bohemiancoding.com/sketch/ns">
+    <!-- Generator: Sketch 3.2.2 (9983) - http://www.bohemiancoding.com/sketch -->
+    <title>philly skyline</title>
+    <desc>Created with Sketch.</desc>
+    <defs></defs>
+    <g id="Page-1" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd" sketch:type="MSPage">
+        <g id="philly-skyline" sketch:type="MSArtboardGroup">
+            <rect id="William-Penn" fill="#675F5F" sketch:type="MSShapeGroup" x="247" y="80" width="11" height="40"></rect>
+            <path d="M0,400 L0,96.2859008 L37.838088,59.7559739 L82.8294796,99.2906877 L82.7683877,146.788618 L138.506396,146.788618 L138.623026,108.729753 L157.822537,58.7579175 L171.090583,15.6185213 L179.982228,54.2666636 L197.576689,105.008277 L198.009886,158.112311 L219.736379,157.645136 L254.297721,108.198872 L269.487384,150.977269 L284.732584,151.147151 L284.732594,99.2906862 L304.859581,67.666102 L324.725549,97.7564414 L326.819335,312.880071 L439.711572,279.89643 L442.177463,55.0152059 L456.06198,52.7111821 L459.083252,8.87633159 L483.097914,0.90780664 L522.974249,9.8159911 L525.445693,214.842263 L546.361331,117.197306 L570.437085,108.060843 L597.528556,176.438326 L600,400" id="Outline" stroke="#979797" fill="#979797" sketch:type="MSShapeGroup"></path>
+            <path d="M461.686069,59.6403027 L517.132555,60.151147 L524.672861,349.77843 L442.402463,349.646896 L461.686069,59.6403027 Z" id="Path-34" fill="#E7950E" sketch:type="MSShapeGroup"></path>
+            <path d="M39.7212143,84.7437333 L11.2111306,99.4730693 L9.14235008,213.742209 L39.7212151,213.999997 L40.7079369,196.214776 L74.3566064,196.21478 L77.3739733,172.056758 L61.0000998,169.94031 L62.268062,101.54185" id="Path-35" fill="#E7950E" sketch:type="MSShapeGroup"></path>
+            <path d="M151.340027,117.648784 C151.340027,117.648784 163.016043,100.716887 169.868484,100 C175.713143,99.3885457 189.43133,113.66376 189.43133,113.66376 L189.431331,180.000002 L169.868484,174.000002 L151.340027,174.000002" id="Path-36" fill="#EBB153" sketch:type="MSShapeGroup"></path>
+            <path d="M290.668106,100.588495 L317.31438,100.588495 L323.196583,319.999994 L314.401881,317.748482 L313.705931,224.348285 L287.584002,187.053034" id="Path-37" fill="#E7950E" sketch:type="MSShapeGroup"></path>
+            <path d="M80,174 L80.1771949,393.31026 L171,393.411499 L168.82297,174.228603" id="Path-39" stroke="#9F8E90" stroke-width="5" fill="#886E71" sketch:type="MSShapeGroup"></path>
+            <path d="M171.322237,174.335212 L171.322237,400.000007 L189.409874,400.000007 L189.409874,179.955334" id="Path-40" fill="#886E71" sketch:type="MSShapeGroup"></path>
+            <path d="M41.151454,196.195538 L41.2925243,397.847058 L113.599339,397.940145 L111.866138,196.405734" id="Path-38" stroke="#BCAEAF" stroke-width="5" fill="#896E71" sketch:type="MSShapeGroup"></path>
+            <path d="M80,174 L168.378122,174 L170.236893,303 L80,303 L80,174 Z" id="Rectangle-6" fill="#9F8E90" sketch:type="MSShapeGroup"></path>
+            <rect id="Rectangle-5" fill="#BCADAF" sketch:type="MSShapeGroup" x="40" y="193" width="75" height="129"></rect>
+            <path d="M254.471602,107.123075 L219.518576,157.084928 L219.518576,160.561918 L269.843863,150.608907 L254.471602,107.123075 Z" id="Path-41" fill="#7EB9B4" sketch:type="MSShapeGroup"></path>
+            <path d="M269.815114,150.185117 L281.493445,194.066403 L285.060489,397.099513 L213.194042,397.099515 L213.194042,200.000001 L221.312892,160.42042 L269.815114,150.185117 Z" id="Path-42" fill="#C9C6C6" sketch:type="MSShapeGroup"></path>
+            <path d="M213,269 L283.163063,269 L284.975449,400 L213,400 L213,269 Z" id="Rectangle-8" fill="#DBCDAD" sketch:type="MSShapeGroup"></path>
+            <path d="M560.608576,111.304076 L551.966551,171.824134 L553.868554,399.964102 L525.636801,399.408859 L525.872527,210.341742 L545.926289,116.857348 L560.608576,111.304076 Z" id="Path-43" fill="#8B2A2A" sketch:type="MSShapeGroup"></path>
+            <path d="M560.638162,111.129545 L570.702737,107.321869 L596.771399,174.788753 L599.999999,400 L553.881984,400 L552.105735,171.241443 L560.638162,111.129545 Z" id="Path-44" fill="#B35D3E" sketch:type="MSShapeGroup"></path>
+        </g>
+    </g>
+</svg>

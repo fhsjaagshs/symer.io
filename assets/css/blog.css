@@ -1,3 +1,61 @@
+@font-face {
+    font-family: refrigerator-light;
+    src: url(/assets/fonts/refrigerator-light.ttf);
+}
+
+/*@font-face {
+    font-family: oxygen-regular;
+    src: url(/assets/fonts/oxygen/Oxygen-Regular.ttf);
+}
+
+@font-face {
+    font-family: oxygen-bold;
+    src: url(/assets/fonts/oxygen/Oxygen-Bold.ttf);
+}
+
+@font-face {
+    font-family: oxygen-light;
+    src: url(/assets/fonts/oxygen/Oxygen-Light.ttf);
+}*/
+
+.tagline {
+  font-size: 11px;
+}
+
+.title {
+  font-family: refrigerator-light, arial,helvetica,sans-serif;
+  font-size:50px;
+}
+
+body {
+  background: #F0F0F0;
+  margin: 0px;
+  font-family: arial,helvetica,sans-serif;
+  text-align: center;
+  padding: 10px;
+  color: #333;
+}
+
+a:link, a:visited, a:active, a:hover {
+  color: gray;
+}
+
+a:hover {
+  color: #969696;
+}
+
+p {
+  font-size:13px;
+}
+
+a < img {
+  border: none;
+  outline: none;
+}
+
+
+
+
 .separator {
   text-align: center;
   border-top: dashed 3px;
