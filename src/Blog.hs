@@ -90,7 +90,8 @@ main = do
           render (init posts) maybeUser
           let pageNum = (if (isJust mPageNum) then (fromJust mPageNum) else 1)
           when (length posts == 11) (a ! class_ "blogbutton" ! href (stringValue $ "/?page=" ++ (show $ pageNum+1)) $ "Next")
-          when (pageNum > 1) (a ! class_ "blogbutton" ! href (stringValue $ "/?page=" ++ (show $ pageNum-1)) $ "Prev")
+          when (pageNum > 2) (a ! class_ "blogbutton" ! href (stringValue $ "/?page=" ++ (show $ pageNum-1)) $ "Prev")
+          when (pageNum == 1) (a ! class_ "blogbutton" ! href (stringValue $ "/") $ "Prev")
           
     -- create a post
     get "/posts/new" $ do
