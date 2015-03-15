@@ -19,7 +19,6 @@ import qualified Data.Text.Encoding as T
 import qualified Data.Text.Lazy as TL
 import qualified Data.Text.Lazy.Encoding as TL
 import qualified Data.List as List
-import qualified Data.List.Split as List
 
 import           Web.Scotty as Scotty
 import           Network.HTTP.Types.Status
@@ -200,8 +199,8 @@ main = do
                                                (((read . TL.unpack) <$> lookup "id" ps) :: Maybe Integer)
                                                (TL.toStrict <$> lookup "title" ps)
                                                (TL.toStrict <$> lookup "body" ps)
-                                               (((List.splitOn ",") . TL.unpack) <$> (lookup "tags" ps))
-                                               (((List.splitOn ",") . TL.unpack) <$> (lookup "deleted_tags" ps))
+                                               (((splitList ',') . TL.unpack) <$> (lookup "tags" ps))
+                                               (((splitList ',') . TL.unpack) <$> (lookup "deleted_tags" ps))
                                               )
       case maybeBlogPost of
         Nothing -> emptyResponse
@@ -213,22 +212,25 @@ main = do
     get "/assets/js/:filename" $ do
       filename <- param "filename"
       setHeader "Content-Type" "text/javascript"
+      setHeader "Cache-Control" "public, max-age=3600, s-max-age=3600, no-cache, must-revalidate, proxy-revalidate" -- 1 hour
       cachedText redis filename $ do
         js <- liftIO $ BL.readFile $ "assets/js/" ++ (TL.unpack filename)
-        return $ TL.decodeUtf8 $ (if (List.isInfixOf ".min." $ TL.unpack filename) then js else (Helpers.minifyJS js))
+        return $ (if (List.isInfixOf ".min." $ TL.unpack filename) then js else (Helpers.minifyJS js))
 
     -- returns minified CSS
     get "/assets/css/:filename" $ do
       filename <- param "filename"
       setHeader "Content-Type" "text/css"
+      setHeader "Cache-Control" "public, max-age=3600, s-max-age=3600, no-cache, must-revalidate, proxy-revalidate" -- 1 hour
       cachedText redis filename $ do
-        css <- liftIO $ B.readFile $ "assets/css/" ++ (TL.unpack filename)
-        return (if (List.isInfixOf ".min." $ TL.unpack filename) then (TL.fromStrict $ T.decodeUtf8 css) else (TL.decodeUtf8 $ Helpers.minifyCSS css))
+        css <- liftIO $ BL.readFile $ "assets/css/" ++ (TL.unpack filename)
+        return (if (List.isInfixOf ".min." $ TL.unpack filename) then css else (Helpers.minifyCSS $ BL.toStrict css))
       
     get (regex "/(assets/.*)") $ do
       relPath <- param "1"
       mimeType <- liftIO $ TL.pack <$> magicFile magic relPath
       setHeader "Content-Type" mimeType
+      setHeader "Cache-Control" "public, max-age=604800, s-max-age=604800, no-transform" -- one week
       Scotty.file relPath
   
     notFound $ Scotty.html $ R.renderHtml $ docTypeHtml $ h1 $ toHtml $ ("Not Found." :: T.Text)
@@ -342,22 +344,28 @@ checkAuth redis = do
 -------------------------------------------------------------------------------
 --- | Caching
 
-cachedText :: Redis.Connection -> TL.Text -> ActionM TL.Text -> ActionM ()
+cachedText :: Redis.Connection -> TL.Text -> ActionM BL.ByteString -> ActionM ()
 cachedText redis key valueFunc = do
   env <- liftIO $ safeGetEnv "ENVIRONMENT" "development"
   if env == "production"
     then do
       redisValue <- liftIO $ Redis.runRedis redis $ Redis.get $ BL.toStrict $ TL.encodeUtf8 key
       case redisValue of
-        Right (Just cached) -> Scotty.text $ TL.decodeUtf8 $ BL.fromStrict cached
+        Right (Just cached) -> do
+          addHeader "ETag" (TL.decodeUtf8 $ md5Sum $ BL.fromStrict $ cached)
+          Scotty.raw $ BL.fromStrict $ cached
         _ -> do
           v <- valueFunc
+          addHeader "ETag" (TL.decodeUtf8 $ md5Sum v)
           liftIO $ Redis.runRedis redis $ do
-            Redis.set (BL.toStrict $ TL.encodeUtf8 key) (BL.toStrict $ TL.encodeUtf8 v)
-            Redis.expire (BL.toStrict $ TL.encodeUtf8 key) (3600)
-          Scotty.text v
-    else
-      valueFunc >>= \v -> Scotty.text v
+            Redis.set (BL.toStrict $ TL.encodeUtf8 key) (BL.toStrict v)
+            Redis.expire (BL.toStrict $ TL.encodeUtf8 key) 3600
+          Scotty.raw v
+    else do
+      v <- valueFunc
+      addHeader "ETag" (TL.decodeUtf8 $ md5Sum v)
+      Scotty.raw v
+      -- valueFunc >>= \v -> Scotty.raw v
   return ()
 
 -------------------------------------------------------------------------------

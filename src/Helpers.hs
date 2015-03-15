@@ -33,6 +33,8 @@ import qualified Crypto.BCrypt as BCrypt
 import           System.Environment
 import           System.IO.Unsafe
 
+import qualified Data.Digest.Pure.MD5 as MD5
+
 catchAny :: IO a -> (SomeException -> IO a) -> IO a
 catchAny = Control.Exception.catch
 
@@ -41,6 +43,19 @@ unsafeGetEnv key defaultValue = unsafePerformIO $ catchAny (getEnv key) $ \_ -> 
 
 safeGetEnv :: String -> String -> IO String
 safeGetEnv key defaultValue = catchAny (getEnv key) $ \_ -> return defaultValue
+
+-------------------------------------------------------------------------------
+-- | Lists
+
+splitList :: (Eq a) => a -> [a] -> [[a]]
+splitList _ [] = []
+splitList sep lst = [(takeWhile ((/=) sep) lst)] ++ (splitList sep $ drop 1 $ dropWhile ((/=) sep) lst)
+
+-------------------------------------------------------------------------------
+-- | Hashing
+
+md5Sum :: BL.ByteString -> BL.ByteString
+md5Sum str = BL.pack $ show $ MD5.md5 str
 
 -------------------------------------------------------------------------------
 --- | Authentication

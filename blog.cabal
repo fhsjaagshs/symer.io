@@ -31,12 +31,12 @@ executable blog
                      blaze-builder,
                      vector,
                      aeson,
-                     split,
                      random,
                      time-lens,
                      hjsmin,
                      css-text,
                      bcrypt,
-                     magic
+                     magic,
+                     pureMD5
 
   
