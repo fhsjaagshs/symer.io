@@ -231,7 +231,10 @@ main = do
       mimeType <- liftIO $ TL.pack <$> magicFile magic relPath
       setHeader "Content-Type" mimeType
       setHeader "Cache-Control" "public, max-age=604800, s-max-age=604800, no-transform" -- one week
-      Scotty.file relPath
+      setHeader "ETag" (TL.decodeUtf8 $ md5Sum v)
+      cachedText redis relPath $ do
+        contents <- liftIO $ BL.readFile relPath
+        return contents
   
     notFound $ Scotty.html $ R.renderHtml $ docTypeHtml $ h1 $ toHtml $ ("Not Found." :: T.Text)
 
@@ -261,7 +264,6 @@ renderHead :: [T.Text] -> [(T.Text, T.Text)] -> T.Text -> Html
 renderHead cssFiles metaTags title_ = H.head $ do
   H.title $ toHtml title_
   renderCssLinks $ cssFiles ++ ["/assets/css/blog.css"]
-  script ! src "/assets/js/jquery-2.1.3.min.js" $ ""
   meta ! httpEquiv "Content-Type" ! content "text/html; charset=UTF-8"
   renderTags $ List.nubBy (\(keyOne, _) (keyTwo, _) -> keyOne == keyTwo) $ metaTags ++ seoTags
 
@@ -302,6 +304,7 @@ renderPostEditor maybeBlogPost = do
   a ! A.id "preview-button" ! class_ "blogbutton" ! rel "nofollow" $ "Preview"
   a ! A.id "save-button" ! class_ "blogbutton" ! rel "nofollow" $ "Save"
 
+  script ! src "/assets/js/jquery-2.1.3.min.js" $ ""
   script ! src "/assets/js/marked.min.js" $ ""
   script ! src "/assets/js/wordlist.js" $ ""
   script ! src "/assets/js/editor.js" $ ""
@@ -344,8 +347,8 @@ checkAuth redis = do
 -------------------------------------------------------------------------------
 --- | Caching
 
-cachedText :: Redis.Connection -> TL.Text -> ActionM BL.ByteString -> ActionM ()
-cachedText redis key valueFunc = do
+cachedBody :: Redis.Connection -> TL.Text -> ActionM BL.ByteString -> ActionM ()
+cachedBody redis key valueFunc = do
   env <- liftIO $ safeGetEnv "ENVIRONMENT" "development"
   if env == "production"
     then do
@@ -365,8 +368,6 @@ cachedText redis key valueFunc = do
       v <- valueFunc
       addHeader "ETag" (TL.decodeUtf8 $ md5Sum v)
       Scotty.raw v
-      -- valueFunc >>= \v -> Scotty.raw v
-  return ()
 
 -------------------------------------------------------------------------------
 --- | Database
