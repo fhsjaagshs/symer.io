@@ -213,7 +213,7 @@ main = do
       filename <- param "filename"
       setHeader "Content-Type" "text/javascript"
       setHeader "Cache-Control" "public, max-age=3600, s-max-age=3600, no-cache, must-revalidate, proxy-revalidate" -- 1 hour
-      cachedText redis filename $ do
+      cachedBody redis filename $ do
         js <- liftIO $ BL.readFile $ "assets/js/" ++ (TL.unpack filename)
         return $ (if (List.isInfixOf ".min." $ TL.unpack filename) then js else (Helpers.minifyJS js))
 
@@ -222,7 +222,7 @@ main = do
       filename <- param "filename"
       setHeader "Content-Type" "text/css"
       setHeader "Cache-Control" "public, max-age=3600, s-max-age=3600, no-cache, must-revalidate, proxy-revalidate" -- 1 hour
-      cachedText redis filename $ do
+      cachedBody redis filename $ do
         css <- liftIO $ BL.readFile $ "assets/css/" ++ (TL.unpack filename)
         return (if (List.isInfixOf ".min." $ TL.unpack filename) then css else (Helpers.minifyCSS $ BL.toStrict css))
       
@@ -231,8 +231,7 @@ main = do
       mimeType <- liftIO $ TL.pack <$> magicFile magic relPath
       setHeader "Content-Type" mimeType
       setHeader "Cache-Control" "public, max-age=604800, s-max-age=604800, no-transform" -- one week
-      setHeader "ETag" (TL.decodeUtf8 $ md5Sum v)
-      cachedText redis relPath $ do
+      cachedBody redis (TL.pack relPath) $ do
         contents <- liftIO $ BL.readFile relPath
         return contents
   
