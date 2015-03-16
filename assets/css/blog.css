@@ -85,6 +85,10 @@ a < img {
   line-height: 1.35em;
 }
 
+.post-edit-button {
+  display: block;
+}
+
 .taglink {
   display: inline-block;
   color: inherit;

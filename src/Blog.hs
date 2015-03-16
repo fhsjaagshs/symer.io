@@ -41,6 +41,7 @@ import           Magic -- for mimetypes
 -- 4. drafts
 -- 5. blog post author
 -- 6. Site footer (copyright etc)
+-- 7. Finish mobilization: Fixing tags in editor
 
 -- Nitpick todo:
 -- 1. fix timezone
