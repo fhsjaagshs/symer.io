@@ -2,7 +2,7 @@ $.fn.wordlist = function () {
   return this.each(function() {
   	var _self = $(this),
         _view  = $('<div class="wordlist-view" />'),
-        _input = $('<input type="text" placeholder="tag"/>'),
+        _input = $('<input type="text" placeholder="tag" />'),
   		  _label = $(this).parents(".controls").siblings(".control-label").children("label");
   
     var words = (_self.val().length == 0) ? [] : $.map(_self.val().split(','), function(obj,i) { return obj.trim(); });
