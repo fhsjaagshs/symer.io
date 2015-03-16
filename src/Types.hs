@@ -12,7 +12,6 @@ import qualified Data.ByteString.Lazy.Char8 as BL
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
 import qualified Data.Vector as Vector
-import qualified Data.List as List
 import           Data.Time.Clock
 
 import           Cheapskate
@@ -81,13 +80,13 @@ instance Composable BlogPost where
     a ! href (stringValue $ (++) "/posts/" $ show identifier_) $ do
       h1 ! class_ "post-title" $ toHtml title_
     h4 ! class_ "post-subtitle" $ toHtml $ formatDate timestamp_
-    h4 ! class_ "post-subtitle post-tags" $ toHtml $ map (\t -> a ! class_ "taglink" ! href (stringValue $ "/posts/by/tag/" ++ t) $ toHtml t) tags_
+    toHtml $ map (\t -> a ! class_ "taglink" ! href (stringValue $ "/posts/by/tag/" ++ t) $ h4 ! class_ "post-subtitle" $ toHtml $ t) tags_
     div ! class_ "post-content" ! style "text-align: left;" $ toHtml $ markdown def body_
   render (BlogPost identifier_ title_ body_ timestamp_ tags_) (Just _) = do
     a ! href (stringValue $ (++) "/posts/" $ show identifier_) $ do
       h1 ! class_ "post-title" $ toHtml title_
     h4 ! class_ "post-subtitle" $ toHtml $ formatDate timestamp_
-    h4 ! class_ "post-subtitle post-tags" $ toHtml $ map (\t -> a ! class_ "taglink" ! href (stringValue $ "/posts/by/tag/" ++ t) $ toHtml t) tags_
+    toHtml $ map (\t -> a ! class_ "taglink" ! href (stringValue $ "/posts/by/tag/" ++ t) $ toHtml $ h4 ! class_ "post-subtitle" $ toHtml $ t) tags_
     a ! class_ "post-edit-button" ! href (stringValue $ ("/posts/" ++ (show identifier_) ++ "/edit")) ! rel "nofollow" $ "edit"
     div ! class_ "post-content" ! style "text-align: left;" $ toHtml $ markdown def body_
     
