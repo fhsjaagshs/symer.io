@@ -41,8 +41,13 @@ a < img {
   outline: none;
 }
 
-#content {
+/*#content {
   width: 700px;
+  margin: auto;
+}*/
+
+#content {
+  max-width: 700px;
   margin: auto;
 }
 
@@ -87,6 +92,14 @@ a < img {
 
 .post-tags > a {
   color: inherit;
+}
+
+.taglink {
+  margin-left: 5px;
+}
+
+.taglink:hover {
+  color: #888;
 }
 
 a.blogbutton {

@@ -264,6 +264,7 @@ renderHead cssFiles metaTags title_ = H.head $ do
   H.title $ toHtml title_
   renderCssLinks $ cssFiles ++ ["/assets/css/blog.css"]
   meta ! httpEquiv "Content-Type" ! content "text/html; charset=UTF-8"
+  meta ! name "viewport" ! content "width=device-width, initial-scale=1"
   renderTags $ List.nubBy (\(keyOne, _) (keyTwo, _) -> keyOne == keyTwo) $ metaTags ++ seoTags
 
 renderBody :: Maybe T.Text -> Maybe T.Text -> Maybe User -> Html -> Html
