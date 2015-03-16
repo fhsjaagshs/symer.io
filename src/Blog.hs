@@ -232,8 +232,8 @@ main = do
       setHeader "Content-Type" mimeType
       setHeader "Cache-Control" "public, max-age=604800, s-max-age=604800, no-transform" -- one week
       cachedBody redis (TL.pack relPath) $ do
-        contents <- liftIO $ BL.readFile relPath
-        return contents
+        fileContents <- liftIO $ BL.readFile relPath
+        return fileContents
   
     notFound $ Scotty.html $ R.renderHtml $ docTypeHtml $ h1 $ toHtml $ ("Not Found." :: T.Text)
 

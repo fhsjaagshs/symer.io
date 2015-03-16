@@ -95,7 +95,7 @@ a < img {
 }
 
 .taglink {
-  margin-left: 5px;
+  padding: 20px 10px;
 }
 
 .taglink:hover {
