@@ -1,0 +1,1 @@
+ALTER TABLE blogposts ADD COLUMN author_id bigint REFERENCES users(id);
