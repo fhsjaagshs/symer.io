@@ -161,6 +161,9 @@ main = do
   
       res <- liftIO $ listToMaybe <$> (query pg "SELECT * FROM users WHERE username=? LIMIT 1" [pUsername] :: IO [User])
       
+      liftIO $ putStr "User: "
+      liftIO $ print res
+      
       case res of
         Nothing     -> redirect "/login?error_message=Username%20not%20found%2E"
         (Just user) -> do
@@ -396,7 +399,7 @@ upsertBlogPost _  _    _                 _            _            _           _
 
 getBlogPostsByTag :: PG.Connection -> T.Text -> Maybe Integer -> IO [BlogPost]
 getBlogPostsByTag pg tag Nothing        = getBlogPostsByTag pg tag (Just 1)
-getBlogPostsByTag pg tag (Just pageNum) = query pg "SELECT b.*,u FROM blogposts b, users u WHERE u.id=b.author_id WHERE ?=any(tags) ORDER BY identifier DESC OFFSET ? LIMIT ?" (tag,(pageNum-1)*(fromIntegral postsPerPage),postsPerPage+1)
+getBlogPostsByTag pg tag (Just pageNum) = query pg "SELECT b.*,u FROM blogposts b, users u WHERE u.id=b.author_id AND ?=any(tags) ORDER BY identifier DESC OFFSET ? LIMIT ?" (tag,(pageNum-1)*(fromIntegral postsPerPage),postsPerPage+1)
 
 getBlogPosts :: PG.Connection -> Maybe Integer -> IO [BlogPost]
 getBlogPosts pg (Just pageNum) = query pg "SELECT b.*,u FROM blogposts b, users u WHERE u.id=b.author_id ORDER BY identifier DESC OFFSET ? LIMIT ?" ((pageNum-1)*(fromIntegral postsPerPage), postsPerPage+1)
