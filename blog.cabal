@@ -37,6 +37,7 @@ executable blog
                      css-text,
                      bcrypt,
                      magic,
-                     pureMD5
+                     pureMD5,
+                     old-locale
 
   
