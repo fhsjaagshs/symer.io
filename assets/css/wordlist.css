@@ -21,6 +21,8 @@
   vertical-align: middle;
   padding: 10px;
   padding-left: 5px;
+  margin-top: 5px;
+  margin-bottom: 5px;
 }
 
 .wordlist-item {
@@ -32,8 +34,8 @@
   margin-right: 10px;
   padding: 10px;
   vertical-align: middle;
-  margin-top: 20px;
-  margin-bottom: 20px;
+  margin-top: 5px;
+  margin-bottom: 5px;
 }
 
 .wordlist-view span:after {

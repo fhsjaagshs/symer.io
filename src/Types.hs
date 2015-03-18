@@ -8,6 +8,7 @@ import           PGExtensions()
 import           GHC.Generics
 import           Control.Applicative
 import           Control.Monad
+import           Control.Monad.IO.Class
 
 import qualified Data.ByteString.Char8 as B
 import qualified Data.ByteString.Lazy.Char8 as BL
@@ -135,7 +136,7 @@ instance Composable BlogPost where
   render (BlogPost identifier_ title_ body_ timestamp_ tags_ _ author_) (Just user_) = do
     a ! href (stringValue $ (++) "/posts/" $ show identifier_) $ do
       h1 ! class_ "post-title" $ toHtml title_
-    h4 ! class_ "post-subtitle" $ toHtml $ formatDate timestamp_
+    h4 ! class_ "post-subtitle" $ toHtml $ T.append (T.pack $ formatDate timestamp_) (T.append " • " $ Types.displayName author_)
     toHtml $ map (\t -> a ! class_ "taglink" ! href (stringValue $ "/posts/by/tag/" ++ t) $ toHtml $ h4 ! class_ "post-subtitle" $ toHtml $ t) tags_
     when (author_ == user_) $  a ! class_ "post-edit-button" ! href (stringValue $ ("/posts/" ++ (show identifier_) ++ "/edit")) ! rel "nofollow" $ "edit"
     H.div ! class_ "post-content" ! style "text-align: left;" $ toHtml $ markdown def body_

@@ -15,6 +15,7 @@ import qualified Data.Text.Lazy.Encoding as TL
 import qualified Data.Text.Lazy.Builder as TL
 import           Data.Time.Clock
 import           Data.Time.Lens as TLens
+import           Data.Time.LocalTime as LocalTime
 
 import qualified Text.CSS.Parse as CSS
 import qualified Text.CSS.Render as CSS
@@ -89,9 +90,14 @@ emptyResponse = Scotty.text ""
 
 maybeParam :: TL.Text -> ActionM (Maybe TL.Text)
 maybeParam key = params >>= \ps -> return (lookup key ps)
-                                                                                                   
+                              
+-- there is no MonadIO instance in the BlazeHTML monad so... unsafePerformIO!!!                                                              
 formatDate :: UTCTime -> String
-formatDate d = (show $ getL month d) ++ " • " ++ (show $ getL day d) ++ " • " ++ (show $ getL year d) ++ " | " ++ (showInteger 2 $ getL hours d) ++ ":" ++ (showInteger 2 $ getL minutes d) ++  " UTC"
+formatDate utcTime = unsafePerformIO $ do
+  tz <- getCurrentTimeZone
+  let d = utcToLocalTime tz utcTime
+  return $ (show $ getL month d) ++ " • " ++ (show $ getL day d) ++ " • " ++ (show $ getL year d) ++ " | " ++ (showInteger 2 $ getL hours d) ++ ":" ++ (showInteger 2 $ getL minutes d)
+  
 
 showInteger :: Int -> Int -> String
 showInteger numPlaces integer = (replicate ((-) numPlaces $ length $ show integer) '0') ++ (show integer)

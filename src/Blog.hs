@@ -34,19 +34,14 @@ import           Prelude as P hiding (head, id, div)
 import           Magic -- for mimetypes
 
 -- TODO:
--- Page numbers at bottom (would require extra db hit)
 -- drafts
+-- Page numbers at bottom (would require extra db hit)
 -- Site footer (copyright etc)
+-- reformat time to use am/pm instead of military
 
--- Nitpick todo:
--- fix timezone
--- Rewrite using a state monad?
--- rejigger DB to use queries like SELECT b.identifier, b.title, u FROM blogposts b, (SELECT * FROM users WHERE id=1) u; instead of storing duplicate users in the DB
--- SELECT b.identifier, b.title, u FROM blogposts b, users u WHERE u.id=(b.author).id
-
--- Miscellania:
+-- Miscellaneous Ideas:
 -- 1. 'Top 5' tags map in side bar?
-    
+
 main :: IO ()
 main = do
   port <- read <$> Helpers.safeGetEnv "PORT" "3000"
@@ -159,9 +154,6 @@ main = do
       pPassword <- param "password" :: ActionM T.Text
   
       res <- liftIO $ listToMaybe <$> (query pg "SELECT * FROM users WHERE username=? LIMIT 1" [pUsername] :: IO [User])
-      
-      liftIO $ putStr "User: "
-      liftIO $ print res
       
       case res of
         Nothing     -> redirect "/login?error_message=Username%20not%20found%2E"
