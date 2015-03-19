@@ -37,8 +37,8 @@ import           Magic -- for mimetypes
 -- comments (id, thread_id, parent_id, body, email, display_name)
 -- Page numbers at bottom (would require extra db hit)
 -- Site footer (copyright etc)
--- FIX: crashes after deleting blog post
 -- drafts button
+-- Save MD5 sum in redis
 
 -- Miscellaneous Ideas:
 -- 1. 'Top 5' tags map in side bar?
