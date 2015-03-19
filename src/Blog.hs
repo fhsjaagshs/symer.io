@@ -245,9 +245,7 @@ main = do
       mimeType <- liftIO $ TL.pack <$> magicFile magic relPath
       setHeader "Content-Type" mimeType
       setHeader "Cache-Control" "public, max-age=604800, s-max-age=604800, no-transform" -- one week
-      cachedBody redis (TL.pack relPath) $ do
-        fileContents <- liftIO $ BL.readFile relPath
-        return fileContents
+      cachedBody redis (TL.pack relPath) $ liftIO $ BL.readFile relPath
   
     notFound $ Scotty.html $ R.renderHtml $ docTypeHtml $ h1 $ toHtml $ ("Not Found." :: T.Text)
 
@@ -371,6 +369,7 @@ checkAuth redis = do
 cachedBody :: Redis.Connection -> TL.Text -> ActionM BL.ByteString -> ActionM ()
 cachedBody redis key valueFunc = do
   env <- liftIO $ safeGetEnv "ENVIRONMENT" "development"
+  setHeader "env" (TL.pack env)
   if env == "production"
     then do
       redisValue <- liftIO $ Redis.runRedis redis $ Redis.get $ BL.toStrict $ TL.encodeUtf8 key
@@ -395,10 +394,10 @@ rawBodyCached str = do
       if hashSum == (TL.encodeUtf8 inm)
         then status $ Status 304 ""
         else do
-          addHeader "ETag" $ TL.decodeUtf8 hashSum
+          setHeader "ETag" $ TL.decodeUtf8 hashSum
           Scotty.raw str
     Nothing -> do
-      addHeader "ETag" $ TL.decodeUtf8 hashSum
+      setHeader "ETag" $ TL.decodeUtf8 hashSum
       Scotty.raw str
 
 -------------------------------------------------------------------------------
