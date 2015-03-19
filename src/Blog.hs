@@ -34,10 +34,9 @@ import           Prelude as P hiding (head, id, div)
 import           Magic -- for mimetypes
 
 -- TODO:
--- drafts
+-- comments (id, thread_id, parent_id, body, email, display_name)
 -- Page numbers at bottom (would require extra db hit)
 -- Site footer (copyright etc)
--- reformat time to use am/pm instead of military
 
 -- Miscellaneous Ideas:
 -- 1. 'Top 5' tags map in side bar?
@@ -192,7 +191,7 @@ main = do
     delete "/posts/:id" $ do
       authUser <- protected
       identifier_ <- param "id"
-      res <- liftIO $ listToMaybe <$> query pg "DELETE FROM blogposts WHERE identifier=? AND (author).id=? RETURNING *" (identifier_ :: Integer, Types.uid $ fromJust authUser)
+      res <- liftIO $ listToMaybe <$> query pg "DELETE FROM blogposts WHERE identifier=? AND author_id=? RETURNING *" (identifier_ :: Integer, Types.uid $ fromJust authUser)
       case (res :: Maybe BlogPost) of
         Nothing -> do
           status $ Status 404 "blog post not found."
@@ -307,14 +306,18 @@ renderTagEditor :: Maybe BlogPost -> Html
 renderTagEditor Nothing = textarea ! A.id "tags" ! class_ "wordlist" $ do ""
 renderTagEditor (Just (BlogPost _ _ _ _ tags_ _ _ _)) = textarea ! A.id "tags" ! class_ "wordlist" $ do toHtml $ List.intercalate ", " tags_
   
+renderPublishCheckbox :: Maybe BlogPost -> Html
+renderPublishCheckbox (Just (BlogPost _ _ _ _ _ _ False _)) = input ! type_ "checkbox" ! A.id "public-checkbox" ! A.checked "checked"
+renderPublishCheckbox _ = input ! type_ "checkbox" ! A.id "public-checkbox"
+  
 renderPostEditor :: Maybe BlogPost -> Html
 renderPostEditor maybeBlogPost = do
   renderTitleField maybeBlogPost
   renderMdEditor maybeBlogPost
   renderTagEditor maybeBlogPost
-
+  
   div ! A.id "checkbox-container" $ do
-    input ! type_ "checkbox" ! A.id "public-checkbox"
+    renderPublishCheckbox maybeBlogPost
     H.label ! customAttribute "for" "public-checkbox" $ "Public"
   
   a ! A.id "delete-button" ! class_ "blogbutton" ! rel "nofollow" $ "Delete"
