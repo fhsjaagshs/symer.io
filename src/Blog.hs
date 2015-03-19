@@ -369,7 +369,6 @@ checkAuth redis = do
 cachedBody :: Redis.Connection -> TL.Text -> ActionM BL.ByteString -> ActionM ()
 cachedBody redis key valueFunc = do
   env <- liftIO $ safeGetEnv "ENVIRONMENT" "development"
-  setHeader "env" (TL.pack env)
   if env == "production"
     then do
       redisValue <- liftIO $ Redis.runRedis redis $ Redis.get $ BL.toStrict $ TL.encodeUtf8 key
