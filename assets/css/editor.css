@@ -60,11 +60,9 @@ input[type=checkbox]#public-checkbox {
   -webkit-appearance:button;
   -moz-appearance:button;
   appearance:button;
-  
   border: none;
-  
   border-radius: 15%;
-  background-color:#A5A5A5;
+  background-color: #ccc;
   width:25px;
   height:25px;
   margin:0px;
@@ -72,16 +70,20 @@ input[type=checkbox]#public-checkbox {
   vertical-align: middle;
 }
 
-input[type=checkbox]#public-checkbox:checked {
+input[type=checkbox]#public-checkbox:checked:after {
+  border-radius: 15%;
+  display:block;
   background-color: #65A38C;
+  color: white;
+  content:'\2713';
+  width:25px;
+  height:25px;
+  font-size: 20px;
+  text-align: center;
+  vertical-align: middle;
 }
 
+input[type=checkbox]#public-checkbox:after:hover,
 input[type=checkbox]#public-checkbox:hover {
-  border: 2.5px solid;
-  border-color: #65A38C;
-}
-
-input[type=checkbox]#public-checkbox:checked:hover {
-  border: 2.5px solid;
-  border-color: #A5A5A5;
+  background-color: #7DC9AC;
 }
