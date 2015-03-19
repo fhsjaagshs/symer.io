@@ -114,8 +114,9 @@ main = do
       case res of
         Nothing -> next
         Just post_ -> do
-          when   ((Types.isDraft post_) && (isNothing maybeUser)) (redirect "/unauthorized")
-          unless ((Types.author post_) == (fromJust maybeUser)) (redirect "/unauthorized")
+          case maybeUser of
+            Just user -> unless ((Types.author post_) == user) (redirect "/unauthorized")
+            Nothing -> when (Types.isDraft post_) (redirect "/unauthorized")
 
           Scotty.html $ R.renderHtml $ docTypeHtml $ do
             renderHead [] (postTags $ Types.tags post_) $ appendedBlogTitle $ Types.title post_
