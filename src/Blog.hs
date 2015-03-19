@@ -374,21 +374,32 @@ cachedBody redis key valueFunc = do
   if env == "production"
     then do
       redisValue <- liftIO $ Redis.runRedis redis $ Redis.get $ BL.toStrict $ TL.encodeUtf8 key
+      
       case redisValue of
-        Right (Just cached) -> do
-          addHeader "ETag" (TL.decodeUtf8 $ md5Sum $ BL.fromStrict $ cached)
-          Scotty.raw $ BL.fromStrict $ cached
+        Right (Just cached) -> rawBodyCached $ BL.fromStrict $ cached
         _ -> do
           v <- valueFunc
-          addHeader "ETag" (TL.decodeUtf8 $ md5Sum v)
           liftIO $ Redis.runRedis redis $ do
             Redis.set (BL.toStrict $ TL.encodeUtf8 key) (BL.toStrict v)
             Redis.expire (BL.toStrict $ TL.encodeUtf8 key) 3600
-          Scotty.raw v
-    else do
-      v <- valueFunc
-      addHeader "ETag" (TL.decodeUtf8 $ md5Sum v)
-      Scotty.raw v
+          rawBodyCached v
+          
+    else valueFunc >>= Scotty.raw
+    
+rawBodyCached :: BL.ByteString -> ActionM ()
+rawBodyCached str = do
+  let hashSum = (md5Sum str)
+  maybeinm <- Scotty.header "If-None-Match"
+  case maybeinm of
+    Just inm -> do
+      if hashSum == (TL.encodeUtf8 inm)
+        then status $ Status 304 ""
+        else do
+          addHeader "ETag" $ TL.decodeUtf8 hashSum
+          Scotty.raw str
+    Nothing -> do
+      addHeader "ETag" $ TL.decodeUtf8 hashSum
+      Scotty.raw str
 
 -------------------------------------------------------------------------------
 --- | Database
