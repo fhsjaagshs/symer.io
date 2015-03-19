@@ -60,8 +60,9 @@ main = do
     liftIO $ withTransaction pg $ runMigration $ MigrationContext (MigrationFile "blog.sql" "./migrations/blog.sql") True pg
     liftIO $ withTransaction pg $ runMigration $ MigrationContext (MigrationFile "array_funcs.sql" "./migrations/array_funcs.sql") True pg
     liftIO $ withTransaction pg $ runMigration $ MigrationContext (MigrationFile "authorship.sql" "./migrations/authorship.sql") True pg
-    -- liftIO $ putStrLn "--| clearing cached data from Redis"
-    -- liftIO $ Redis.runRedis redis $ Redis.flushall
+    liftIO $ withTransaction pg $ runMigration $ MigrationContext (MigrationFile "drafts.sql" "./migrations/drafts.sql") True pg
+    liftIO $ putStrLn "--| clearing cached data from Redis"
+    liftIO $ Redis.runRedis redis $ Redis.flushall
     liftIO $ putStrLn "--| blog started"
   
     -- shortcuts for auth
@@ -85,6 +86,17 @@ main = do
           render (take postsPerPage posts) maybeUser
           renderPageControls mPageNum (length posts > postsPerPage)
           
+    get "/drafts" $ do
+      maybeUser <- protected
+      maybePNum <- maybeParam "page"
+      let mPageNum = ((read . T.unpack . TL.toStrict <$> maybePNum)) :: Maybe Integer
+      posts <- liftIO $ getDrafts pg (fromJust maybeUser) mPageNum
+      Scotty.html $ R.renderHtml $ docTypeHtml $ do
+        renderHead [] [("robots","noindex, nofollow")] (appendedBlogTitle "Drafts")
+        renderBody (Just "Drafts") Nothing maybeUser $ do
+          render (take postsPerPage posts) maybeUser
+          renderPageControls mPageNum (length posts > postsPerPage)
+          
     -- create a post
     get "/posts/new" $ do
       protected
@@ -101,6 +113,9 @@ main = do
       case res of
         Nothing -> next
         Just post_ -> do
+          when   ((Types.isDraft post_) && (isNothing maybeUser)) (redirect "/unauthorized")
+          unless ((Types.author post_) == (fromJust maybeUser)) (redirect "/unauthorized")
+
           Scotty.html $ R.renderHtml $ docTypeHtml $ do
             renderHead [] (postTags $ Types.tags post_) $ appendedBlogTitle $ Types.title post_
             renderBody (Just blogTitle) (Just blogSubtitle) maybeUser $ do
@@ -196,6 +211,7 @@ main = do
                                                     (TL.toStrict <$> lookup "body" ps)
                                                     (((splitList ',') . TL.unpack) <$> (lookup "tags" ps))
                                                     (((splitList ',') . TL.unpack) <$> (lookup "deleted_tags" ps))
+                                                    ((read . TL.unpack) <$> (lookup "draft" ps))
                                                    )
       case maybeBPIdentifier of
         Nothing -> do
@@ -279,23 +295,27 @@ renderMdEditor :: Maybe BlogPost -> Html
 renderMdEditor Nothing = do
   div ! A.id "preview" $ ""
   textarea ! A.id "editor" $ ""
-renderMdEditor (Just (BlogPost identifier_ _ body_ _ _ _ _)) = do
+renderMdEditor (Just (BlogPost identifier_ _ body_ _ _ _ _ _)) = do
   div ! A.id "preview" $ ""
   textarea ! A.id "editor" ! customAttribute "post-id" (stringValue $ show identifier_) $ toHtml body_
       
 renderTitleField :: Maybe BlogPost -> Html
-renderTitleField (Just (BlogPost _ title_ _ _ _ _ _)) = input ! type_ "text" ! id "title-field" ! placeholder "Post title" ! value (textValue title_)
+renderTitleField (Just (BlogPost _ title_ _ _ _ _ _ _)) = input ! type_ "text" ! id "title-field" ! placeholder "Post title" ! value (textValue title_)
 renderTitleField Nothing = input ! type_ "text" ! id "title-field" ! placeholder "Post title"
 
 renderTagEditor :: Maybe BlogPost -> Html
 renderTagEditor Nothing = textarea ! A.id "tags" ! class_ "wordlist" $ do ""
-renderTagEditor (Just (BlogPost _ _ _ _ tags_ _ _)) = textarea ! A.id "tags" ! class_ "wordlist" $ do toHtml $ List.intercalate ", " tags_
+renderTagEditor (Just (BlogPost _ _ _ _ tags_ _ _ _)) = textarea ! A.id "tags" ! class_ "wordlist" $ do toHtml $ List.intercalate ", " tags_
   
 renderPostEditor :: Maybe BlogPost -> Html
 renderPostEditor maybeBlogPost = do
   renderTitleField maybeBlogPost
   renderMdEditor maybeBlogPost
   renderTagEditor maybeBlogPost
+
+  div ! A.id "checkbox-container" $ do
+    input ! type_ "checkbox" ! A.id "public-checkbox"
+    H.label ! customAttribute "for" "public-checkbox" $ "Public"
   
   a ! A.id "delete-button" ! class_ "blogbutton" ! rel "nofollow" $ "Delete"
   a ! A.id "preview-button" ! class_ "blogbutton" ! rel "nofollow" $ "Preview"
@@ -329,8 +349,7 @@ getUser :: Redis.Connection -> ActionM (Maybe User)
 getUser redis = do
   atoken <- Helpers.accessToken
   liftIO $ Auth.refreshObject redis (T.encodeUtf8 <$> atoken)
-  maybeUser <- liftIO $ Auth.getObject redis (T.encodeUtf8 <$> atoken)
-  return maybeUser
+  liftIO $ Auth.getObject redis (T.encodeUtf8 <$> atoken)
   
 checkAuth :: Redis.Connection -> ActionM (Maybe User)
 checkAuth redis = do
@@ -369,32 +388,36 @@ cachedBody redis key valueFunc = do
 -------------------------------------------------------------------------------
 --- | Database
 
-upsertBlogPost :: PG.Connection -> User -> Maybe Integer -> Maybe T.Text -> Maybe T.Text -> Maybe [String] -> Maybe [String] -> IO (Maybe Integer)
-upsertBlogPost pg _    (Just identifier_) Nothing       Nothing      Nothing      Nothing             = (listToMaybe <$> map fromOnly <$> ((query pg "SELECT identifier FROM blogposts WHERE identifier=? LIMIT 1" [identifier_]) :: IO [Only Integer])) :: IO (Maybe Integer)
-upsertBlogPost pg _    (Just identifier_) (Just title_) Nothing      Nothing      Nothing             = (listToMaybe <$> map fromOnly <$> ((query pg "UPDATE blogposts SET title=? WHERE identifier=? RETURNING identifier" (title_, identifier_)) :: IO [Only Integer])) :: IO (Maybe Integer)
-upsertBlogPost pg _    (Just identifier_) (Just title_) (Just body_) Nothing      Nothing             = (listToMaybe <$> map fromOnly <$> ((query pg "UPDATE blogposts SET title=?, bodyText=? WHERE identifier=? RETURNING identifier" (title_, body_, identifier_)) :: IO [Only Integer])) :: IO (Maybe Integer)
-upsertBlogPost pg _    (Just identifier_) (Just title_) (Just body_) (Just tags_) Nothing             = (listToMaybe <$> map fromOnly <$> ((query pg "UPDATE blogposts SET title=?, bodyText=?, tags=uniq_cat(tags,?)  WHERE identifier=? RETURNING identifier" (title_, body_, tags_, identifier_)) :: IO [Only Integer])) :: IO (Maybe Integer)
-upsertBlogPost pg _    (Just identifier_) (Just title_) (Just body_) (Just tags_) (Just deletedTags_) = (listToMaybe <$> map fromOnly <$> ((query pg "UPDATE blogposts SET title=?, bodyText=?, tags=array_diff(uniq_cat(tags, ?),?) WHERE identifier = ? RETURNING identifier" (title_, body_, tags_, deletedTags_, identifier_)) :: IO [Only Integer])) :: IO (Maybe Integer)
-upsertBlogPost pg _    (Just identifier_) Nothing       (Just body_) Nothing      Nothing             = (listToMaybe <$> map fromOnly <$> ((query pg "UPDATE blogposts SET bodyText=? WHERE identifier=? RETURNING identifier" (body_, identifier_)) :: IO [Only Integer])) :: IO (Maybe Integer)
-upsertBlogPost pg _    (Just identifier_) Nothing       Nothing      (Just tags_) Nothing             = (listToMaybe <$> map fromOnly <$> ((query pg "UPDATE blogposts SET tags=uniq_cat(tags,?) WHERE identifier=? RETURNING identifier" (tags_, identifier_)) :: IO [Only Integer])) :: IO (Maybe Integer)
-upsertBlogPost pg _    (Just identifier_) Nothing       (Just body_) (Just tags_) Nothing             = (listToMaybe <$> map fromOnly <$> ((query pg "UPDATE blogposts SET bodyText=?, tags=uniq_cat(tags,?) WHERE identifier=? RETURNING identifier" (body_, tags_, identifier_)) :: IO [Only Integer])) :: IO (Maybe Integer)
-upsertBlogPost pg _    (Just identifier_) (Just title_) Nothing      (Just tags_) Nothing             = (listToMaybe <$> map fromOnly <$> ((query pg "UPDATE blogposts SET title=?, tags=uniq_cat(tags,?) WHERE identifier=? RETURNING identifier" (title_, tags_, identifier_)) :: IO [Only Integer])) :: IO (Maybe Integer)
-upsertBlogPost pg _    (Just identifier_) Nothing       Nothing      Nothing      (Just deletedTags_) = (listToMaybe <$> map fromOnly <$> ((query pg "UPDATE blogposts SET tags=array_diff(tags,?) WHERE identifier=? RETURNING identifier" (deletedTags_, identifier_)) :: IO [Only Integer])) :: IO (Maybe Integer)
-upsertBlogPost pg _    (Just identifier_) Nothing       Nothing      (Just tags_) (Just deletedTags_) = (listToMaybe <$> map fromOnly <$> ((query pg "UPDATE blogposts SET tags=uniq_cat(array_diff(tags,?),?) WHERE identifier=? RETURNING identifier" (deletedTags_, tags_, identifier_)) :: IO [Only Integer])) :: IO (Maybe Integer)
-upsertBlogPost pg _    (Just identifier_) Nothing       (Just body_) Nothing      (Just deletedTags_) = (listToMaybe <$> map fromOnly <$> ((query pg "UPDATE blogposts SET bodyText=?, tags=array_diff(tags,?) WHERE identifier=? RETURNING identifier" (body_, deletedTags_, identifier_)) :: IO [Only Integer])) :: IO (Maybe Integer)
-upsertBlogPost pg _    (Just identifier_) (Just title_) Nothing      Nothing      (Just deletedTags_) = (listToMaybe <$> map fromOnly <$> ((query pg "UPDATE blogposts SET title=?, tags=array_diff(tags,?) WHERE identifier=? RETURNING identifier" (title_, deletedTags_, identifier_)) :: IO [Only Integer])) :: IO (Maybe Integer)
-upsertBlogPost pg _    (Just identifier_) (Just title_) (Just body_) Nothing      (Just deletedTags_) = (listToMaybe <$> map fromOnly <$> ((query pg "UPDATE blogposts SET title=?, bodyText=?, tags=array_diff(tags,?) WHERE identifier=? RETURNING identifier" (title_, body_, deletedTags_, identifier_)) :: IO [Only Integer])) :: IO (Maybe Integer)
-upsertBlogPost pg user Nothing            (Just title_) (Just body_) Nothing      _                   = (listToMaybe <$> map fromOnly <$> ((query pg "INSERT INTO blogposts (title, bodyText, author_id) VALUES (?, ?, ?) RETURNING identifier" (title_, body_, Types.uid user)) :: IO [Only Integer])) :: IO (Maybe Integer)
-upsertBlogPost pg user Nothing            (Just title_) (Just body_) (Just tags_) _                   = (listToMaybe <$> map fromOnly <$> ((query pg "INSERT INTO blogposts (title, bodyText, tags, author_id) VALUES (?, ?, ?, ?) RETURNING identifier" (title_, body_, tags_, Types.uid user)) :: IO [Only Integer])) :: IO (Maybe Integer)
-upsertBlogPost _  _    _                 _            _            _           _                      = return Nothing
+upsertBlogPost :: PG.Connection -> User -> Maybe Integer -> Maybe T.Text -> Maybe T.Text -> Maybe [String] -> Maybe [String] -> Maybe Bool -> IO (Maybe Integer)
+upsertBlogPost pg _    (Just identifier_) Nothing       Nothing      Nothing      Nothing             isdraft = (listToMaybe <$> map fromOnly <$> ((query pg "UPDATE blogposts SET is_draft=? WHERE identifier=? RETURNING identifier" (isdraft, identifier_)) :: IO [Only Integer])) :: IO (Maybe Integer)
+upsertBlogPost pg _    (Just identifier_) (Just title_) Nothing      Nothing      Nothing             isdraft = (listToMaybe <$> map fromOnly <$> ((query pg "UPDATE blogposts SET title=?, is_draft=? WHERE identifier=? RETURNING identifier" (title_, isdraft, identifier_)) :: IO [Only Integer])) :: IO (Maybe Integer)
+upsertBlogPost pg _    (Just identifier_) (Just title_) (Just body_) Nothing      Nothing             isdraft = (listToMaybe <$> map fromOnly <$> ((query pg "UPDATE blogposts SET title=?, bodyText=?, is_draft=? WHERE identifier=? RETURNING identifier" (title_, body_, isdraft, identifier_)) :: IO [Only Integer])) :: IO (Maybe Integer)
+upsertBlogPost pg _    (Just identifier_) (Just title_) (Just body_) (Just tags_) Nothing             isdraft = (listToMaybe <$> map fromOnly <$> ((query pg "UPDATE blogposts SET title=?, bodyText=?, tags=uniq_cat(tags,?), is_draft=? WHERE identifier=? RETURNING identifier" (title_, body_, tags_, isdraft, identifier_)) :: IO [Only Integer])) :: IO (Maybe Integer)
+upsertBlogPost pg _    (Just identifier_) (Just title_) (Just body_) (Just tags_) (Just deletedTags_) isdraft = (listToMaybe <$> map fromOnly <$> ((query pg "UPDATE blogposts SET title=?, bodyText=?, tags=array_diff(uniq_cat(tags,?),?), is_draft=? WHERE identifier=? RETURNING identifier" (title_, body_, tags_, deletedTags_, isdraft, identifier_)) :: IO [Only Integer])) :: IO (Maybe Integer)
+upsertBlogPost pg _    (Just identifier_) Nothing       (Just body_) Nothing      Nothing             isdraft = (listToMaybe <$> map fromOnly <$> ((query pg "UPDATE blogposts SET bodyText=?, is_draft=? WHERE identifier=? RETURNING identifier" (body_, isdraft, identifier_)) :: IO [Only Integer])) :: IO (Maybe Integer)
+upsertBlogPost pg _    (Just identifier_) Nothing       Nothing      (Just tags_) Nothing             isdraft = (listToMaybe <$> map fromOnly <$> ((query pg "UPDATE blogposts SET tags=uniq_cat(tags,?), is_draft=? WHERE identifier=? RETURNING identifier" (tags_, isdraft, identifier_)) :: IO [Only Integer])) :: IO (Maybe Integer)
+upsertBlogPost pg _    (Just identifier_) Nothing       (Just body_) (Just tags_) Nothing             isdraft = (listToMaybe <$> map fromOnly <$> ((query pg "UPDATE blogposts SET bodyText=?, tags=uniq_cat(tags,?), is_draft=? WHERE identifier=? RETURNING identifier" (body_, tags_, isdraft, identifier_)) :: IO [Only Integer])) :: IO (Maybe Integer)
+upsertBlogPost pg _    (Just identifier_) (Just title_) Nothing      (Just tags_) Nothing             isdraft = (listToMaybe <$> map fromOnly <$> ((query pg "UPDATE blogposts SET title=?, tags=uniq_cat(tags,?), is_draft=? WHERE identifier=? RETURNING identifier" (title_, tags_, isdraft, identifier_)) :: IO [Only Integer])) :: IO (Maybe Integer)
+upsertBlogPost pg _    (Just identifier_) Nothing       Nothing      Nothing      (Just deletedTags_) isdraft = (listToMaybe <$> map fromOnly <$> ((query pg "UPDATE blogposts SET tags=array_diff(tags,?), is_draft=? WHERE identifier=? RETURNING identifier" (deletedTags_, isdraft, identifier_)) :: IO [Only Integer])) :: IO (Maybe Integer)
+upsertBlogPost pg _    (Just identifier_) Nothing       Nothing      (Just tags_) (Just deletedTags_) isdraft = (listToMaybe <$> map fromOnly <$> ((query pg "UPDATE blogposts SET tags=uniq_cat(array_diff(tags,?),?), is_draft=? WHERE identifier=? RETURNING identifier" (deletedTags_, tags_, isdraft, identifier_)) :: IO [Only Integer])) :: IO (Maybe Integer)
+upsertBlogPost pg _    (Just identifier_) Nothing       (Just body_) Nothing      (Just deletedTags_) isdraft = (listToMaybe <$> map fromOnly <$> ((query pg "UPDATE blogposts SET bodyText=?, tags=array_diff(tags,?), is_draft=? WHERE identifier=? RETURNING identifier" (body_, deletedTags_, isdraft, identifier_)) :: IO [Only Integer])) :: IO (Maybe Integer)
+upsertBlogPost pg _    (Just identifier_) (Just title_) Nothing      Nothing      (Just deletedTags_) isdraft = (listToMaybe <$> map fromOnly <$> ((query pg "UPDATE blogposts SET title=?, tags=array_diff(tags,?), is_draft=? WHERE identifier=? RETURNING identifier" (title_, deletedTags_, isdraft, identifier_)) :: IO [Only Integer])) :: IO (Maybe Integer)
+upsertBlogPost pg _    (Just identifier_) (Just title_) (Just body_) Nothing      (Just deletedTags_) isdraft = (listToMaybe <$> map fromOnly <$> ((query pg "UPDATE blogposts SET title=?, bodyText=?, tags=array_diff(tags,?), is_draft=? WHERE identifier=? RETURNING identifier" (title_, body_, deletedTags_, isdraft, identifier_)) :: IO [Only Integer])) :: IO (Maybe Integer)
+upsertBlogPost pg user Nothing            (Just title_) (Just body_) Nothing      _                   isdraft = (listToMaybe <$> map fromOnly <$> ((query pg "INSERT INTO blogposts (title, bodyText, author_id, is_draft) VALUES (?, ?, ?, ?) RETURNING identifier" (title_, body_, Types.uid user, isdraft)) :: IO [Only Integer])) :: IO (Maybe Integer)
+upsertBlogPost pg user Nothing            (Just title_) (Just body_) (Just tags_) _                   isdraft = (listToMaybe <$> map fromOnly <$> ((query pg "INSERT INTO blogposts (title, bodyText, tags, author_id, is_draft) VALUES (?, ?, ?, ?, ?) RETURNING identifier" (title_, body_, tags_, Types.uid user, isdraft)) :: IO [Only Integer])) :: IO (Maybe Integer)
+upsertBlogPost _  _    _                 _            _            _           _                      _       = return Nothing
 
 getBlogPostsByTag :: PG.Connection -> T.Text -> Maybe Integer -> IO [BlogPost]
 getBlogPostsByTag pg tag Nothing        = getBlogPostsByTag pg tag (Just 1)
-getBlogPostsByTag pg tag (Just pageNum) = query pg "SELECT b.*,u FROM blogposts b, users u WHERE u.id=b.author_id AND ?=any(tags) ORDER BY identifier DESC OFFSET ? LIMIT ?" (tag,(pageNum-1)*(fromIntegral postsPerPage),postsPerPage+1)
+getBlogPostsByTag pg tag (Just pageNum) = query pg "SELECT b.*,u FROM blogposts b, users u WHERE is_draft='f'::bool AND u.id=b.author_id AND ?=any(b.tags) ORDER BY identifier DESC OFFSET ? LIMIT ?" (tag,(pageNum-1)*(fromIntegral postsPerPage),postsPerPage+1)
 
 getBlogPosts :: PG.Connection -> Maybe Integer -> IO [BlogPost]
-getBlogPosts pg (Just pageNum) = query pg "SELECT b.*,u FROM blogposts b, users u WHERE u.id=b.author_id ORDER BY identifier DESC OFFSET ? LIMIT ?" ((pageNum-1)*(fromIntegral postsPerPage), postsPerPage+1)
+getBlogPosts pg (Just pageNum) = query pg "SELECT b.*,u FROM blogposts b, users u WHERE is_draft='f'::bool AND u.id=b.author_id ORDER BY identifier DESC OFFSET ? LIMIT ?" ((pageNum-1)*(fromIntegral postsPerPage), postsPerPage+1)
 getBlogPosts pg Nothing        = getBlogPosts pg (Just 1)
+
+getDrafts :: PG.Connection -> User -> Maybe Integer -> IO [BlogPost]
+getDrafts pg user (Just pageNum) = query pg "SELECT b.*,u FROM blogposts b, users u WHERE is_draft='t'::bool AND b.author_id=? AND u.id=b.author_id ORDER BY identifier DESC OFFSET ? LIMIT ?" (Types.uid user, (pageNum-1)*(fromIntegral postsPerPage), postsPerPage+1)
+getDrafts pg user Nothing        = getDrafts pg user (Just 1)
 
 getBlogPost :: PG.Connection -> Integer -> IO (Maybe BlogPost)
 getBlogPost pg identifier_ = listToMaybe <$> query pg "SELECT b.*,u FROM blogposts b, users u WHERE u.id=b.author_id AND identifier=? LIMIT 1" [identifier_ :: Integer]

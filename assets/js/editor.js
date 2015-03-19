@@ -10,21 +10,21 @@ var deleteButton = document.getElementById("delete-button");
 var saveButton = document.getElementById("save-button");
 var titleField = document.getElementById("title-field");
 
-var post = {}
-post.tags = []
-post.deleted_tags = []
+var post = {};
+post.tags = [];
+post.deleted_tags = [];
 var attrPostId = editor.getAttribute("post-id");
 if (attrPostId) { post.id = parseInt(attrPostId); }
 
 function deleteTag(word) {
   post.deleted_tags.push(word);
-  var idx = post.tags.indexOf(word)
+  var idx = post.tags.indexOf(word);
   if (idx != -1) post.tags.splice(idx, 1);
 }
 
 function addTag(word) {
   post.tags.push(word);
-  var idx = post.deleted_tags.indexOf(word)
+  var idx = post.deleted_tags.indexOf(word);
   if (idx != -1) post.deleted_tags.splice(idx, 1);
 }
 
@@ -43,17 +43,19 @@ saveButton.onclick = function() {
     if (post.id == -1) delete post.deleted_tags;
     else post.deleted_tags = post.deleted_tags.join();
   } else delete post.deleted_tags;
+  
+  post.draft = $("#public-checkbox").is(":checked") ? "False" : "True";
 
   sendHTTP("POST", "/posts", post, function(http) {
     if (http.status == 200) {
       window.location.href = http.getResponseHeader("Location");
     }
-  })
+  });
 }
 
 previewButton.onclick = function() {
   editing = !editing;
-  previewButton.innerHTML = editing ? "Preview" : "Edit" ;
+  previewButton.innerHTML = editing ? "Preview" : "Edit";
   editor.style.display = editing ? "block" : "none";
   preview.innerHTML = editing ? "" : "<div class=\"post-content\">" + marked(editor.value) + "</div>";
 }
@@ -62,7 +64,7 @@ deleteButton.onclick = function() {
   if (confirm("Are you sure you want to delete this post?")) {
     sendHTTP("DELETE", "/posts/" + post.id, {}, function(http) {
       if (http.status == 200) {
-        window.location.href = "/"
+        window.location.href = "/";
       }
     });
   }

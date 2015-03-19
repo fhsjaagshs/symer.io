@@ -43,3 +43,35 @@
 #save-button.blogbutton:hover { color: #fff;background-color: #8A8A8A; }
 #preview-button.blogbutton:hover { color: #fff;background-color: #8A8A8A; }
 #delete-button.blogbutton:hover { color: #fff;background-color: #8A8A8A; }
+
+#checkbox-container {
+  display: block;
+  margin-bottom: 20px;
+}
+
+input[type=checkbox]#public-checkbox + label {
+  font-size: 18px;
+  vertical-align: middle;
+}
+
+input[type=checkbox]#public-checkbox {
+  -webkit-appearance:button;
+  -moz-appearance:button;
+  appearance:button;
+  
+  border-radius:2.5px;
+  background-color:#A5A5A5;
+  width:18px;
+  height:18px;
+  margin:0px;
+  margin-right:5px;
+  vertical-align: middle;
+}
+
+input[type=checkbox]#public-checkbox:checked {
+  background-color:#00F65F;
+}
+
+input[type=checkbox]#public-checkbox:hover {
+  background-color: #8CF68A;
+}

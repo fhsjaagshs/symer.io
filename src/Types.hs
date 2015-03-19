@@ -8,7 +8,6 @@ import           PGExtensions()
 import           GHC.Generics
 import           Control.Applicative
 import           Control.Monad
-import           Control.Monad.IO.Class
 
 import qualified Data.ByteString.Char8 as B
 import qualified Data.ByteString.Lazy.Char8 as BL
@@ -28,7 +27,7 @@ import           Text.Blaze.Html5 as H hiding (style, param, map)
 import           Text.Blaze.Html5.Attributes as A
 import           Blaze.ByteString.Builder (toLazyByteString, fromByteString)
 
-import           Prelude as P
+import           Prelude as P hiding (div)
 import           Data.Typeable
 
 -------------------------------------------------------------------------------
@@ -49,8 +48,8 @@ data User = User {
   passwordHash :: Maybe T.Text
 } deriving (Show, Generic, Typeable)
 
-instance FromJSON User
 instance ToJSON User
+instance FromJSON User
 
 instance Eq User where
   (==) (User uidOne _ _ _) (User uidTwo _ _ _) = ((==) uidOne uidTwo)
@@ -106,45 +105,58 @@ data BlogPost = BlogPost {
   timestamp :: UTCTime,
   tags :: [String],
   author_id :: Integer,
+  isDraft :: Bool,
   author :: User
 } deriving (Show)
 
 instance Eq BlogPost where
-  (==) (BlogPost idOne _ _ _ _ _ _) (BlogPost idTwo _ _ _ _ _ _) = ((==) idOne idTwo)
+  (==) one two = (identifier one) == (identifier two)
 
 instance FromRow BlogPost where
-  fromRow = BlogPost <$> field <*> field <*> field <*> field <*> field <*> field <*> field
+  fromRow = BlogPost <$> field <*> field <*> field <*> field <*> field <*> field <*> field <*> field
   
 instance ToJSON BlogPost where
-  toJSON (BlogPost identifier_ title_ body_ timestamp_ tags_ _ author_) =
+  toJSON (BlogPost identifier_ title_ body_ timestamp_ tags_ _ isDraft_ author_) =
     Aeson.object [
       "id" .= identifier_,
       "title" .= title_,
       "body" .= body_,
       "timestamp" .= ((Aeson.String $ T.decodeUtf8 $ BL.toStrict $ toLazyByteString $ utcTimeToBuilder timestamp_) :: Value),
       "tags" .= ((Aeson.Array $ Vector.fromList $ P.map (Aeson.String . T.pack) tags_) :: Value),
+      "draft" .= isDraft_,
       "author" .= toJSON author_
     ]
     
 instance Composable BlogPost where
-  render (BlogPost identifier_ title_ body_ timestamp_ tags_ _ author_) Nothing = do
+  -- Unauthenticated
+  render (BlogPost identifier_ title_ body_ timestamp_ tags_ _ _ author_) Nothing = do
     a ! href (stringValue $ (++) "/posts/" $ show identifier_) $ do
       h1 ! class_ "post-title" $ toHtml title_
     h4 ! class_ "post-subtitle" $ toHtml $ T.append (T.pack $ formatDate timestamp_) (T.append " • " $ Types.displayName author_)
     toHtml $ map (\t -> a ! class_ "taglink" ! href (stringValue $ "/posts/by/tag/" ++ t) $ h4 ! class_ "post-subtitle" $ toHtml $ t) tags_
-    H.div ! class_ "post-content" ! style "text-align: left;" $ toHtml $ markdown def body_
-  render (BlogPost identifier_ title_ body_ timestamp_ tags_ _ author_) (Just user_) = do
+    div ! class_ "post-content" ! style "text-align: left;" $ toHtml $ markdown def body_
+  -- Authenticated, draft
+  render (BlogPost identifier_ title_ body_ timestamp_ tags_ _ True author_) (Just user_) = do
+    a ! href (stringValue $ (++) "/posts/" $ show identifier_) $ do
+      h1 ! class_ "post-title post-draft" $ toHtml title_
+    h4 ! class_ "post-subtitle post-draft" $ toHtml $ T.append (T.pack $ formatDate timestamp_) (T.append " • " $ Types.displayName author_)
+    toHtml $ map (\t -> a ! class_ "taglink" ! href (stringValue $ "/posts/by/tag/" ++ t) $ toHtml $ h4 ! class_ "post-subtitle" $ toHtml $ t) tags_
+    when (author_ == user_) $  a ! class_ "post-edit-button post-draft" ! href (stringValue $ ("/posts/" ++ (show identifier_) ++ "/edit")) ! rel "nofollow" $ "edit"
+    div ! class_ "post-content post-draft" ! style "text-align: left;" $ toHtml $ markdown def body_
+  -- Authenticated, published
+  render (BlogPost identifier_ title_ body_ timestamp_ tags_ _ False author_) (Just user_) = do
     a ! href (stringValue $ (++) "/posts/" $ show identifier_) $ do
       h1 ! class_ "post-title" $ toHtml title_
     h4 ! class_ "post-subtitle" $ toHtml $ T.append (T.pack $ formatDate timestamp_) (T.append " • " $ Types.displayName author_)
     toHtml $ map (\t -> a ! class_ "taglink" ! href (stringValue $ "/posts/by/tag/" ++ t) $ toHtml $ h4 ! class_ "post-subtitle" $ toHtml $ t) tags_
     when (author_ == user_) $  a ! class_ "post-edit-button" ! href (stringValue $ ("/posts/" ++ (show identifier_) ++ "/edit")) ! rel "nofollow" $ "edit"
-    H.div ! class_ "post-content" ! style "text-align: left;" $ toHtml $ markdown def body_
+    div ! class_ "post-content" ! style "text-align: left;" $ toHtml $ markdown def body_
     
 instance Composable [BlogPost] where
   render [] _ = return ()
   render [x] user = render x user
   render (x:xs) user = do
     render x user
-    hr ! class_ "separator"
-    render xs user
+    unless (null xs) $ do
+      hr ! class_ "separator"
+      render xs user
