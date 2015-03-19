@@ -13,9 +13,6 @@ import qualified Data.Text.Encoding as T
 import qualified Data.Text.Lazy as TL
 import qualified Data.Text.Lazy.Encoding as TL
 import qualified Data.Text.Lazy.Builder as TL
-import           Data.Time.Clock
-import           Data.Time.Lens as TLens
---import           Data.Time.LocalTime as LocalTime
 import           System.Locale
 import           Data.Time.Format
 

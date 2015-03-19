@@ -195,7 +195,7 @@ main = do
       case (res :: Maybe BlogPost) of
         Nothing -> do
           status $ Status 404 "blog post not found."
-        Just bp -> do
+        Just _ -> do
           Scotty.text "ok"  
 
     -- creates/updates a BlogPost in the database
