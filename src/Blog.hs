@@ -37,6 +37,7 @@ import           Magic -- for mimetypes
 -- comments (id, thread_id, parent_id, body, email, display_name)
 -- Page numbers at bottom (would require extra db hit)
 -- Site footer (copyright etc)
+-- FIX: crashes after deleting blog post
 
 -- Miscellaneous Ideas:
 -- 1. 'Top 5' tags map in side bar?
@@ -191,8 +192,8 @@ main = do
     delete "/posts/:id" $ do
       authUser <- protected
       identifier_ <- param "id"
-      res <- liftIO $ listToMaybe <$> query pg "DELETE FROM blogposts WHERE identifier=? AND author_id=? RETURNING *" (identifier_ :: Integer, Types.uid $ fromJust authUser)
-      case (res :: Maybe BlogPost) of
+      res <- liftIO $ deleteBlogPost pg identifier_ (fromJust authUser)
+      case (res :: Maybe Integer) of
         Nothing -> do
           status $ Status 404 "blog post not found."
         Just _ -> do
@@ -425,5 +426,7 @@ getDrafts pg user Nothing        = getDrafts pg user (Just 1)
 getBlogPost :: PG.Connection -> Integer -> IO (Maybe BlogPost)
 getBlogPost pg identifier_ = listToMaybe <$> query pg "SELECT b.*,u FROM blogposts b, users u WHERE u.id=b.author_id AND identifier=? LIMIT 1" [identifier_ :: Integer]
 
+deleteBlogPost :: PG.Connection -> Integer -> User -> IO (Maybe Integer)
+deleteBlogPost pg identifier_ (User uid_ _ _ _) = listToMaybe <$> map fromOnly <$> ((query pg "DELETE FROM blogposts WHERE identifier=? AND author_id=? RETURNING identifier" (identifier_, uid_)) :: IO [Only Integer])
 -- getPageCount :: PG.Connection -> IO (Maybe Integer)
 -- getPageCount pg = listToMaybe <$> query_ pg "SELECT ceil(COUNT(*)::real/10::real) as page_count FROM blogposts"
