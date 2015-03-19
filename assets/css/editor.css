@@ -17,6 +17,7 @@
 }
 
 #title-field {
+  font-family: oxygen-regular,sans-serif;
   width: calc(100% - 50px);
   text-align: center;
   margin: 25px 0px;
@@ -50,8 +51,9 @@
 }
 
 input[type=checkbox]#public-checkbox + label {
-  font-size: 18px;
+  font-size: 20px;
   vertical-align: middle;
+  font-family: sans-serif;
 }
 
 input[type=checkbox]#public-checkbox {
@@ -59,19 +61,27 @@ input[type=checkbox]#public-checkbox {
   -moz-appearance:button;
   appearance:button;
   
-  border-radius:2.5px;
+  border: none;
+  
+  border-radius: 15%;
   background-color:#A5A5A5;
-  width:18px;
-  height:18px;
+  width:25px;
+  height:25px;
   margin:0px;
   margin-right:5px;
   vertical-align: middle;
 }
 
 input[type=checkbox]#public-checkbox:checked {
-  background-color:#00F65F;
+  background-color: #65A38C;
 }
 
 input[type=checkbox]#public-checkbox:hover {
-  background-color: #8CF68A;
+  border: 2.5px solid;
+  border-color: #65A38C;
+}
+
+input[type=checkbox]#public-checkbox:checked:hover {
+  border: 2.5px solid;
+  border-color: #A5A5A5;
 }
