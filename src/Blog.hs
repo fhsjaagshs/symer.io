@@ -38,6 +38,7 @@ import           Magic -- for mimetypes
 -- Page numbers at bottom (would require extra db hit)
 -- Site footer (copyright etc)
 -- FIX: crashes after deleting blog post
+-- drafts button
 
 -- Miscellaneous Ideas:
 -- 1. 'Top 5' tags map in side bar?
