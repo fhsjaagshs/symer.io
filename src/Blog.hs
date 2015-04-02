@@ -111,6 +111,7 @@ main = do
       identifier_ <- param "id"
       maybeUser <- authenticatedUser
       res <- liftIO $ getBlogPost pg identifier_
+      commentsRes <- liftIO $ getComments pg identifier_
       case res of
         Nothing -> next
         Just post_ -> do
@@ -122,6 +123,8 @@ main = do
             renderHead [] (postTags $ Types.tags post_) $ appendedBlogTitle $ Types.title post_
             renderBody (Just blogTitle) (Just blogSubtitle) maybeUser $ do
               render post_ maybeUser
+              hr ! class_ "separator"
+              
     
     get "/posts/by/tag/:tag" $ do
       tag <- param "tag"
@@ -421,6 +424,9 @@ upsertBlogPost pg _    (Just identifier_) (Just title_) (Just body_) Nothing    
 upsertBlogPost pg user Nothing            (Just title_) (Just body_) Nothing      _                   isdraft = (listToMaybe <$> map fromOnly <$> ((query pg "INSERT INTO blogposts (title, bodyText, author_id, is_draft) VALUES (?, ?, ?, ?) RETURNING identifier" (title_, body_, Types.uid user, isdraft)) :: IO [Only Integer])) :: IO (Maybe Integer)
 upsertBlogPost pg user Nothing            (Just title_) (Just body_) (Just tags_) _                   isdraft = (listToMaybe <$> map fromOnly <$> ((query pg "INSERT INTO blogposts (title, bodyText, tags, author_id, is_draft) VALUES (?, ?, ?, ?, ?) RETURNING identifier" (title_, body_, tags_, Types.uid user, isdraft)) :: IO [Only Integer])) :: IO (Maybe Integer)
 upsertBlogPost _  _    _                 _            _            _           _                      _       = return Nothing
+
+getComments :: PG.Connection -> Integer -> IO [Comment]
+getComments pg postid = query pg "SELECT * FROM comments WHERE parentId=?" [postid]
 
 getBlogPostsByTag :: PG.Connection -> T.Text -> Maybe Integer -> IO [BlogPost]
 getBlogPostsByTag pg tag Nothing        = getBlogPostsByTag pg tag (Just 1)

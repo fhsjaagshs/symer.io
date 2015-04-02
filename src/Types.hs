@@ -8,6 +8,7 @@ import           PGExtensions()
 import           GHC.Generics
 import           Control.Applicative
 import           Control.Monad
+import           Data.Maybe
 
 import qualified Data.ByteString.Char8 as B
 import qualified Data.ByteString.Lazy.Char8 as BL
@@ -15,12 +16,15 @@ import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
 import qualified Data.Vector as Vector
 import           Data.Time.Clock
+import           Data.List
 
 import           Cheapskate
 import           Data.Aeson as Aeson
+import           Database.PostgreSQL.Simple as PG
 import           Database.PostgreSQL.Simple.FromField as PG.FromField
 import           Database.PostgreSQL.Simple.ToField as PG.ToField
 import           Database.PostgreSQL.Simple.FromRow as PG.FromRow
+import           Database.PostgreSQL.Simple.ToRow as PG.ToRow
 import           Database.PostgreSQL.Simple.Time as PG.Time
 
 import           Text.Blaze.Html5 as H hiding (style, param, map)
@@ -33,11 +37,92 @@ import           Data.Typeable
 -------------------------------------------------------------------------------
 --- | Typeclasses
 
+-- renders records into HTML using blaze
 class Composable a where
   render :: a -> Maybe User -> Html
   renderBasic :: a -> Html
   renderBasic comp = render comp Nothing
   
+-------------------------------------------------------------------------------
+--- | Comment data type
+
+-- Used to structure comments into a hierarchy
+-- based on lineage
+data Node = Node {
+  data_ :: Comment,
+  children :: [Node],
+  parent :: Maybe Node
+}
+
+instance Eq Node where
+  (==) (Node d c p) (Node dp cp pp) = (d == dp) && (c == cp) && (p == pp)
+
+instance Show Node where
+  show (Node d c p) = "Node (" ++ (show d) ++ ", " ++ (show p) ++ ") " ++ (show c)
+
+instance Composable Node where
+  render (Node comment children parent) = A.id
+
+instance Composable [Node] where
+  render nodes _ = A.id
+
+data Comment = Comment {
+  cid :: Integer,
+  parentId :: Maybe Integer,
+  email :: T.Text,
+  tstamp :: UTCTime,
+  comment :: T.Text
+}
+
+instance Eq Comment where
+  (==) (Comment cid_ _ _ _ _) (Comment cidTwo_ _ _ _ _) = (cid_ == cidTwo_)
+
+instance ToJSON Comment
+instance FromJSON Comment
+
+instance FromRow Comment where
+  fromRow = Comment <$> field <*> field <*> field <*> field <*> field
+
+instance Composable [Comment] where
+  render comments _ = nestComments $ map (flip Node $ []) comments
+
+parentage :: Node -> Integer
+parentage (Node _ _ (Just p)) = 0
+parentage n = 1 + parentage (parent n)
+
+--          parent  child
+isParent :: Node -> Node -> Bool
+isParent parent child
+  | (((==) (cid $ Types.data_ parent)) <$> (parentId $ Types.data_ child)) == (Just True) = True
+  | elem child (children parent) = True
+  | otherwise = False
+
+--              anc     desc
+isDescendent :: Node -> Node -> Bool
+isDescendent _       (Node (Comment _ Nothing _ _ _) _ _) = False
+isDescendent nodeOne nodeTwo -- nodeTwo is nodeOne's child OR nodeTwo is a child of a child of a child of nodeOne
+  | isParent nodeOne nodeTwo = True
+  | otherwise = any ((flip isDescendent) nodeTwo) $ children nodeOne
+
+isRoot :: Node -> Bool
+isRoot = isNothing . parentId . Types.data_
+
+-- Adds child to the first node's children, appling func to each of the children
+appendChild :: Node -> Node -> ([Node] -> [Node]) -> Node
+appendChild (Node c children_ parent_) child func = Node c (func (child:children_)) parent_
+
+nestComments :: [Node] -> [Node]
+nestComments [] = []
+nestComments [a] = [a]
+nestComments (c:xs) = case c of
+                        (Node (Comment _ (Just pid_) _ _ _) _ _) -> do
+                          case (filter ((flip isDescendent) c) xs) of
+                            [] -> c:nestComments xs
+                            prnts -> nestComments $ (map (\p -> appendChild p c nestComments) prnts) ++ (xs \\ prnts)
+                        _ -> if all isRoot (c:xs)
+                              then (c:xs)
+                              else nestComments $ xs ++ [c]
+
 -------------------------------------------------------------------------------
 --- | User data type
   
@@ -80,6 +165,9 @@ instance ToField User where
   
 instance FromRow User where
   fromRow = User <$> field <*> field <*> field <*> field
+  
+instance ToRow User where
+  toRow (User uid_ username_ displayName_ passwordHash_) = [toField uid_, toField username_, toField displayName_, toField passwordHash_]
 
 parseUserRow :: [T.Text] -> User
 parseUserRow (uid_:username_:dispName_:pwh_:[]) = User (read $ T.unpack uid_) username_ dispName_ (Just pwh_)
@@ -114,6 +202,12 @@ instance Eq BlogPost where
 
 instance FromRow BlogPost where
   fromRow = BlogPost <$> field <*> field <*> field <*> field <*> field <*> field <*> field <*> field
+  
+instance ToRow BlogPost where
+  toRow (BlogPost identifier_ title_ body_ timestamp_ tags_ author_id_ isDraft_ _) =
+    [toField identifier_, toField title_, toField body_, toField timestamp_, Many [Plain $ fromByteString "uniq_cat(tags,", toField tags_, Plain $ fromByteString ")"], toField author_id_, toField isDraft_]
+  -- toRowDeletedTags deletedTags_ (BlogPost identifier_ title_ body_ timestamp_ tags_ author_id_ isDraft_ _) =
+    -- [toField identifier_, toField title_, toField body_, toField timestamp_, Many [Plain $ fromByteString "array_diff(uniq_cat(tags,", toField tags_, Plain $ fromByteString "),", toField deletedTags_, Plain $ fromByteString ")"], toField author_id_, toField isDraft_]
   
 instance ToJSON BlogPost where
   toJSON (BlogPost identifier_ title_ body_ timestamp_ tags_ _ isDraft_ author_) =
