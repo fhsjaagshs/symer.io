@@ -61,34 +61,47 @@ instance Show Node where
   show (Node d c p) = "Node (" ++ (show d) ++ ", " ++ (show p) ++ ") " ++ (show c)
 
 instance Composable Node where
-  render (Node comment children parent) = A.id
+  render (Node comment children parent) user = do
+    -- TODO: nesting
+    div ! class_ "comment" ! style (stringValue $ "margin-left: " ++ (show $ (*) 50 $ parentage (Node comment children parent)) ++ "px") $ do
+      img ! src (stringValue $ gravatarUrl $ email comment) ! width "90" ! height "90"
+      div $ do
+        h3 $ toHtml $ Types.commentDisplayName comment
+        p $ toHtml $ Types.commentBody comment
+    render children user
 
 instance Composable [Node] where
-  render nodes _ = A.id
+  render [] _ = return ()
+  render [a] user = render a user
+  render (x:xs) user = do
+    render x user
+    render xs user
 
 data Comment = Comment {
   cid :: Integer,
   parentId :: Maybe Integer,
+  postId :: Integer,
   email :: T.Text,
+  commentDisplayName :: T.Text,
   tstamp :: UTCTime,
-  comment :: T.Text
-}
+  commentBody :: T.Text
+} deriving (Show, Generic)
 
 instance Eq Comment where
-  (==) (Comment cid_ _ _ _ _) (Comment cidTwo_ _ _ _ _) = (cid_ == cidTwo_)
+  (==) (Comment cid_ _ _ _ _ _ _) (Comment cidTwo_ _ _ _ _ _ _) = (cid_ == cidTwo_)
 
 instance ToJSON Comment
 instance FromJSON Comment
 
 instance FromRow Comment where
-  fromRow = Comment <$> field <*> field <*> field <*> field <*> field
+  fromRow = Comment <$> field <*> field <*> field <*> field <*> field <*> field <*> field
 
 instance Composable [Comment] where
-  render comments _ = nestComments $ map (flip Node $ []) comments
+  render comments user = render (nestComments $ map (\c -> Node c [] Nothing) comments) user
 
 parentage :: Node -> Integer
-parentage (Node _ _ (Just p)) = 0
-parentage n = 1 + parentage (parent n)
+parentage (Node _ _ Nothing) = 0
+parentage (Node _ _ (Just p)) = 1 + parentage p
 
 --          parent  child
 isParent :: Node -> Node -> Bool
@@ -99,7 +112,7 @@ isParent parent child
 
 --              anc     desc
 isDescendent :: Node -> Node -> Bool
-isDescendent _       (Node (Comment _ Nothing _ _ _) _ _) = False
+isDescendent _       (Node (Comment _ Nothing _ _ _ _ _) _ _) = False
 isDescendent nodeOne nodeTwo -- nodeTwo is nodeOne's child OR nodeTwo is a child of a child of a child of nodeOne
   | isParent nodeOne nodeTwo = True
   | otherwise = any ((flip isDescendent) nodeTwo) $ children nodeOne
@@ -109,13 +122,13 @@ isRoot = isNothing . parentId . Types.data_
 
 -- Adds child to the first node's children, appling func to each of the children
 appendChild :: Node -> Node -> ([Node] -> [Node]) -> Node
-appendChild (Node c children_ parent_) child func = Node c (func (child:children_)) parent_
+appendChild (Node c children_ parent_) child func = Node c (func ((Node (Types.data_ child) (children child) (Just (Node c children_ parent_))):children_)) parent_
 
 nestComments :: [Node] -> [Node]
 nestComments [] = []
 nestComments [a] = [a]
 nestComments (c:xs) = case c of
-                        (Node (Comment _ (Just pid_) _ _ _) _ _) -> do
+                        (Node (Comment _ (Just pid_) _ _ _ _ _) _ _) -> do
                           case (filter ((flip isDescendent) c) xs) of
                             [] -> c:nestComments xs
                             prnts -> nestComments $ (map (\p -> appendChild p c nestComments) prnts) ++ (xs \\ prnts)

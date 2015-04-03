@@ -140,3 +140,24 @@ a.blogbutton:hover {
 a.blogbutton:active {
   background-color: #6A6A6A;
 }
+
+.comment {
+  text-align: left;
+  margin: 10px;
+  padding: 10px;
+}
+
+.comment > * {
+  display: inline-block;
+  vertical-align: top;
+}
+
+.comment > img {
+  border-radius: 5px;
+  border: none;
+}
+
+.comment > div {
+  margin-left: 10px;
+  margin-top: 0px;
+}

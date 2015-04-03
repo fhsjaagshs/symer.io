@@ -45,6 +45,12 @@ safeGetEnv :: String -> String -> IO String
 safeGetEnv key defaultValue = catchAny (getEnv key) $ \_ -> return defaultValue
 
 -------------------------------------------------------------------------------
+-- | Gravatar
+
+gravatarUrl :: T.Text -> String
+gravatarUrl email = "https://secure.gravatar.com/avatar/" ++ (show $ MD5.md5 $ TL.encodeUtf8 $ TL.fromStrict email) ++ ".png?s=180&r=x&d=mm"
+
+-------------------------------------------------------------------------------
 -- | Lists
 
 splitList :: (Eq a) => a -> [a] -> [[a]]

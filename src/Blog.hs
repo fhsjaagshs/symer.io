@@ -62,6 +62,7 @@ main = do
     liftIO $ withTransaction pg $ runMigration $ MigrationContext (MigrationFile "array_funcs.sql" "./migrations/array_funcs.sql") True pg
     liftIO $ withTransaction pg $ runMigration $ MigrationContext (MigrationFile "authorship.sql" "./migrations/authorship.sql") True pg
     liftIO $ withTransaction pg $ runMigration $ MigrationContext (MigrationFile "drafts.sql" "./migrations/drafts.sql") True pg
+    liftIO $ withTransaction pg $ runMigration $ MigrationContext (MigrationFile "comments.sql" "./migrations/comments.sql") True pg
     liftIO $ putStrLn "--| clearing cached data from Redis"
     liftIO $ Redis.runRedis redis $ Redis.flushall
     liftIO $ putStrLn "--| blog started"
@@ -124,6 +125,7 @@ main = do
             renderBody (Just blogTitle) (Just blogSubtitle) maybeUser $ do
               render post_ maybeUser
               hr ! class_ "separator"
+              renderBasic commentsRes
               
     
     get "/posts/by/tag/:tag" $ do
@@ -426,7 +428,7 @@ upsertBlogPost pg user Nothing            (Just title_) (Just body_) (Just tags_
 upsertBlogPost _  _    _                 _            _            _           _                      _       = return Nothing
 
 getComments :: PG.Connection -> Integer -> IO [Comment]
-getComments pg postid = query pg "SELECT * FROM comments WHERE parentId=?" [postid]
+getComments pg postid = query pg "SELECT * FROM comments WHERE postId=?" [postid]
 
 getBlogPostsByTag :: PG.Connection -> T.Text -> Maybe Integer -> IO [BlogPost]
 getBlogPostsByTag pg tag Nothing        = getBlogPostsByTag pg tag (Just 1)
