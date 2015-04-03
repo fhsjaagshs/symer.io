@@ -64,7 +64,7 @@ instance Composable Node where
   render (Node comment children parent) user = do
     -- TODO: nesting
     div ! class_ "comment" ! style (stringValue $ "margin-left: " ++ (show $ (*) 50 $ parentage (Node comment children parent)) ++ "px") $ do
-      img ! src (stringValue $ gravatarUrl $ email comment) ! width "90" ! height "90"
+      img ! src (stringValue $ gravatarUrl $ email comment) ! width "60" ! height "60"
       div $ do
         h3 $ toHtml $ Types.commentDisplayName comment
         p $ toHtml $ Types.commentBody comment

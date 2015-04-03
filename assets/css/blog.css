@@ -145,19 +145,19 @@ a.blogbutton:active {
   text-align: left;
   margin: 10px;
   padding: 10px;
+  background-color: #EAEAEA;
+  border-radius: 10px;
 }
 
 .comment > * {
   display: inline-block;
-  vertical-align: top;
 }
 
 .comment > img {
-  border-radius: 5px;
+  border-radius: 30px;
   border: none;
 }
 
 .comment > div {
   margin-left: 10px;
-  margin-top: 0px;
 }
