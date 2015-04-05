@@ -13,7 +13,7 @@ data-dir:            assets
 executable blog
   main-is:           Blog.hs
   hs-source-dirs:    src
-  ghc-options:       -threaded -Wall -fwarn-tabs -fno-warn-orphans -fno-warn-unused-do-bind -funbox-strict-fields -O
+  ghc-options:       -threaded -Wall -fwarn-tabs -fno-warn-orphans -fno-warn-unused-do-bind -O
   build-depends:     base,
                      wai,
                      http-types,

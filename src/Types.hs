@@ -62,8 +62,7 @@ instance Show Node where
 
 instance Composable Node where
   render (Node comment children parent) user = do
-    -- TODO: nesting
-    div ! class_ "comment" ! style (stringValue $ "margin-left: " ++ (show $ (*) 50 $ parentage (Node comment children parent)) ++ "px") $ do
+    div ! class_ "comment" ! A.id (stringValue $ show $ cid comment)! style (stringValue $ "margin-left: " ++ (show $ (*) 50 $ parentage (Node comment children parent)) ++ "px") $ do
       img ! src (stringValue $ gravatarUrl $ email comment) ! width "60" ! height "60"
       div $ do
         h3 $ toHtml $ Types.commentDisplayName comment
@@ -97,7 +96,9 @@ instance FromRow Comment where
   fromRow = Comment <$> field <*> field <*> field <*> field <*> field <*> field <*> field
 
 instance Composable [Comment] where
-  render comments user = render (nestComments $ map (\c -> Node c [] Nothing) comments) user
+  render comments user = do
+    div ! A.id "comments" $ do
+      render (nestComments $ map (\c -> Node c [] Nothing) comments) user
 
 parentage :: Node -> Integer
 parentage (Node _ _ Nothing) = 0

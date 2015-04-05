@@ -112,7 +112,7 @@ main = do
       identifier_ <- param "id"
       maybeUser <- authenticatedUser
       res <- liftIO $ getBlogPost pg identifier_
-      commentsRes <- liftIO $ getComments pg identifier_
+      commentsRes <- liftIO $ ((query pg "SELECT * FROM comments WHERE postId=?" [identifier_]) :: IO [Comment])
       case res of
         Nothing -> next
         Just post_ -> do
@@ -121,10 +121,12 @@ main = do
             Nothing -> when (Types.isDraft post_) (redirect "/unauthorized")
 
           Scotty.html $ R.renderHtml $ docTypeHtml $ do
-            renderHead [] (postTags $ Types.tags post_) $ appendedBlogTitle $ Types.title post_
+            renderHead ["/assets/css/post.css"] (postTags $ Types.tags post_) $ appendedBlogTitle $ Types.title post_
             renderBody (Just blogTitle) (Just blogSubtitle) maybeUser $ do
               render post_ maybeUser
               hr ! class_ "separator"
+              script ! src "/assets/js/post.js" $ ""
+              script ! src "/assets/js/md5.js" $ ""
               renderBasic commentsRes
               
     
@@ -227,6 +229,15 @@ main = do
         Just identifier_ -> do
           addHeader "Location" $ TL.pack $ "/posts/" ++ (show identifier_)
           emptyResponse
+  
+    post "/posts/:id/comments" $ do
+      identifier_ <- param "id"
+      email <- param "email"
+      cdn <- param "display_name"
+      commentBody <- param "comment_body"
+      _ <- liftIO $ ((query pg "INSERT INTO comments (postId, email, commentDisplayName, body) VALUES (?,?,?,?)" (identifier_ :: Integer, (email :: String), cdn :: String, commentBody :: String)) :: IO [Comment])
+      addHeader "Location" $ TL.pack $ "/posts/" ++ (show identifier_)
+      emptyResponse
   
     -- returns minified JS
     get "/assets/js/:filename" $ do
@@ -426,9 +437,6 @@ upsertBlogPost pg _    (Just identifier_) (Just title_) (Just body_) Nothing    
 upsertBlogPost pg user Nothing            (Just title_) (Just body_) Nothing      _                   isdraft = (listToMaybe <$> map fromOnly <$> ((query pg "INSERT INTO blogposts (title, bodyText, author_id, is_draft) VALUES (?, ?, ?, ?) RETURNING identifier" (title_, body_, Types.uid user, isdraft)) :: IO [Only Integer])) :: IO (Maybe Integer)
 upsertBlogPost pg user Nothing            (Just title_) (Just body_) (Just tags_) _                   isdraft = (listToMaybe <$> map fromOnly <$> ((query pg "INSERT INTO blogposts (title, bodyText, tags, author_id, is_draft) VALUES (?, ?, ?, ?, ?) RETURNING identifier" (title_, body_, tags_, Types.uid user, isdraft)) :: IO [Only Integer])) :: IO (Maybe Integer)
 upsertBlogPost _  _    _                 _            _            _           _                      _       = return Nothing
-
-getComments :: PG.Connection -> Integer -> IO [Comment]
-getComments pg postid = query pg "SELECT * FROM comments WHERE postId=?" [postid]
 
 getBlogPostsByTag :: PG.Connection -> T.Text -> Maybe Integer -> IO [BlogPost]
 getBlogPostsByTag pg tag Nothing        = getBlogPostsByTag pg tag (Just 1)

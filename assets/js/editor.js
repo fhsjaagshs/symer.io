@@ -14,7 +14,7 @@ var post = {};
 post.tags = [];
 post.deleted_tags = [];
 var attrPostId = editor.getAttribute("post-id");
-if (attrPostId) { post.id = parseInt(attrPostId); }
+if (attrPostId) post.id = parseInt(attrPostId);
 
 function deleteTag(word) {
   post.deleted_tags.push(word);
@@ -24,8 +24,7 @@ function deleteTag(word) {
 
 function addTag(word) {
   post.tags.push(word);
-  var idx = post.deleted_tags.indexOf(word);
-  if (idx != -1) post.deleted_tags.splice(idx, 1);
+  post.deleted_tags.delete(word);
 }
 
 editor.oninput = function() {
@@ -37,19 +36,24 @@ titleField.oninput = function() {
 }
 
 saveButton.onclick = function() {
-  if (post.tags.length > 0) post.tags = post.tags.join();
-  else delete post.tags;
+  if (post.tags.length > 0) 
+    post.tags = post.tags.join();
+  else
+    post.delete('tags');
+  
   if (post.deleted_tags.length > 0) {
-    if (post.id == -1) delete post.deleted_tags;
-    else post.deleted_tags = post.deleted_tags.join();
-  } else delete post.deleted_tags;
+    if (post.id == -1) 
+      post.delete('deleted_tags');
+    else 
+      post.deleted_tags = post.deleted_tags.join();
+  } else
+    post.delete('deleted_tags');
   
   post.draft = $("#public-checkbox").is(":checked") ? "False" : "True";
 
   sendHTTP("POST", "/posts", post, function(http) {
-    if (http.status == 200) {
+    if (http.status == 200)
       window.location.href = http.getResponseHeader("Location");
-    }
   });
 }
 
@@ -61,34 +65,60 @@ previewButton.onclick = function() {
 }
 
 deleteButton.onclick = function() {
-  if (confirm("Are you sure you want to delete this post?")) {
+  if (confirm("Are you sure you want to delete this post?"))
     sendHTTP("DELETE", "/posts/" + post.id, {}, function(http) {
-      if (http.status == 200) {
+      if (http.status == 200)
         window.location.href = "/";
-      }
     });
-  }
 }
 
-// callback: function(http) { ... }
+/*
+  method (String) The HTTP method to use
+  url (String) duh
+  params (Object) An object containing the parameters (eg {myparam: "myvalue"})
+  callback (Function) A function that will be called with the XMLHTTPRequest object (eg function(http) { ... })
+*/
 function sendHTTP(method, url, params, callback) {  
+  sendHTTPRaw(
+    method,
+    url,
+    params.map(function (k,v) { return k + "=" + encodeURIComponent(v); }),
+    "application/x-www-form-urlencoded",
+    callback
+  );
+}
+
+function sendHTTPRaw(method, url, body, contentType, callback) {
   var http = new XMLHttpRequest();
   http.open(method, url, true);
-  http.onreadystatechange = function() { 
-    if (method == "HEAD" && http.readyState == 2) {
-      callback(http);
-    } else if (http.readyState == 4) {
-      callback(http);
-    }
-  }
   
-  if (Object.size(params) > 0) {
-    var body = Object.keys(params).map(function(key, _) { return key + "=" + encodeURIComponent(params[key]); }).join("&");
-    http.setRequestHeader("Content-type", "application/x-www-form-urlencoded");
-    http.send(body);
-  } else {
-    http.send();
+  http.onreadystatechange = function() { 
+    if (method == "HEAD" && http.readyState == 2)
+      if (callback) callback(http);
+    else if (http.readyState == 4)
+      if (callback) callback(http);
   }
+    
+  if (body.length > 0) {
+    http.setRequestHeader("Content-type", contentType);
+    http.send(body);
+  } else
+    http.send();
 }
 
-Object.size = function(obj) { return Object.keys(obj).filter(function(v,idx,ary) { return obj.hasOwnProperty(v); }).length; };
+Array.prototype.deleteAt = function(idx) { this.splice(idx, 1); }
+Array.prototype.delete = function(v) {
+  var idx = this.indexOf(v);
+  if (idx != -1) this.deleteAt(idx);
+}
+
+Object.prototype.delete = function(k) { delete this[k]; }
+Object.prototype.size = function() { return this.keys().length; };
+Object.prototype.map = function(f) {
+  var o = this;
+  return o.keys().map(function (k) { return f(k,o[k]); });
+}
+Object.prototype.keys = function() {
+  var obj = this;
+  return Object.keys(obj).filter(function(v) { return obj.hasOwnProperty(v); });
+};
