@@ -9,12 +9,16 @@ var previewButton = document.getElementById("preview-button");
 var deleteButton = document.getElementById("delete-button");
 var saveButton = document.getElementById("save-button");
 var titleField = document.getElementById("title-field");
+var publicCheckbox = document.getElementById("public-checkbox");
 
-var post = {};
-post.tags = [];
-post.deleted_tags = [];
-var attrPostId = editor.getAttribute("post-id");
-if (attrPostId) post.id = parseInt(attrPostId);
+
+function Post() {
+  this.tags = [];
+  this.deleted_tags = [];
+  this.id = parseInt(editor.getAttribute("post-id"));
+}
+
+var post = new Post();
 
 function deleteTag(word) {
   post.deleted_tags.push(word);
@@ -36,22 +40,31 @@ titleField.oninput = function() {
 }
 
 saveButton.onclick = function() {
-  if (post.tags.length > 0) 
+  console.log(post);
+  if (post.tags.length > 0) {
     post.tags = post.tags.join();
-  else
-    post.delete('tags');
+  } else {
+    delete post.tags;
+  }
   
   if (post.deleted_tags.length > 0) {
-    if (post.id == -1) 
-      post.delete('deleted_tags');
-    else 
+    if (post.id == -1) {
+      delete post.deleted_tags
+    } else {
       post.deleted_tags = post.deleted_tags.join();
-  } else
-    post.delete('deleted_tags');
+    }
+  } else {
+    delete post.deleted_tags;
+  }
   
-  post.draft = $("#public-checkbox").is(":checked") ? "False" : "True";
-
+  if (post.id == -1) delete post.id; 
+  
+  post.draft = publicCheckbox.checked ? "False" : "True";
+  
+  console.log("SHIT");
+  
   sendHTTP("POST", "/posts", post, function(http) {
+    post = new Post();
     if (http.status == 200)
       window.location.href = http.getResponseHeader("Location");
   });
@@ -71,54 +84,3 @@ deleteButton.onclick = function() {
         window.location.href = "/";
     });
 }
-
-/*
-  method (String) The HTTP method to use
-  url (String) duh
-  params (Object) An object containing the parameters (eg {myparam: "myvalue"})
-  callback (Function) A function that will be called with the XMLHTTPRequest object (eg function(http) { ... })
-*/
-function sendHTTP(method, url, params, callback) {  
-  sendHTTPRaw(
-    method,
-    url,
-    params.map(function (k,v) { return k + "=" + encodeURIComponent(v); }),
-    "application/x-www-form-urlencoded",
-    callback
-  );
-}
-
-function sendHTTPRaw(method, url, body, contentType, callback) {
-  var http = new XMLHttpRequest();
-  http.open(method, url, true);
-  
-  http.onreadystatechange = function() { 
-    if (method == "HEAD" && http.readyState == 2)
-      if (callback) callback(http);
-    else if (http.readyState == 4)
-      if (callback) callback(http);
-  }
-    
-  if (body.length > 0) {
-    http.setRequestHeader("Content-type", contentType);
-    http.send(body);
-  } else
-    http.send();
-}
-
-Array.prototype.deleteAt = function(idx) { this.splice(idx, 1); }
-Array.prototype.delete = function(v) {
-  var idx = this.indexOf(v);
-  if (idx != -1) this.deleteAt(idx);
-}
-
-Object.prototype.delete = function(k) { delete this[k]; }
-Object.prototype.size = function() { return this.keys().length; };
-Object.prototype.map = function(f) {
-  var o = this;
-  return o.keys().map(function (k) { return f(k,o[k]); });
-}
-Object.prototype.keys = function() {
-  var obj = this;
-  return Object.keys(obj).filter(function(v) { return obj.hasOwnProperty(v); });
-};

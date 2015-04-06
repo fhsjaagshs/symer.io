@@ -29,7 +29,7 @@ import           Database.PostgreSQL.Simple.Migration as PG.Migration
 import           Text.Blaze.Html5 as H hiding (style, param, map)
 import           Text.Blaze.Html5.Attributes as A
 import           Text.Blaze.Html.Renderer.Text as R
-import           Prelude as P hiding (head, id, div)
+import           Prelude as P hiding (head, div)
 
 import           Magic -- for mimetypes
 
@@ -112,24 +112,23 @@ main = do
       identifier_ <- param "id"
       maybeUser <- authenticatedUser
       res <- liftIO $ getBlogPost pg identifier_
-      commentsRes <- liftIO $ ((query pg "SELECT * FROM comments WHERE postId=?" [identifier_]) :: IO [Comment])
       case res of
         Nothing -> next
         Just post_ -> do
           case maybeUser of
-            Just user -> unless ((Types.author post_) == user) (redirect "/unauthorized")
-            Nothing -> when (Types.isDraft post_) (redirect "/unauthorized")
+            Just user -> unless ((Types.author post_) == user) (redirect "/notfound")
+            Nothing -> when (Types.isDraft post_) (redirect "/notfound")
 
           Scotty.html $ R.renderHtml $ docTypeHtml $ do
             renderHead ["/assets/css/post.css"] (postTags $ Types.tags post_) $ appendedBlogTitle $ Types.title post_
             renderBody (Just blogTitle) (Just blogSubtitle) maybeUser $ do
               render post_ maybeUser
               hr ! class_ "separator"
-              script ! src "/assets/js/post.js" $ ""
+              div ! A.id "comments" $ ""
               script ! src "/assets/js/md5.js" $ ""
-              renderBasic commentsRes
+              script ! src "/assets/js/common.js" $ ""
+              script ! src "/assets/js/post.js" $ ""
               
-    
     get "/posts/by/tag/:tag" $ do
       tag <- param "tag"
       maybeUser <- authenticatedUser
@@ -172,10 +171,23 @@ main = do
       atoken <- accessToken
       liftIO $ Auth.deleteObject redis (T.encodeUtf8 <$> atoken)
       redirect "/"
+      
+    --
+    -- JSON pages
+    --
+    
+    get "/posts/:id/comments.json" $ do
+      identifier_ <- param "id"
+      (liftIO $ query pg "SELECT * FROM comments WHERE postId=?" [identifier_ :: Integer]) >>= Scotty.json . nestComments . (map (\c -> Node c [] Nothing))
+    
+    --
+    -- Non-Pages
+    --
   
     post "/login" $ do
       pUsername <- param "username" :: ActionM T.Text
       pPassword <- param "password" :: ActionM T.Text
+      pRedirectPath <- maybeParam "redirect" :: ActionM (Maybe TL.Text)
   
       res <- liftIO $ listToMaybe <$> (query pg "SELECT * FROM users WHERE username=? LIMIT 1" [pUsername] :: IO [User])
       
@@ -186,16 +198,9 @@ main = do
             then do
               token <- liftIO $ Auth.saveObject redis user
               setAccessToken (T.decodeUtf8 token)
-              redirect "/"
+              redirect $ Data.Maybe.maybe "/" P.id pRedirectPath
             else redirect "/login?error_message=Invalid%20password%2E"
-    
-    matchAny "/unauthorized" $ do
-      status $ Status 401 "Unauthorized"
-      Scotty.html $ R.renderHtml $ docTypeHtml $ do
-        renderHead [] [("robots","noindex, nofollow")] (appendedBlogTitle "Unauthorized")
-        renderBody (Just "Unauthorized") Nothing Nothing $ do
-          h1 $ "Authorization is required beyond this point."
-  
+
     -- deletes a BlogPost from the database
     -- returns JSON
     delete "/posts/:id" $ do
@@ -213,6 +218,7 @@ main = do
     post "/posts" $ do
       authUser <- protected
       ps <- params
+
       maybeBPIdentifier <- liftIO $ (upsertBlogPost pg
                                                     (fromJust authUser)
                                                     (((read . TL.unpack) <$> lookup "id" ps) :: Maybe Integer)
@@ -220,7 +226,7 @@ main = do
                                                     (TL.toStrict <$> lookup "body" ps)
                                                     (((splitList ',') . TL.unpack) <$> (lookup "tags" ps))
                                                     (((splitList ',') . TL.unpack) <$> (lookup "deleted_tags" ps))
-                                                    ((read . TL.unpack) <$> (lookup "draft" ps))
+                                                    (elem (TL.unpack $ maybe "True" P.id $ lookup "draft" ps) ["t", "true", "True", "y", "yes"])
                                                    )
       case maybeBPIdentifier of
         Nothing -> do
@@ -231,11 +237,12 @@ main = do
           emptyResponse
   
     post "/posts/:id/comments" $ do
-      identifier_ <- param "id"
+      identifier_ <- param "post_id"
       email <- param "email"
       cdn <- param "display_name"
-      commentBody <- param "comment_body"
-      _ <- liftIO $ ((query pg "INSERT INTO comments (postId, email, commentDisplayName, body) VALUES (?,?,?,?)" (identifier_ :: Integer, (email :: String), cdn :: String, commentBody :: String)) :: IO [Comment])
+      commentBody <- param "body"
+      parentId <- maybeParam "parent_id"
+      liftIO $ ((query pg "INSERT INTO comments (postId, email, commentDisplayName, body) VALUES (?,?,?,?)" (identifier_ :: Integer, (email :: String), cdn :: String, commentBody :: String, (maybe "NULL" P.id parentId) :: TL.Text)) :: IO [Comment])
       addHeader "Location" $ TL.pack $ "/posts/" ++ (show identifier_)
       emptyResponse
   
@@ -246,7 +253,7 @@ main = do
       setHeader "Cache-Control" "public, max-age=3600, s-max-age=3600, no-cache, must-revalidate, proxy-revalidate" -- 1 hour
       cachedBody redis filename $ do
         js <- liftIO $ BL.readFile $ "assets/js/" ++ (TL.unpack filename)
-        return $ (if (List.isInfixOf ".min." $ TL.unpack filename) then js else (Helpers.minifyJS js))
+        return (if (List.isInfixOf ".min." $ TL.unpack filename) then js else (Helpers.minifyJS js))
 
     -- returns minified CSS
     get "/assets/css/:filename" $ do
@@ -291,10 +298,10 @@ seoTags = [
 renderHead :: [T.Text] -> [(T.Text, T.Text)] -> T.Text -> Html
 renderHead cssFiles metaTags title_ = H.head $ do
   H.title $ toHtml title_
-  renderCssLinks $ cssFiles ++ ["/assets/css/blog.css"]
   meta ! httpEquiv "Content-Type" ! content "text/html; charset=UTF-8"
   meta ! name "viewport" ! content "width=device-width, initial-scale=1"
-  renderTags $ List.nubBy (\(keyOne, _) (keyTwo, _) -> keyOne == keyTwo) $ metaTags ++ seoTags
+  forM_ ("/assets/css/blog.css":cssFiles) (\x -> link ! href (textValue x) ! rel "stylesheet" ! type_ "text/css")
+  forM_ (List.nubBy (\(keyOne, _) (keyTwo, _) -> keyOne == keyTwo) $ metaTags ++ seoTags) (\x -> meta ! A.name (textValue $ fst x) ! content (textValue $ snd x))
 
 renderBody :: Maybe T.Text -> Maybe T.Text -> Maybe User -> Html -> Html
 renderBody maybeTitle maybeSubtitle maybeUser bodyHtml = H.body ! style "text-align: center;" $ do
@@ -307,36 +314,20 @@ renderBody maybeTitle maybeSubtitle maybeUser bodyHtml = H.body ! style "text-al
   when (isJust maybeUser) (a ! href "/posts/new" ! class_ "blogbutton" ! rel "nofollow" $ "New Post")
   div ! A.id "content" $ bodyHtml
   
-renderMdEditor :: Maybe BlogPost -> Html
-renderMdEditor Nothing = do
-  div ! A.id "preview" $ ""
-  textarea ! A.id "editor" $ ""
-renderMdEditor (Just (BlogPost identifier_ _ body_ _ _ _ _ _)) = do
-  div ! A.id "preview" $ ""
-  textarea ! A.id "editor" ! customAttribute "post-id" (stringValue $ show identifier_) $ toHtml body_
-      
-renderTitleField :: Maybe BlogPost -> Html
-renderTitleField (Just (BlogPost _ title_ _ _ _ _ _ _)) = input ! type_ "text" ! id "title-field" ! placeholder "Post title" ! value (textValue title_)
-renderTitleField Nothing = input ! type_ "text" ! id "title-field" ! placeholder "Post title"
-
-renderTagEditor :: Maybe BlogPost -> Html
-renderTagEditor Nothing = textarea ! A.id "tags" ! class_ "wordlist" $ do ""
-renderTagEditor (Just (BlogPost _ _ _ _ tags_ _ _ _)) = textarea ! A.id "tags" ! class_ "wordlist" $ do toHtml $ List.intercalate ", " tags_
-  
-renderPublishCheckbox :: Maybe BlogPost -> Html
-renderPublishCheckbox (Just (BlogPost _ _ _ _ _ _ False _)) = input ! type_ "checkbox" ! A.id "public-checkbox" ! A.checked "checked"
-renderPublishCheckbox _ = input ! type_ "checkbox" ! A.id "public-checkbox"
-  
 renderPostEditor :: Maybe BlogPost -> Html
 renderPostEditor maybeBlogPost = do
-  renderTitleField maybeBlogPost
-  renderMdEditor maybeBlogPost
-  renderTagEditor maybeBlogPost
+  input ! type_ "text" ! A.id "title-field" ! placeholder "Post title" ! value (textValue $ maybe "" Types.title maybeBlogPost)
+
+  div ! A.id "preview" $ ""
+  textarea ! A.id "editor" ! customAttribute "post-id" (stringValue $ maybe "-1" (show . Types.identifier) maybeBlogPost) $ H.text $ maybe "" Types.body maybeBlogPost
+  textarea ! A.id "tags" ! class_ "wordlist" $ toHtml $ List.intercalate ", " $ maybe [] Types.tags maybeBlogPost
   
   div ! A.id "checkbox-container" $ do
-    renderPublishCheckbox maybeBlogPost
+    case maybeBlogPost of
+      Just (BlogPost _ _ _ _ _ _ False _) -> input ! type_ "checkbox" ! A.id "public-checkbox" ! A.checked ""
+      _                                   -> input ! type_ "checkbox" ! A.id "public-checkbox"
     H.label ! customAttribute "for" "public-checkbox" $ "Public"
-  
+
   a ! A.id "delete-button" ! class_ "blogbutton" ! rel "nofollow" $ "Delete"
   a ! A.id "preview-button" ! class_ "blogbutton" ! rel "nofollow" $ "Preview"
   a ! A.id "save-button" ! class_ "blogbutton" ! rel "nofollow" $ "Save"
@@ -344,6 +335,7 @@ renderPostEditor maybeBlogPost = do
   script ! src "/assets/js/jquery-2.1.3.min.js" $ ""
   script ! src "/assets/js/marked.min.js" $ ""
   script ! src "/assets/js/wordlist.js" $ ""
+  script ! src "/assets/js/common.js" $ ""
   script ! src "/assets/js/editor.js" $ ""
   
 renderPageControls :: Maybe Integer -> Bool -> Html
@@ -378,7 +370,7 @@ checkAuth redis = do
     (Just user) -> return $ Just user
     _ -> do
       return Nothing
-      redirect "/unauthorized"
+      redirect "/login?error_message=Login%20required%2E"
 
 -------------------------------------------------------------------------------
 --- | Caching
@@ -419,7 +411,7 @@ rawBodyCached str = do
 -------------------------------------------------------------------------------
 --- | Database
 
-upsertBlogPost :: PG.Connection -> User -> Maybe Integer -> Maybe T.Text -> Maybe T.Text -> Maybe [String] -> Maybe [String] -> Maybe Bool -> IO (Maybe Integer)
+upsertBlogPost :: PG.Connection -> User -> Maybe Integer -> Maybe T.Text -> Maybe T.Text -> Maybe [String] -> Maybe [String] -> Bool -> IO (Maybe Integer)
 upsertBlogPost pg _    (Just identifier_) Nothing       Nothing      Nothing      Nothing             isdraft = (listToMaybe <$> map fromOnly <$> ((query pg "UPDATE blogposts SET is_draft=? WHERE identifier=? RETURNING identifier" (isdraft, identifier_)) :: IO [Only Integer])) :: IO (Maybe Integer)
 upsertBlogPost pg _    (Just identifier_) (Just title_) Nothing      Nothing      Nothing             isdraft = (listToMaybe <$> map fromOnly <$> ((query pg "UPDATE blogposts SET title=?, is_draft=? WHERE identifier=? RETURNING identifier" (title_, isdraft, identifier_)) :: IO [Only Integer])) :: IO (Maybe Integer)
 upsertBlogPost pg _    (Just identifier_) (Just title_) (Just body_) Nothing      Nothing             isdraft = (listToMaybe <$> map fromOnly <$> ((query pg "UPDATE blogposts SET title=?, bodyText=?, is_draft=? WHERE identifier=? RETURNING identifier" (title_, body_, isdraft, identifier_)) :: IO [Only Integer])) :: IO (Maybe Integer)
@@ -455,5 +447,3 @@ getBlogPost pg identifier_ = listToMaybe <$> query pg "SELECT b.*,u FROM blogpos
 
 deleteBlogPost :: PG.Connection -> Integer -> User -> IO (Maybe Integer)
 deleteBlogPost pg identifier_ (User uid_ _ _ _) = listToMaybe <$> map fromOnly <$> ((query pg "DELETE FROM blogposts WHERE identifier=? AND author_id=? RETURNING identifier" (identifier_, uid_)) :: IO [Only Integer])
--- getPageCount :: PG.Connection -> IO (Maybe Integer)
--- getPageCount pg = listToMaybe <$> query_ pg "SELECT ceil(COUNT(*)::real/10::real) as page_count FROM blogposts"

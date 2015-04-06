@@ -102,17 +102,5 @@ formatDate d = formatTime defaultTimeLocale "%-m • %-e • %-y | %l:%M %p %Z" 
 -------------------------------------------------------------------------------
 --- | HTML rendering
 
-renderTags :: [(T.Text, T.Text)] -> Html
-renderTags [] = return ()
-renderTags (x:xs) = do
-  meta ! A.name (textValue $ fst x) ! content (textValue $ snd x)
-  renderTags xs
-  
-renderCssLinks :: [T.Text] -> Html
-renderCssLinks [] = return ()
-renderCssLinks (x:xs) = do
-  link ! href (textValue x) ! rel "stylesheet" ! type_ "text/css"
-  renderCssLinks xs
-  
 renderInput :: String -> Html
 renderInput kind = input ! customAttribute "autocorrect" "off" ! customAttribute "autocapitalize" "off" ! customAttribute "spellcheck" "false" ! type_ (stringValue kind)

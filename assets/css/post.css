@@ -11,10 +11,21 @@
 }
 
 .comment > img {
+  width: 60px;
+  height: 60px;
+  margin-top: 0px;
   border-radius: 30px;
   border: none;
+  height: 100%;
+  vertical-align: middle;
+}
+
+.comment > * > h3 {
+  margin-top: 0px;
 }
 
 .comment > div {
   margin-left: 10px;
+  height: 100%;
+  vertical-align: middle;
 }

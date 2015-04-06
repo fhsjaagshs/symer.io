@@ -17,6 +17,7 @@ import qualified Data.Text.Encoding as T
 import qualified Data.Vector as Vector
 import           Data.Time.Clock
 import           Data.List
+import qualified Data.Vector as V
 
 import           Cheapskate
 import           Data.Aeson as Aeson
@@ -46,35 +47,46 @@ class Composable a where
 -------------------------------------------------------------------------------
 --- | Comment data type
 
--- Used to structure comments into a hierarchy
--- based on lineage
+-- Used to structure comments into a
+-- 'family tree', similar to how they
+-- would appear on the web.
 data Node = Node {
   data_ :: Comment,
   children :: [Node],
   parent :: Maybe Node
-}
+} deriving (Eq, Show)
 
-instance Eq Node where
-  (==) (Node d c p) (Node dp cp pp) = (d == dp) && (c == cp) && (p == pp)
+instance ToJSON Node where
+ toJSON node@(Node (Comment cid _ postId email commentDisplayName tstamp commentBody) children parent) =
+    Aeson.object [
+                  "id" .= cid,
+                  "post_id" .= postId,
+                  "email" .= email,
+                  "display_name" .= commentDisplayName,
+                  "timestamp" .= tstamp,
+                  "body" .= commentBody,
+                  "parentage" .= (parentage node),
+                  "children" .= map toJSON children
+                  ]
+            
+instance ToJSON [Node] where
+  toJSON nodes = Aeson.Array $ V.fromList $ map toJSON nodes
 
-instance Show Node where
-  show (Node d c p) = "Node (" ++ (show d) ++ ", " ++ (show p) ++ ") " ++ (show c)
-
-instance Composable Node where
-  render (Node comment children parent) user = do
-    div ! class_ "comment" ! A.id (stringValue $ show $ cid comment)! style (stringValue $ "margin-left: " ++ (show $ (*) 50 $ parentage (Node comment children parent)) ++ "px") $ do
-      img ! src (stringValue $ gravatarUrl $ email comment) ! width "60" ! height "60"
-      div $ do
-        h3 $ toHtml $ Types.commentDisplayName comment
-        p $ toHtml $ Types.commentBody comment
-    render children user
-
-instance Composable [Node] where
-  render [] _ = return ()
-  render [a] user = render a user
-  render (x:xs) user = do
-    render x user
-    render xs user
+-- instance Composable Node where
+--   render (Node comment children parent) user = do
+--     div ! class_ "comment" ! A.id (stringValue $ show $ cid comment) ! style (stringValue $ "margin-left: " ++ (show $ (*) 50 $ parentage (Node comment children parent)) ++ "px") $ do
+--       img ! src (stringValue $ gravatarUrl $ email comment) ! width "60" ! height "60"
+--       div $ do
+--         h3 $ toHtml $ Types.commentDisplayName comment
+--         p $ toHtml $ Types.commentBody comment
+--     render children user
+--
+-- instance Composable [Node] where
+--   render [] _ = return ()
+--   render [a] user = render a user
+--   render (x:xs) user = do
+--     render x user
+--     render xs user
 
 data Comment = Comment {
   cid :: Integer,
@@ -84,10 +96,7 @@ data Comment = Comment {
   commentDisplayName :: T.Text,
   tstamp :: UTCTime,
   commentBody :: T.Text
-} deriving (Show, Generic)
-
-instance Eq Comment where
-  (==) (Comment cid_ _ _ _ _ _ _) (Comment cidTwo_ _ _ _ _ _ _) = (cid_ == cidTwo_)
+} deriving (Eq, Show, Generic)
 
 instance ToJSON Comment
 instance FromJSON Comment
@@ -95,10 +104,10 @@ instance FromJSON Comment
 instance FromRow Comment where
   fromRow = Comment <$> field <*> field <*> field <*> field <*> field <*> field <*> field
 
-instance Composable [Comment] where
-  render comments user = do
-    div ! A.id "comments" $ do
-      render (nestComments $ map (\c -> Node c [] Nothing) comments) user
+-- instance Composable [Comment] where
+--   render comments user = do
+--     div ! A.id "comments" $ do
+--       render (nestComments $ map (\c -> Node c [] Nothing) comments) user
 
 parentage :: Node -> Integer
 parentage (Node _ _ Nothing) = 0
@@ -220,8 +229,6 @@ instance FromRow BlogPost where
 instance ToRow BlogPost where
   toRow (BlogPost identifier_ title_ body_ timestamp_ tags_ author_id_ isDraft_ _) =
     [toField identifier_, toField title_, toField body_, toField timestamp_, Many [Plain $ fromByteString "uniq_cat(tags,", toField tags_, Plain $ fromByteString ")"], toField author_id_, toField isDraft_]
-  -- toRowDeletedTags deletedTags_ (BlogPost identifier_ title_ body_ timestamp_ tags_ author_id_ isDraft_ _) =
-    -- [toField identifier_, toField title_, toField body_, toField timestamp_, Many [Plain $ fromByteString "array_diff(uniq_cat(tags,", toField tags_, Plain $ fromByteString "),", toField deletedTags_, Plain $ fromByteString ")"], toField author_id_, toField isDraft_]
   
 instance ToJSON BlogPost where
   toJSON (BlogPost identifier_ title_ body_ timestamp_ tags_ _ isDraft_ author_) =
@@ -239,14 +246,14 @@ instance Composable BlogPost where
   -- Unauthenticated
   render (BlogPost identifier_ title_ body_ timestamp_ tags_ _ _ author_) Nothing = do
     a ! href (stringValue $ (++) "/posts/" $ show identifier_) $ do
-      h1 ! class_ "post-title" $ toHtml title_
+      h1 ! class_ "post-title" ! A.id (stringValue $ show identifier_) $ toHtml title_
     h4 ! class_ "post-subtitle" $ toHtml $ T.append (T.pack $ formatDate timestamp_) (T.append " | " $ Types.displayName author_)
     toHtml $ map (\t -> a ! class_ "taglink" ! href (stringValue $ "/posts/by/tag/" ++ t) $ h4 ! class_ "post-subtitle" $ toHtml $ t) tags_
     div ! class_ "post-content" ! style "text-align: left;" $ toHtml $ markdown def body_
   -- Authenticated, draft
   render (BlogPost identifier_ title_ body_ timestamp_ tags_ _ True author_) (Just user_) = do
     a ! href (stringValue $ (++) "/posts/" $ show identifier_) $ do
-      h1 ! class_ "post-title post-draft" $ toHtml title_
+      h1 ! class_ "post-title post-draft" ! A.id (stringValue $ show identifier_) $ toHtml title_
     h4 ! class_ "post-subtitle post-draft" $ toHtml $ T.append (T.pack $ formatDate timestamp_) (T.append " | " $ Types.displayName author_)
     toHtml $ map (\t -> a ! class_ "taglink" ! href (stringValue $ "/posts/by/tag/" ++ t) $ toHtml $ h4 ! class_ "post-subtitle" $ toHtml $ t) tags_
     when (author_ == user_) $  a ! class_ "post-edit-button post-draft" ! href (stringValue $ ("/posts/" ++ (show identifier_) ++ "/edit")) ! rel "nofollow" $ "edit"
@@ -254,7 +261,7 @@ instance Composable BlogPost where
   -- Authenticated, published
   render (BlogPost identifier_ title_ body_ timestamp_ tags_ _ False author_) (Just user_) = do
     a ! href (stringValue $ (++) "/posts/" $ show identifier_) $ do
-      h1 ! class_ "post-title" $ toHtml title_
+      h1 ! class_ "post-title" ! A.id (stringValue $ show identifier_) $ toHtml title_
     h4 ! class_ "post-subtitle" $ toHtml $ T.append (T.pack $ formatDate timestamp_) (T.append " | " $ Types.displayName author_)
     toHtml $ map (\t -> a ! class_ "taglink" ! href (stringValue $ "/posts/by/tag/" ++ t) $ toHtml $ h4 ! class_ "post-subtitle" $ toHtml $ t) tags_
     when (author_ == user_) $  a ! class_ "post-edit-button" ! href (stringValue $ ("/posts/" ++ (show identifier_) ++ "/edit")) ! rel "nofollow" $ "edit"
