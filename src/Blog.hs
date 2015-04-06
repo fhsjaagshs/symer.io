@@ -124,7 +124,8 @@ main = do
             renderBody (Just blogTitle) (Just blogSubtitle) maybeUser $ do
               render post_ maybeUser
               hr ! class_ "separator"
-              div ! A.id "comments" $ ""
+              div ! A.id "comments" $ do
+                div ! class_ "spinner" $ ""
               script ! src "/assets/js/md5.js" $ ""
               script ! src "/assets/js/common.js" $ ""
               script ! src "/assets/js/post.js" $ ""

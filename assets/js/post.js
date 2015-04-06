@@ -51,13 +51,9 @@ function renderComments(comments, pid) {
   }
 }
 
-console.log("asdf");
-
 sendHTTP("GET", "/posts/" + document.getElementsByClassName("post-title")[0].id + "/comments.json", {}, function(http) {
   if (http.status == 200) {
-    console.log(JSON.parse(http.responseText));
+    [].slice.call(document.getElementsByClassName("spinner")).map(function (x) { commentsDiv.removeChild(x); });
     renderComments(JSON.parse(http.responseText), -1);
   }
 });
-
-// TODO: Load posts from JSON
