@@ -5,14 +5,40 @@ function addDivNextTo(target, divelement) {
   target.parentNode.insertBefore(divelement, target.nextSibling);
 }
 
-function gravatarURL(email) { return "https://secure.gravatar.com/avatar/" + md5(email) + ".png?s=180&r=x&d=mm"; }
+function screenScale() {
+  var scale = 1;
+  try {
+    scale = window.devicePixelRatio;
+  } catch(err) {
+    scale = 1;
+  }
+  return scale;
+}
+
+function gravatarURL(email) { return "https://secure.gravatar.com/avatar/" + md5(email) + ".png?s=" + 60*screenScale() + "&r=x&d=mm"; }
+
+function editorHTML(h) {
+  return '<div class="editor"' + (h == true ? " hidden" : "") + '>'
+       + '<input type="text" class="commentfield blogtextfield" id="emailfield" name="email" placeholder="Email">'
+       + '<input type="text" class="blogtextfield commentfield" id="namefield" name="display_name" placeholder="Display Name">'
+       + '<input type="text" class="blogtextfield commentfield" id="bodyfield" name="body" placeholder="Enter your comment here">'
+       + '<a class="blogbutton commentbutton" onclick="console.log("fuck yeah")">Comment</a>'
+       + '</div>';
+}
 
 function commentHTML(email,name,body) {
-  return '\<img src="' + gravatarURL(email) + '">'
-        + '\<div>'
-        + '\<h3>' + name + "\</h3>"
-        + "\<p>" + body + "\</p>"
-        + "\<a onclick='reply(getEmail(), getName(), getBody(), this.parentNode.id)'>Reply\</a></div>";
+  return '<img width="60px" height="60px" src="' + gravatarURL(email) + '" class="comment-avatar">'
+         + '<div class="comment-content">'
+         + '<h3 class="comment-name">' + name + '</h3>'
+         + '<p class="comment-body">' + body + '</p>'
+         + '<a class="blogbutton replybutton" onclick="toggleEditor(this);">Reply</a>'
+         + '</div>'
+         + editorHTML(true);
+}
+
+function toggleEditor(linkbtn) {
+  linkbtn.parentNode.nextSibling.hidden = !linkbtn.parentNode.nextSibling.hidden;
+  linkbtn.innerHTML = (linkbtn.innerHTML=='Reply'?'Cancel':'Reply');
 }
 
 function commentDiv(email,name,body,id) {
@@ -47,13 +73,16 @@ function renderComments(comments, pid) {
     }
     renderComments(c.children, c.id);
     renderComments(comments, pid);
-    console.log(c);
   }
 }
 
-sendHTTP("GET", "/posts/" + document.getElementsByClassName("post-title")[0].id + "/comments.json", {}, function(http) {
-  if (http.status == 200) {
-    [].slice.call(document.getElementsByClassName("spinner")).map(function (x) { commentsDiv.removeChild(x); });
-    renderComments(JSON.parse(http.responseText), -1);
-  }
-});
+// create and add to the mix
+
+window.onload = function() {
+  sendHTTP("GET", "/posts/" + document.getElementsByClassName("post-title")[0].id + "/comments.json", {}, function(http) {
+    if (http.status == 200) {
+      [].slice.call(document.getElementsByClassName("spinner")).map(function (x) { commentsDiv.removeChild(x); });
+      renderComments(JSON.parse(http.responseText), -1);
+    }
+  });
+}

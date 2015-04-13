@@ -2,7 +2,6 @@
 
 module Helpers where
 
-import           Control.Applicative
 import           Control.Exception
   
 import           Data.Maybe
@@ -102,4 +101,4 @@ formatDate d = formatTime defaultTimeLocale "%-m • %-e • %-y | %l:%M %p %Z" 
 --- | HTML rendering
 
 renderInput :: String -> Html
-renderInput kind = input ! customAttribute "autocorrect" "off" ! customAttribute "autocapitalize" "off" ! customAttribute "spellcheck" "false" ! type_ (stringValue kind)
+renderInput kind = input ! class_ "blogtextfield" ! customAttribute "autocorrect" "off" ! customAttribute "autocapitalize" "off" ! customAttribute "spellcheck" "false" ! type_ (stringValue kind)

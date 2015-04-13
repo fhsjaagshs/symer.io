@@ -57,41 +57,25 @@ data Node = Node {
 } deriving (Eq, Show)
 
 instance ToJSON Node where
- toJSON node@(Node (Comment cid _ postId email commentDisplayName tstamp commentBody) children parent) =
+ toJSON node@(Node (Comment cid_ _ postId_ email_ displayName_ tstamp_ commentBody_) children_ _) =
     Aeson.object [
-                  "id" .= cid,
-                  "post_id" .= postId,
-                  "email" .= email,
-                  "display_name" .= commentDisplayName,
-                  "timestamp" .= tstamp,
-                  "body" .= commentBody,
+                  "id" .= cid_,
+                  "post_id" .= postId_,
+                  "email" .= email_,
+                  "display_name" .= displayName_,
+                  "timestamp" .= tstamp_,
+                  "body" .= commentBody_,
                   "parentage" .= (parentage node),
-                  "children" .= map toJSON children
+                  "children" .= map toJSON children_
                   ]
             
 instance ToJSON [Node] where
   toJSON nodes = Aeson.Array $ V.fromList $ map toJSON nodes
 
--- instance Composable Node where
---   render (Node comment children parent) user = do
---     div ! class_ "comment" ! A.id (stringValue $ show $ cid comment) ! style (stringValue $ "margin-left: " ++ (show $ (*) 50 $ parentage (Node comment children parent)) ++ "px") $ do
---       img ! src (stringValue $ gravatarUrl $ email comment) ! width "60" ! height "60"
---       div $ do
---         h3 $ toHtml $ Types.commentDisplayName comment
---         p $ toHtml $ Types.commentBody comment
---     render children user
---
--- instance Composable [Node] where
---   render [] _ = return ()
---   render [a] user = render a user
---   render (x:xs) user = do
---     render x user
---     render xs user
-
 data Comment = Comment {
-  cid :: Integer,
+  cid :: !Integer,
   parentId :: Maybe Integer,
-  postId :: Integer,
+  postId :: !Integer,
   email :: T.Text,
   commentDisplayName :: T.Text,
   tstamp :: UTCTime,
@@ -104,20 +88,15 @@ instance FromJSON Comment
 instance FromRow Comment where
   fromRow = Comment <$> field <*> field <*> field <*> field <*> field <*> field <*> field
 
--- instance Composable [Comment] where
---   render comments user = do
---     div ! A.id "comments" $ do
---       render (nestComments $ map (\c -> Node c [] Nothing) comments) user
-
 parentage :: Node -> Integer
 parentage (Node _ _ Nothing) = 0
-parentage (Node _ _ (Just p)) = 1 + parentage p
+parentage (Node _ _ (Just prnt)) = 1 + parentage prnt
 
 --          parent  child
 isParent :: Node -> Node -> Bool
-isParent parent child
-  | (((==) (cid $ Types.data_ parent)) <$> (parentId $ Types.data_ child)) == (Just True) = True
-  | elem child (children parent) = True
+isParent prnt child
+  | (((==) (cid $ Types.data_ prnt)) <$> (parentId $ Types.data_ child)) == (Just True) = True
+  | elem child (children prnt) = True
   | otherwise = False
 
 --              anc     desc
@@ -136,12 +115,12 @@ appendChild (Node c children_ parent_) child func = Node c (func ((Node (Types.d
 
 nestComments :: [Node] -> [Node]
 nestComments [] = []
-nestComments [a] = [a]
+nestComments [x] = [x]
 nestComments (c:xs) = case c of
-                        (Node (Comment _ (Just pid_) _ _ _ _ _) _ _) -> do
+                        (Node (Comment _ (Just _) _ _ _ _ _) _ _) -> do
                           case (filter ((flip isDescendent) c) xs) of
                             [] -> c:nestComments xs
-                            prnts -> nestComments $ (map (\p -> appendChild p c nestComments) prnts) ++ (xs \\ prnts)
+                            prnts -> nestComments $ (map (\prnt -> appendChild prnt c nestComments) prnts) ++ (xs \\ prnts)
                         _ -> if all isRoot (c:xs)
                               then (c:xs)
                               else nestComments $ xs ++ [c]
@@ -150,7 +129,7 @@ nestComments (c:xs) = case c of
 --- | User data type
   
 data User = User {
-  uid :: Integer,
+  uid :: !Integer,
   username :: T.Text,
   displayName :: T.Text,
   passwordHash :: Maybe T.Text
@@ -210,13 +189,13 @@ parseRow str
 --- | BlogPost data type
 
 data BlogPost = BlogPost {
-  identifier :: Integer,
+  identifier :: !Integer,
   title :: T.Text,
   body :: T.Text,
   timestamp :: UTCTime,
   tags :: [String],
-  author_id :: Integer,
-  isDraft :: Bool,
+  author_id :: !Integer,
+  isDraft :: !Bool,
   author :: User
 } deriving (Show)
 

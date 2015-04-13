@@ -125,7 +125,10 @@ main = do
               render post_ maybeUser
               hr ! class_ "separator"
               div ! A.id "comments" $ do
-                div ! class_ "spinner" $ ""
+                div ! class_ "spinner" $ do
+                  div ! class_ "bounce1" $ ""
+                  div ! class_ "bounce2" $ ""
+                  div ! class_ "bounce3" $ ""
               script ! src "/assets/js/md5.js" $ ""
               script ! src "/assets/js/common.js" $ ""
               script ! src "/assets/js/post.js" $ ""
@@ -160,7 +163,7 @@ main = do
       when (isJust maybeUser) (redirect "/")
       maybeErrorMessage <- (rescue (Just <$> param "error_message") (\_ -> return Nothing))
       Scotty.html $ R.renderHtml $ docTypeHtml $ do
-        renderHead ["/assets/css/login.css"] [("robots","noindex, nofollow")] $ appendedBlogTitle "Login"
+        renderHead [] [("robots","noindex, nofollow")] $ appendedBlogTitle "Login"
         renderBody (Just "Login") maybeErrorMessage Nothing $ do
           H.form ! A.id "loginform" ! action "/login" ! method "POST" $ do
             input ! type_ "hidden" ! A.name "source" ! value "form"
@@ -243,7 +246,7 @@ main = do
       cdn <- param "display_name"
       commentBody <- param "body"
       parentId <- maybeParam "parent_id"
-      liftIO $ ((query pg "INSERT INTO comments (postId, email, commentDisplayName, body) VALUES (?,?,?,?)" (identifier_ :: Integer, (email :: String), cdn :: String, commentBody :: String, (maybe "NULL" P.id parentId) :: TL.Text)) :: IO [Comment])
+      liftIO $ ((query pg "INSERT INTO comments (postId, email, displayName, body) VALUES (?,?,?,?)" (identifier_ :: Integer, (email :: String), cdn :: String, commentBody :: String, (maybe "NULL" P.id parentId) :: TL.Text)) :: IO [Comment])
       addHeader "Location" $ TL.pack $ "/posts/" ++ (show identifier_)
       emptyResponse
   
@@ -396,6 +399,7 @@ cachedBody redis key valueFunc = do
     
 rawBodyCached :: BL.ByteString -> ActionM ()
 rawBodyCached str = do
+  setHeader "Vary" "Accept-Encoding"
   let hashSum = (md5Sum str)
   maybeinm <- Scotty.header "If-None-Match"
   case maybeinm of
@@ -430,6 +434,10 @@ upsertBlogPost pg _    (Just identifier_) (Just title_) (Just body_) Nothing    
 upsertBlogPost pg user Nothing            (Just title_) (Just body_) Nothing      _                   isdraft = (listToMaybe <$> map fromOnly <$> ((query pg "INSERT INTO blogposts (title, bodyText, author_id, is_draft) VALUES (?, ?, ?, ?) RETURNING identifier" (title_, body_, Types.uid user, isdraft)) :: IO [Only Integer])) :: IO (Maybe Integer)
 upsertBlogPost pg user Nothing            (Just title_) (Just body_) (Just tags_) _                   isdraft = (listToMaybe <$> map fromOnly <$> ((query pg "INSERT INTO blogposts (title, bodyText, tags, author_id, is_draft) VALUES (?, ?, ?, ?, ?) RETURNING identifier" (title_, body_, tags_, Types.uid user, isdraft)) :: IO [Only Integer])) :: IO (Maybe Integer)
 upsertBlogPost _  _    _                 _            _            _           _                      _       = return Nothing
+
+insertComment :: PG.Connection -> Maybe Integer -> Integer -> T.Text -> T.Text -> T.Text -> IO (Maybe Integer)
+insertComment pg (Just parentId_) postId_ email_ displayName_ body_ = (listToMaybe <$> map fromOnly <$> ((query pg "INSERT INTO comments (parentId,postId,email,displayName,body) VALUES (?,?,?,?,?) RETURNING id" (parentId_, postId_, email_, displayName_, body_)) :: IO [Only Integer])) :: IO (Maybe Integer)
+insertComment pg Nothing postId_ email_ displayName_ body_ = (listToMaybe <$> map fromOnly <$> ((query pg "INSERT INTO comments (postId,email,displayName,body) VALUES (?,?,?,?) RETURNING id" (postId_, email_, displayName_, body_)) :: IO [Only Integer])) :: IO (Maybe Integer)
 
 getBlogPostsByTag :: PG.Connection -> T.Text -> Maybe Integer -> IO [BlogPost]
 getBlogPostsByTag pg tag Nothing        = getBlogPostsByTag pg tag (Just 1)
