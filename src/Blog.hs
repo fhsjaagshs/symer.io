@@ -240,13 +240,13 @@ main = do
           emptyResponse
   
     post "/posts/:id/comments" $ do
-      identifier_ <- param "post_id"
-      email <- param "email"
-      cdn <- param "display_name"
-      commentBody <- param "body"
-      parentId <- maybeParam "parent_id"
-      liftIO $ ((query pg "INSERT INTO comments (postId, email, displayName, body) VALUES (?,?,?,?)" (identifier_ :: Integer, (email :: String), cdn :: String, commentBody :: String, (maybe "NULL" P.id parentId) :: TL.Text)) :: IO [Comment])
-      addHeader "Location" $ TL.pack $ "/posts/" ++ (show identifier_)
+      postId_ <- param "post_id"
+      email_ <- param "email"
+      displayName_ <- param "display_name"
+      body_ <- param "body"
+      parentId_ <- maybeParam "parent_id"
+      commentId <- liftIO $ insertComment pg ((read . TL.unpack) <$> parentId_) postId_ email_ displayName_ body_ 
+      addHeader "Location" $ TL.pack $ "/posts/" ++ (show postId_)
       emptyResponse
   
     -- returns minified JS
