@@ -7,8 +7,9 @@
   line-height:1.35em;
   padding: 18px;
   resize:none;
-  width: calc(100% - 36px);
+  width:calc(100% - 36px);
   height:500px;
+  outline:none;
 }
 
 #preview { 

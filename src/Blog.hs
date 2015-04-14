@@ -46,6 +46,7 @@ import           Magic -- for mimetypes
 main :: IO ()
 main = do
   port <- read <$> Helpers.safeGetEnv "PORT" "3000"
+  env <- Helpers.safeGetEnv "ENVIRONMENT" "development"
   scotty port $ do
     liftIO $ putStrLn "--| establishing database connections"
     pg <- liftIO $ PG.connectPostgreSQL $ B.pack $ Config.postgresConnStr
@@ -53,7 +54,7 @@ main = do
     magic <- liftIO $ magicOpen [MagicMime]
     liftIO $ magicLoadDefault magic
 
-    liftIO $ putStrLn ("--| starting blog: " ++ unsafeGetEnv "ENVIRONMENT" "development")
+    liftIO $ putStrLn ("--| starting blog: " ++ env)
     liftIO $ putStrLn "--| running database migrations"
     liftIO $ execute_ pg "SET client_min_messages=WARNING;"
     liftIO $ withTransaction pg $ runMigration $ MigrationContext MigrationInitialization True pg
@@ -125,10 +126,8 @@ main = do
               render post_ maybeUser
               hr ! class_ "separator"
               div ! A.id "comments" $ do
-                div ! class_ "spinner" $ do
-                  div ! class_ "bounce1" $ ""
-                  div ! class_ "bounce2" $ ""
-                  div ! class_ "bounce3" $ ""
+                div ! A.id "spinner-container" $ ""
+              script ! src "/assets/js/spin.js" $ ""
               script ! src "/assets/js/md5.js" $ ""
               script ! src "/assets/js/common.js" $ ""
               script ! src "/assets/js/post.js" $ ""
@@ -254,25 +253,33 @@ main = do
     get "/assets/js/:filename" $ do
       filename <- param "filename"
       setHeader "Content-Type" "text/javascript"
-      setHeader "Cache-Control" "public, max-age=3600, s-max-age=3600, no-cache, must-revalidate, proxy-revalidate" -- 1 hour
+      when (env == "production") setCacheControl
       cachedBody redis filename $ do
         js <- liftIO $ BL.readFile $ "assets/js/" ++ (TL.unpack filename)
-        return (if (List.isInfixOf ".min." $ TL.unpack filename) then js else (Helpers.minifyJS js))
+        if env == "production"
+           then if List.isInfixOf ".min." $ TL.unpack filename
+                   then return js
+                   else return $ Helpers.minifyJS js
+           else return js
 
     -- returns minified CSS
     get "/assets/css/:filename" $ do
       filename <- param "filename"
       setHeader "Content-Type" "text/css"
-      setHeader "Cache-Control" "public, max-age=3600, s-max-age=3600, no-cache, must-revalidate, proxy-revalidate" -- 1 hour
+      when (env == "production") setCacheControl
       cachedBody redis filename $ do
         css <- liftIO $ BL.readFile $ "assets/css/" ++ (TL.unpack filename)
-        return (if (List.isInfixOf ".min." $ TL.unpack filename) then css else (Helpers.minifyCSS $ BL.toStrict css))
+        if env == "production"
+           then if List.isInfixOf ".min." $ TL.unpack filename
+                   then return css
+                   else return $ Helpers.minifyCSS $ BL.toStrict css
+           else return css
       
     get (regex "/(assets/.*)") $ do
       relPath <- param "1"
       mimeType <- liftIO $ TL.pack <$> magicFile magic relPath
       setHeader "Content-Type" mimeType
-      setHeader "Cache-Control" "public, max-age=604800, s-max-age=604800, no-transform" -- one week
+      when (env == "production") $ setHeader "Cache-Control" "public, max-age=604800, s-max-age=604800, no-transform" -- one week
       cachedBody redis (TL.pack relPath) $ liftIO $ BL.readFile relPath
   
     notFound $ Scotty.html $ R.renderHtml $ docTypeHtml $ h1 $ toHtml $ ("Not Found." :: T.Text)
@@ -379,9 +386,12 @@ checkAuth redis = do
 -------------------------------------------------------------------------------
 --- | Caching
 
+setCacheControl :: ActionM ()
+setCacheControl = setHeader "Cache-Control" "public, max-age=3600, s-max-age=3600, no-cache, must-revalidate, proxy-revalidate" -- 1 hour
+
 cachedBody :: Redis.Connection -> TL.Text -> ActionM BL.ByteString -> ActionM ()
 cachedBody redis key valueFunc = do
-  env <- liftIO $ safeGetEnv "ENVIRONMENT" "development"
+  env <- liftIO $ Helpers.safeGetEnv "ENVIRONMENT" "development"
   if env == "production"
     then do
       redisValue <- liftIO $ Redis.runRedis redis $ Redis.get $ BL.toStrict $ TL.encodeUtf8 key

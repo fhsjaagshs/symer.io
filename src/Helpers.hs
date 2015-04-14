@@ -37,7 +37,7 @@ catchAny :: IO a -> (SomeException -> IO a) -> IO a
 catchAny = Control.Exception.catch
 
 unsafeGetEnv :: String -> String -> String
-unsafeGetEnv key defaultValue = unsafePerformIO $ catchAny (getEnv key) $ \_ -> return defaultValue
+unsafeGetEnv k df = unsafePerformIO $ safeGetEnv k df
 
 safeGetEnv :: String -> String -> IO String
 safeGetEnv key defaultValue = catchAny (getEnv key) $ \_ -> return defaultValue
