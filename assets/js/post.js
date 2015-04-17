@@ -77,9 +77,15 @@ function comment_bang(commentButton, parentId) {
     body:e.childNodes[2].value
   };
   
+  e.childNodes[0].value = "";
+  e.childNodes[1].value = "";
+  e.childNodes[2].value = "";
+  
   if (parentId) {
-    toggleEditor(e);
     params["parent_id"] = parentId;
+    e.style.display = (e.style.display=="none"?"block":"none");
+  } else {
+    e.parentNode.open = false;
   }
   
   sendHTTP("POST", "/posts/" + postId + "/comments", params, function(http) {
@@ -118,9 +124,8 @@ function renderComments(comments, pid) {
   }
 }
 
-// create and add to the mix
 window.onload = function() {
-  commentsDiv.appendChild(generateDOMObjects(editorHTML(false,null))[0]);
+  commentsDiv.appendChild(generateDOMObjects('<details><summary class="unselectable" style="outline:none;cursor:pointer">Write comment</summary>' + editorHTML(false,null) + '</details>')[0]);
 
   var sc = document.getElementById("spinner-container");
   var spinner = new Spinner({lines: 12, color: "#9A9A9A", hwaccel: true, top: '50%', left: '50%' }).spin(sc);

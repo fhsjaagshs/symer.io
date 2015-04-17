@@ -34,11 +34,13 @@ import           Prelude as P hiding (head, div)
 import           Magic -- for mimetypes
 
 -- TODO:
+-- Non-reply comment editor state
 -- comments (id, thread_id, parent_id, body, email, display_name)
+-- Comment-optional
 -- Page numbers at bottom (would require extra db hit)
 -- Site footer (copyright etc)
--- drafts button
 -- Save MD5 sum in redis
+-- monetizing
 
 -- Miscellaneous Ideas:
 -- 1. 'Top 5' tags map in side bar?
@@ -328,6 +330,7 @@ renderBody maybeTitle maybeSubtitle maybeUser bodyHtml = H.body ! style "text-al
   when (isJust maybeSubtitle) (h3 ! A.id "blog-subtitle" $ toHtml $ fromJust maybeSubtitle)
   when (isJust maybeUser) (a ! href "/logout" ! class_ "blogbutton" ! rel "nofollow" $ "Logout")
   when (isJust maybeUser) (a ! href "/posts/new" ! class_ "blogbutton" ! rel "nofollow" $ "New Post")
+  when (isJust maybeUser) (a ! href "/drafts" ! class_ "blogbutton" ! rel "nofollow" $ "Drafts")
   div ! A.id "content" $ bodyHtml
   
 renderPostEditor :: Maybe BlogPost -> Html
