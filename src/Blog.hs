@@ -34,13 +34,10 @@ import           Prelude as P hiding (head, div)
 import           Magic -- for mimetypes
 
 -- TODO:
--- Non-reply comment editor state
--- comments (id, thread_id, parent_id, body, email, display_name)
--- Comment-optional
+-- Comment-optional posts
 -- Page numbers at bottom (would require extra db hit)
 -- Site footer (copyright etc)
 -- Save MD5 sum in redis
--- monetizing
 
 -- Miscellaneous Ideas:
 -- 1. 'Top 5' tags map in side bar?
@@ -332,7 +329,7 @@ renderBody maybeTitle maybeSubtitle maybeUser bodyHtml = H.body ! style "text-al
   when (isJust maybeUser) (a ! href "/posts/new" ! class_ "blogbutton" ! rel "nofollow" $ "New Post")
   when (isJust maybeUser) (a ! href "/drafts" ! class_ "blogbutton" ! rel "nofollow" $ "Drafts")
   div ! A.id "content" $ bodyHtml
-  
+
 renderPostEditor :: Maybe BlogPost -> Html
 renderPostEditor maybeBlogPost = do
   input ! type_ "text" ! A.id "title-field" ! placeholder "Post title" ! value (textValue $ maybe "" Types.title maybeBlogPost)
@@ -356,7 +353,7 @@ renderPostEditor maybeBlogPost = do
   script ! src "/assets/js/wordlist.js" $ ""
   script ! src "/assets/js/common.js" $ ""
   script ! src "/assets/js/editor.js" $ ""
-  
+
 renderPageControls :: Maybe Integer -> Bool -> Html
 renderPageControls Nothing hasNext = renderPageControls (Just 1) hasNext
 renderPageControls (Just pageNum) hasNext = do
@@ -375,7 +372,7 @@ postTags ts = [("keywords", T.append (T.pack $ (List.intercalate ", " ts) ++ ", 
 
 -------------------------------------------------------------------------------
 --- | Authentication
-  
+
 getUser :: Redis.Connection -> ActionM (Maybe User)
 getUser redis = do
   atoken <- Helpers.accessToken
@@ -414,7 +411,7 @@ cachedBody redis key valueFunc = do
           rawBodyCached v
           
     else valueFunc >>= Scotty.raw
-    
+  
 rawBodyCached :: BL.ByteString -> ActionM ()
 rawBodyCached str = do
   setHeader "Vary" "Accept-Encoding"
