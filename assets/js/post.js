@@ -24,63 +24,83 @@ function screenScale() {
 function generateDOMObjects(html) {
   var div = document.createElement('div');
   div.innerHTML = html;
-  for (var a=[], i=div.childNodes.length; i--; a[i]=div.childNodes[i]);
+  for (var a = [], i = div.childNodes.length; i--; a[i] = div.childNodes[i]);
   return a;
 }
 
 function gravatarURL(email) { return "https://secure.gravatar.com/avatar/" + md5(email) + ".png?r=x&d=mm&s=" + 60*screenScale(); }
 
-function editorHTML(h,parentId) {
-  return '<div class="editor"' + (h == true ? " hidden" : "") + '>'
+function editorHTML(h,id) {
+  return '<div class="editor"' + (h == true ? ' style="display: none;"' : '') + '>'
        + '<input type="text" class="comment-editor-text-field" placeholder="Email">'
        + '<input type="text" class="comment-editor-text-field" placeholder="Display Name">'
        + '<textarea class="comment-editor-textarea" placeholder="Enter your comment here"></textarea>'
-       + '<a class="blogbutton" onclick="comment_bang(this.parentNode.childNodes[0].value,this.parentNode.childNodes[1].value,this.parentNode.childNodes[2].value, "' + parentId + '")">Comment</a>'
+       + '<a class="blogbutton" onclick="comment_bang(this, ' + id + ')">Comment</a>'
        + '</div>';
 }
 
-function commentHTML(email,name,body,parentId) {
+function commentHTML(email,name,body,id) {
   return '<img width="60px" height="60px" src="' + gravatarURL(email) + '" class="comment-avatar" onerror="this.src="https://secure.gravatar.com/avatar/?r=x&d=mm&s=" + 60*screenScale()">'
          + '<div class="comment-content">'
          + '<h3 class="comment-name">' + name + '</h3>'
          + '<p class="comment-body">' + body + '</p>'
-         + '<a class="blogbutton" onclick="toggleEditor(this);">Reply</a>'
+         + '<a class="blogbutton" onclick="this.innerHTML = (this.innerHTML == \'Reply\'?\'Cancel\':\'Reply\');toggleEditor(this.parentNode.nextSibling);">Reply</a>'
          + '</div>'
-         + editorHTML(true,parentId);
+         + editorHTML(true,id);
 }
 
-function toggleEditor(linkbtn) {
-  linkbtn.parentNode.nextSibling.hidden = !linkbtn.parentNode.nextSibling.hidden;
-  linkbtn.innerHTML = (linkbtn.innerHTML=='Reply'?'Cancel':'Reply');
+function toggleEditor(editor) {
+  if (editor.style.display == "none") {
+    editor.childNodes[0].value = "";
+    editor.childNodes[1].value = "";
+    editor.childNodes[2].value = "";
+  }
+  
+  editor.style.display = (editor.style.display=="none"?"block":"none");
 }
 
-function commentDiv(email,name,body,id, parentId) {
+function commentDiv(email,name,body,id) {
   var div = document.createElement("div");
   div.className = "comment";
   div.id = "comment" + id.toString();
-  div.innerHTML = commentHTML(email,name,body, parentId);
+  div.innerHTML = commentHTML(email,name,body,id);
   return div;
 }
 
-function comment_bang(email, dispname, body, parentId) {
-  var params = { post_id:postId, email:email, display_name:dispname, body:body };
-  if (parentId) params["parentId"] = parentId;
-  console.log(params);
+function comment_bang(commentButton, parentId) {
+  var e = commentButton.parentNode;
   
-  // sendHTTP("POST", "/posts/" + postId + "/comments", params, function(http) {
-  //   console.log(http);
-  // });
+  var params = {
+    post_id:postId,
+    email:e.childNodes[0].value,
+    display_name:e.childNodes[1].value,
+    body:e.childNodes[2].value
+  };
+  
+  if (parentId) {
+    toggleEditor(e);
+    params["parent_id"] = parentId;
+  }
+  
+  sendHTTP("POST", "/posts/" + postId + "/comments", params, function(http) {
+    if (http.status == 200) {
+      if (parentId) reply(params['email'], params['display_name'], params['body'], parseInt(http.responseText), parentId);
+      else          comment(params['email'], params['display_name'], params['body'], parseInt(http.responseText));
+    } else {
+      alert("Failed to post comment.");
+    }
+  });
 }
 
-function comment(email, dispname, body, id, parentId) {
-  commentsDiv.appendChild(commentDiv(email, dispname, body, id, null));
+function comment(email, dispname, body, id) {
+  commentsDiv.appendChild(commentDiv(email, dispname, body, id));
 }
 
 function reply(email, dispname, body, id, parentId) {
   if (parentId != -1) {
     addDivNextTo(
       document.getElementById("comment" + parentId.toString()),
-      commentDiv(email, dispname, body, id, parentId)
+      commentDiv(email, dispname, body, id)
     );
   }
 }

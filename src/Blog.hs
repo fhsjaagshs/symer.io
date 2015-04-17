@@ -247,7 +247,12 @@ main = do
       parentId_ <- maybeParam "parent_id"
       commentId <- liftIO $ insertComment pg ((read . TL.unpack) <$> parentId_) postId_ email_ displayName_ body_ 
       addHeader "Location" $ TL.pack $ "/posts/" ++ (show postId_)
-      emptyResponse
+      case commentId of
+        Just cid -> Scotty.text $ TL.pack $ show cid
+        Nothing -> do
+          Scotty.status $ Status 500 "Failed to insert comment."
+          Scotty.text "Failed to insert comment."
+      
   
     -- returns minified JS
     get "/assets/js/:filename" $ do
@@ -447,7 +452,7 @@ upsertBlogPost _  _    _                 _            _            _           _
 
 insertComment :: PG.Connection -> Maybe Integer -> Integer -> T.Text -> T.Text -> T.Text -> IO (Maybe Integer)
 insertComment pg (Just parentId_) postId_ email_ displayName_ body_ = (listToMaybe <$> map fromOnly <$> ((query pg "INSERT INTO comments (parentId,postId,email,displayName,body) VALUES (?,?,?,?,?) RETURNING id" (parentId_, postId_, email_, displayName_, body_)) :: IO [Only Integer])) :: IO (Maybe Integer)
-insertComment pg Nothing postId_ email_ displayName_ body_ = (listToMaybe <$> map fromOnly <$> ((query pg "INSERT INTO comments (postId,email,displayName,body) VALUES (?,?,?,?) RETURNING id" (postId_, email_, displayName_, body_)) :: IO [Only Integer])) :: IO (Maybe Integer)
+insertComment pg Nothing          postId_ email_ displayName_ body_ = (listToMaybe <$> map fromOnly <$> ((query pg "INSERT INTO comments (postId,email,displayName,body) VALUES (?,?,?,?) RETURNING id" (postId_, email_, displayName_, body_)) :: IO [Only Integer])) :: IO (Maybe Integer)
 
 getBlogPostsByTag :: PG.Connection -> T.Text -> Maybe Integer -> IO [BlogPost]
 getBlogPostsByTag pg tag Nothing        = getBlogPostsByTag pg tag (Just 1)
