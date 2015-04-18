@@ -31,6 +31,7 @@ import qualified Crypto.BCrypt as BCrypt
 
 import           System.Environment
 import           System.IO.Unsafe
+import           System.Locale
 
 import qualified Data.Digest.Pure.MD5 as MD5
 
