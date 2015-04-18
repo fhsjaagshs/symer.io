@@ -247,7 +247,7 @@ main = do
       commentId <- liftIO $ insertComment pg ((read . TL.unpack) <$> parentId_) postId_ email_ displayName_ body_ 
       addHeader "Location" $ TL.pack $ "/posts/" ++ (show postId_)
       case commentId of
-        Just cid -> Scotty.text $ TL.pack $ show cid
+        Just cid_ -> Scotty.text $ TL.pack $ show cid_
         Nothing -> do
           Scotty.status $ Status 500 "Failed to insert comment."
           Scotty.text "Failed to insert comment."
