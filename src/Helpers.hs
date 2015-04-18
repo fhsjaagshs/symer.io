@@ -2,6 +2,7 @@
 
 module Helpers where
 
+import           Control.Applicative
 import           Control.Exception
   
 import           Data.Maybe
