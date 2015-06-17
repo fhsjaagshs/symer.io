@@ -27,7 +27,6 @@ executable blog
                      postgresql-simple-migration,
                      hedis,
                      cheapskate,
-                     cookie,
                      blaze-builder,
                      vector,
                      aeson,
@@ -36,8 +35,9 @@ executable blog
                      hjsmin,
                      css-text,
                      bcrypt,
-                     magic,
                      pureMD5,
-                     old-locale
-
-  
+                     old-locale,
+                     parsec,
+                     split,
+                     data-default,
+                     mime-types

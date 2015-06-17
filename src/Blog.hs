@@ -31,13 +31,16 @@ import           Text.Blaze.Html5.Attributes as A
 import           Text.Blaze.Html.Renderer.Text as R
 import           Prelude as P hiding (head, div)
 
-import           Magic -- for mimetypes
+import           MIME
 
 -- TODO:
 -- Comment-optional posts
 -- Page numbers at bottom (would require extra db hit)
 -- Site footer (copyright etc)
 -- Save MD5 sum in redis
+-- Make sure comments are rendered safely
+-- Links in comments *** nofollow them
+-- search
 
 -- Miscellaneous Ideas:
 -- 1. 'Top 5' tags map in side bar?
@@ -50,8 +53,8 @@ main = do
     liftIO $ putStrLn "--| establishing database connections"
     pg <- liftIO $ PG.connectPostgreSQL $ B.pack $ Config.postgresConnStr
     redis <- liftIO $ Redis.connect Redis.defaultConnectInfo
-    magic <- liftIO $ magicOpen [MagicMime]
-    liftIO $ magicLoadDefault magic
+    -- magic <- liftIO $ magicOpen [MagicMime]
+    -- liftIO $ magicLoadDefault magic
 
     liftIO $ putStrLn ("--| starting blog: " ++ env)
     liftIO $ putStrLn "--| running database migrations"
@@ -281,8 +284,7 @@ main = do
       
     get (regex "/(assets/.*)") $ do
       relPath <- param "1"
-      mimeType <- liftIO $ TL.pack <$> magicFile magic relPath
-      setHeader "Content-Type" mimeType
+      setHeader "Content-Type" $ TL.pack $ getMimeAtPath $ TL.unpack relPath
       when (env == "production") $ setHeader "Cache-Control" "public, max-age=604800, s-max-age=604800, no-transform" -- one week
       cachedBody redis (TL.pack relPath) $ liftIO $ BL.readFile relPath
   
