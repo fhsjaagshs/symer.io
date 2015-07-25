@@ -5,9 +5,9 @@ module MIME
 where
   
 import           Data.Maybe (catMaybes)
-import           Data.List
 import           Data.Char (toLower)
-import qualified Data.Map as Map
+import qualified Data.HashMap.Strict as H
+import           Data.HashMap.Strict (HashMap)
 
 import           Helpers (splitList)
 
@@ -15,14 +15,14 @@ import           Helpers (splitList)
 getMimeAtPath :: FilePath -> String
 getMimeAtPath fp = go $ mimes fp
   where
-    dropToExt = (drop 1) . (dropWhile (/= '.'))
-    extensions = (splitList '.') . (map toLower) . dropToExt
-    mimes = catMaybes . (map (flip lookup $ mimeMap)) . extensions
+    dropToExt = drop 1 . dropWhile (/= '.')
+    extensions = splitList '.' . map toLower . dropToExt
+    mimes = catMaybes . map (flip H.lookup mimeMap) . extensions
     go [] = "application/octet-stream"
     go (mime:_) = mime
   
-mimeMap :: Map String String
-mimeMap = Map.fromAscList [
+mimeMap :: HashMap String String
+mimeMap = H.fromList [
       ("123", "application/vnd.lotus-1-2-3")
     , ("3dml", "text/vnd.in3d.3dml")
     , ("3ds", "image/x-3ds")

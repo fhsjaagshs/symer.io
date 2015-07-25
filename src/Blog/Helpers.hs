@@ -67,7 +67,7 @@ splitList sep lst = part : (splitList sep xs)
     
 emptyMaybe :: Maybe [a] -> [a]
 emptyMaybe (Just v) = v
-emptyMaybe Nothing = [] 
+emptyMaybe Nothing = []
     
 formatDate :: FormatTime t => t -> String
 formatDate = formatTime defaultTimeLocale "%-m • %-e • %-y | %l:%M %p %Z" 
@@ -96,18 +96,6 @@ setAccessToken :: T.Text -> ActionM ()
 setAccessToken token = addHeader "Set-Cookie" $ TL.pack $ serializeCookie cookie
   where
     cookie = def { cookieKey = "token", cookieValue = (T.unpack token) }
-
--------------------------------------------------------------------------------
---- | Minification
-
-minifyJS :: BL.ByteString -> BL.ByteString
-minifyJS = Jasmine.minify
-
-minifyCSS :: B.ByteString -> BL.ByteString
-minifyCSS css = case CSS.renderNestedBlocks <$> (CSS.parseNestedBlocks $ T.decodeUtf8 css) of
-                  Left errmsg -> error errmsg
-                  Right cssbuilder -> TL.encodeUtf8 $ TL.toLazyText cssbuilder
-  
 
 -------------------------------------------------------------------------------
 --- | Scotty

@@ -1,6 +1,6 @@
 {-# LANGUAGE OverloadedStrings, FlexibleInstances #-}
 
-module Cookie 
+module Blog.Cookie 
 (
   Cookie(..),
   parseCookie,

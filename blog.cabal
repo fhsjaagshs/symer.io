@@ -11,9 +11,10 @@ cabal-version:       >=1.8
 data-dir:            assets
 
 executable blog
-  main-is:           Blog.hs
+  main-is:           Main.hs
   hs-source-dirs:    src
   ghc-options:       -threaded -Wall -fwarn-tabs -fno-warn-orphans -fno-warn-unused-do-bind -O
+  ld-options:        -static -pthread
   build-depends:     base,
                      wai,
                      http-types,
@@ -40,4 +41,7 @@ executable blog
                      parsec,
                      split,
                      data-default,
-                     mime-types
+                     mime-types,
+                     unordered-containers,
+                     scotty-tls,
+                     hdaemonize
