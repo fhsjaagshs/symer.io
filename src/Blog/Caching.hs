@@ -11,13 +11,18 @@ import Blog.State
 import Web.Scotty.Trans
 import qualified Database.Redis as Redis
 
+import qualified Data.ByteString.Lazy.Char8 as BL
+import qualified Data.ByteString.Char8 as B
+
+import System.Environment
+
 setCacheControl :: ActionT e m ()
 setCacheControl = setHeader "Cache-Control" "public, max-age=3600, s-max-age=3600, no-cache, must-revalidate, proxy-revalidate" -- 1 hour
 
-cachedBody :: B.ByteString -> IO BL.ByteString -> ActionT TL.Text WebM ()
+cachedBody :: B.ByteString -> IO BL.ByteString -> ActionT e WebM ()
 cachedBody key valueFunc = do
   redis <- webM $ gets stateRedis
-  env <- liftIO $ Helpers.safeGetEnv "ENVIRONMENT" "development"
+  env <- liftIO $ fromMaybe "development" <$> lookupEnv "ENV"
   if env == "production"
     then do
       redisValue <- liftIO . Redis.runRedis redis . Redis.get $ key

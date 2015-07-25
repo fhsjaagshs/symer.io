@@ -1,6 +1,15 @@
 module Blog.HTMLUtil
 (
-
+  blogTitle,
+  blogSubtitle,
+  postsPerPage,
+  seoTags,
+  renderHead,
+  renderBody,
+  renderPostEditor,
+  renderPageControls,
+  appendedBlogTitle,
+  postTags
 )
 where
 
@@ -9,12 +18,10 @@ import           Config
 import           Types
 import           Helpers
 
-import           Control.Concurrent.STM
 import           Control.Applicative
 import           Control.Monad.IO.Class
 import           Control.Monad
 import           Data.Maybe
-import           Data.Default
 
 import qualified Data.ByteString.Char8 as B
 import qualified Data.ByteString.Lazy.Char8 as BL
@@ -23,13 +30,6 @@ import qualified Data.Text.Encoding as T
 import qualified Data.Text.Lazy as TL
 import qualified Data.Text.Lazy.Encoding as TL
 import qualified Data.List as List
-
-import           Web.Scotty.Trans as Scotty
-import           Web.Scotty.TLS as Scotty
-import           Network.HTTP.Types.Status
-import qualified Database.Redis as Redis
-import           Database.PostgreSQL.Simple as PG
-import           Database.PostgreSQL.Simple.Migration as PG.Migration
 
 import           Text.Blaze.Html5 as H hiding (style, param, map)
 import           Text.Blaze.Html5.Attributes as A

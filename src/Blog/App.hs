@@ -71,9 +71,8 @@ app = do
   get "/" $ do
     maybeUser <- getUser
     maybePNum <- maybeParam "page"
-    let mPageNum = (read . TL.unpack <$> maybePNum) :: Maybe Integer
-    pg <- webM $ gets statePostgres
-    posts <- liftIO $ getBlogPosts pg mPageNum
+    let mPageNum = read . TL.unpack <$> maybePNum
+    posts <- getBlogPosts mPageNum
     Scotty.html $ R.renderHtml $ docTypeHtml $ do
       renderHead [] [] blogTitle
       renderBody (Just blogTitle) (Just blogSubtitle) maybeUser $ do
@@ -83,8 +82,8 @@ app = do
   get "/drafts" $ do
     maybeUser <- authenticate
     maybePNum <- maybeParam "page"
-    let mPageNum = (read . T.unpack . TL.toStrict <$> maybePNum) :: Maybe Integer
-    posts <- liftIO $ getDrafts pg (fromJust maybeUser) mPageNum
+    let mPageNum = read . TL.unpack <$> maybePNum
+    posts <- getDrafts (fromJust maybeUser) mPageNum
     Scotty.html $ R.renderHtml $ docTypeHtml $ do
       renderHead [] [("robots","noindex, nofollow")] (appendedBlogTitle "Drafts")
       renderBody (Just "Drafts") Nothing maybeUser $ do
@@ -103,8 +102,7 @@ app = do
   get "/posts/:id" $ do
     identifier_ <- param "id"
     maybeUser <- getUser
-    pg <- webM $ gets statePostgres
-    res <- liftIO $ getBlogPost pg identifier_
+    res <- getBlogPost identifier_
     case res of
       Nothing -> next
       Just post_ -> do
@@ -128,9 +126,8 @@ app = do
     tag <- param "tag"
     maybeUser <- getUser
     maybePNum <- maybeParam "page"
-    let mPageNum = ((read . T.unpack . TL.toStrict <$> maybePNum)) :: Maybe Integer
-    pg <- webM $ gets statePostgres
-    posts <- liftIO $ getBlogPostsByTag pg tag mPageNum
+    let mPageNum = read . TL.unpack <$> maybePNum
+    posts <- getBlogPostsByTag tag mPageNum
     Scotty.html $ R.renderHtml $ docTypeHtml $ do
       renderHead [] [] (appendedBlogTitle $ tag)
       renderBody (Just $ T.append "Posts tagged '" $ T.append tag "'") Nothing maybeUser $ do
@@ -141,8 +138,7 @@ app = do
   get "/posts/:id/edit" $ do
     authenticate
     identifier_ <- param "id"
-    pg <- webM $ gets statePostgres
-    res <- liftIO $ getBlogPost pg identifier_
+    res <- getBlogPost identifier_
     case res of
       Nothing -> next
       Just post_ -> do
@@ -170,24 +166,22 @@ app = do
   
   get "/posts/:id/comments.json" $ do
     identifier_ <- param "id"
-    pg <- webM $ gets statePostgres
-    (liftIO $ query pg "SELECT * FROM comments WHERE postId=?" [identifier_ :: Integer]) >>= Scotty.json . nestComments . (map (\c -> Node c [] Nothing))
+    getCommentsForPost identifier_ >>= Scotty.json . nestComments . (map (\c -> Node c [] Nothing))
   
   post "/login" $ do
-    pUsername <- param "username" :: ActionM T.Text
-    pPassword <- param "password" :: ActionM T.Text
-    pRedirectPath <- maybeParam "redirect" :: ActionM (Maybe TL.Text)
-
-    pg <- webM $ gets statePostgres
-    res <- liftIO $ listToMaybe <$> (query pg "SELECT * FROM users WHERE username=? LIMIT 1" [pUsername] :: IO [User])
+    pUsername <- param "username"
+    pPassword <- param "password"
+    pRedirectPath <- maybeParam "redirect"
+    res <- getUserWithUsername pUsername
     
     case res of
       Nothing     -> redirect "/login?error_message=Username%20not%20found%2E"
       (Just user) -> do
+        -- TODO: rewrite!!!!!
         if Helpers.checkPassword (fromJust $ Types.passwordHash user) pPassword
           then do
             setAuth user
-            redirect $ Data.Maybe.fromMaybe "/" pRedirectPath
+            redirect $ fromMaybe "/" pRedirectPath
           else redirect "/login?error_message=Invalid%20password%2E"
 
   -- deletes a BlogPost from the database
@@ -195,27 +189,22 @@ app = do
   delete "/posts/:id" $ do
     authUser <- authenticate
     identifier_ <- param "id"
-    pg <- webM $ gets statePostgres
-    res <- liftIO $ deleteBlogPost pg identifier_ (fromJust authUser)
+    res <- deleteBlogPost identifier_ (fromJust authUser)
     case (res :: Maybe Integer) of
       Nothing -> status $ Status 404 "blog post not found."
-      Just _ -> Scotty.text "ok"  
+      Just _ -> Scotty.text "ok"
 
   -- creates/updates a BlogPost in the database
-  -- returns JSON
   post "/posts" $ do
     authUser <- authenticate
     ps <- params
-
-    pg <- webM $ gets statePostgres
-    maybeBPIdentifier <- liftIO $ (upsertBlogPost pg
-                                                  (fromJust authUser)
-                                                  ((read . TL.unpack) <$> lookup "id" ps)
-                                                  (TL.toStrict <$> lookup "title" ps)
-                                                  (TL.toStrict <$> lookup "body" ps)
-                                                  ((splitList ',' . TL.unpack) <$> (lookup "tags" ps))
-                                                  ((splitList ',' . TL.unpack) <$> (lookup "deleted_tags" ps))
-                                                  (elem (TL.unpack $ fromMaybe "True" $ lookup "draft" ps) ["t", "true", "True", "y", "yes"]))
+    maybeBPIdentifier <- (upsertBlogPost (fromJust authUser)
+                                         ((read . TL.unpack) <$> lookup "id" ps)
+                                         (TL.toStrict <$> lookup "title" ps)
+                                         (TL.toStrict <$> lookup "body" ps)
+                                         ((splitList ',' . TL.unpack) <$> (lookup "tags" ps))
+                                         ((splitList ',' . TL.unpack) <$> (lookup "deleted_tags" ps))
+                                         (elem (TL.unpack . fromMaybe "True" . lookup "draft" $ ps) ["t", "true", "True", "y", "yes"]))
     case maybeBPIdentifier of
       Nothing -> status $ Status 400 "Missing required parameters"
       Just identifier_ -> addHeader "Location" $ TL.pack $ "/posts/" ++ (show identifier_)
@@ -226,8 +215,7 @@ app = do
     displayName_ <- param "display_name"
     body_ <- param "body"
     parentId_ <- maybeParam "parent_id"
-    pg <- webM $ gets statePostgres
-    commentId <- liftIO $ insertComment pg ((read . TL.unpack) <$> parentId_) postId_ email_ displayName_ body_ 
+    commentId <- insertComment ((read . TL.unpack) <$> parentId_) postId_ email_ displayName_ body_ 
     addHeader "Location" $ TL.pack $ "/posts/" ++ (show postId_)
     case commentId of
       Just cid_ -> Scotty.text $ TL.pack $ show cid_
@@ -256,4 +244,4 @@ app = do
     when (env == "production") $ setHeader "Cache-Control" "public, max-age=604800, s-max-age=604800, no-transform" -- one week
     cachedBody (T.encodeUtf8 $ TL.toStrict relPath) $ BL.readFile $ TL.unpack relPath
 
-  notFound $ Scotty.html $ R.renderHtml $ docTypeHtml $ h1 $ toHtml $ ("Not Found." :: T.Text)
+  notFound $ Scotty.text "Not Found."
