@@ -27,10 +27,20 @@ accessToken = Scotty.reqHeader "Cookie" >>= f
   where
     cookieToTuple (Cookie k v _ _ _ _ _) = (k, v)
     lookupToken  = (<$>) . T.pack . lookup "token" . map cookieToTuple
-    f = (<$>) . lookupToken . emptyMaybe . parseCookies . fromMaybe [] . TL.unpack
+    -- f = (<$>) . lookupToken . fromMaybe [] . parseCookies . TL.unpack
+    -- TODO: Fixme
 
 getUser :: ActionT TL.Text WebM (Maybe User)
 getUser = do
+  a@(State _ _ authMap) <- webM $ state
+  atoken <- accessToken
+  
+  let res = lookup atoken authMap
+  case res of
+    (Just (user, timeout)) -> 
+  webM $ puts $ a { stateAuthMap = res }
+  
+  
   redis <- webM $ gets stateRedis
   atoken <- accessToken
   liftIO $ R.runRedis redis $ do

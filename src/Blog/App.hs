@@ -1,5 +1,6 @@
 module Blog.App
 (
+  initState,
   startApp,
   app
 )
@@ -32,6 +33,8 @@ import Data.List as L
 import qualified Data.Text.Encoding as T
 import qualified Data.Text.Lazy as TL
 import qualified Data.Text.Lazy.Encoding as TL
+import           Data.HashMap.Strict (HashMap)
+import qualified Data.HashMap.Strict as H
 
 import           Text.Blaze.Html5 as H hiding (style, param, map)
 import           Text.Blaze.Html5.Attributes as A
@@ -50,8 +53,8 @@ import           Prelude as P hiding (head, div)
 -- Miscellaneous Ideas:
 -- 1. 'Top 5' tags map in side bar?
 
-startApp :: Integer -> String -> IO ()
-startApp port env = do
+initState :: IO State
+initState = do
   liftIO $ putStrLn "--| establishing database connections"
   pg <- PG.connectPostgreSQL $ B.pack $ Config.postgresConnStr
   redis <- Redis.connect Redis.defaultConnectInfo
@@ -61,9 +64,13 @@ startApp port env = do
   putStrLn "--| clearing cached data from Redis"
   Redis.runRedis redis $ Redis.flushall
   putStrLn "--| blog started"
-  
-  let runActionToIO = (>>=) (newTVarIO $ State redis pg) . runReaderT . runWebM
-  scottyTTLS port ".key" ".crt" runActionToIO app
+  return $ State redis pg
+
+startApp :: Integer -> String -> FilePath -> FilePath -> State -> IO ()
+startApp port env crtfile keyfile state = do
+  sync <- newTVarIO state
+  let runActionToIO = (>>=) sync . runReaderT . runWebM
+  scottyTTLS port keyfile crtfile runActionToIO app
 
 app :: ScottyT TL.Text WebM ()
 app = do

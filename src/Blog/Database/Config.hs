@@ -5,7 +5,8 @@ module Blog.Database.Config
   postgresConfig,
   postgresURL,
   postgresConnStr,
-  postgresmigrations
+  migrations,
+  postsPerPage
 ) where
 
 import Data.List
@@ -22,8 +23,7 @@ migrations = [
   ("array_funcs.sql", "./migrations/array_funcs.sql"),
   ("authorship.sql", "./migrations/authorship.sql"),
   ("drafts.sql", "./migrations/drafts.sql"),
-  ("comments.sql", "./migrations/comments.sql")
-]
+  ("comments.sql", "./migrations/comments.sql")]
 
 postgresConfigs :: String -> [(String, String)]
 postgresConfigs "development" = [
@@ -35,7 +35,7 @@ postgresConfigs "development" = [
                     ]
 postgresConfigs "production" = [
                     ("user", "symerdotio"),
-                    ("password", unsafePerformIO $ fromJust $ lookupEnv "PGPASSWORD"),
+                    ("password", fromJust $ unsafePerformIO $ lookupEnv "PGPASSWORD"),
                     ("host", "db.symer.io"),
                     ("port", "5432"),
                     ("dbname", "blog"),
@@ -44,7 +44,7 @@ postgresConfigs "production" = [
 postgresConfigs _ = []
                     
 postgresConfig :: [(String, String)]
-postgresConfig = postgresConfigs appEnv
+postgresConfig = postgresConfigs $ fromJust $ unsafePerformIO $ lookupEnv "ENV"
 
 configFor :: String -> String
 configFor k = fromMaybe "" $ lookup "port" postgresConfig
@@ -62,3 +62,6 @@ postgresURL = "postgresql://"
 
 postgresConnStr :: String
 postgresConnStr = intercalate " " $ (map (\(k,_) -> k ++ "='" ++ (configFor k) ++ "'") postgresConfig)
+
+postsPerPage :: Int
+postsPerPage = 10

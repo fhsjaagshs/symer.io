@@ -1,16 +1,15 @@
-{-# LANGUAGE OverloadedStrings, FlexibleInstances, DeriveGeneric, DeriveDataTypeable #-}
+{-# LANGUAGE OverloadedStrings, FlexibleInstances, DeriveGeneric, DeriveDataTypeable, RecordWildCards #-}
 
-module Types where
+module Blog.Types where
   
-import           Helpers
-import           PGExtensions()
+import           Blog.Database.PGExtensions()
 
 import           GHC.Generics
 import           Control.Applicative
 import           Control.Monad
 import           Data.Maybe
 
-import qualified Data.ByteString.Char8 as B
+-- import qualified Data.ByteString.Char8 as B
 import qualified Data.ByteString.Lazy.Char8 as BL
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
@@ -18,6 +17,7 @@ import qualified Data.Vector as Vector
 import           Data.Time.Clock
 import           Data.List
 import qualified Data.Vector as V
+import           Data.Time.Format
 
 import           Cheapskate
 import           Data.Aeson as Aeson
@@ -35,7 +35,7 @@ import           Blaze.ByteString.Builder (toLazyByteString, fromByteString)
 import           Prelude as P hiding (div)
 import           Data.Typeable
 
--------------------------------------------------------------------------------
+--------------------------------------------------------------------------------
 --- | Typeclasses
 
 -- renders records into HTML using blaze
@@ -44,14 +44,14 @@ class Composable a where
   renderBasic :: a -> Html
   renderBasic comp = render comp Nothing
   
--------------------------------------------------------------------------------
+--------------------------------------------------------------------------------
 --- | Comment data type
 
 -- Used to structure comments into a
 -- 'family tree', similar to how they
 -- would appear on the web.
 data Node = Node {
-  data_ :: Comment,
+  comment :: Comment,
   children :: [Node],
   parent :: Maybe Node
 } deriving (Eq, Show)
@@ -95,7 +95,7 @@ parentage (Node _ _ (Just prnt)) = 1 + parentage prnt
 --          parent  child
 isParent :: Node -> Node -> Bool
 isParent prnt child
-  | (((==) (cid $ Types.data_ prnt)) <$> (parentId $ Types.data_ child)) == (Just True) = True
+  | (((==) (cid $ comment prnt)) <$> (parentId $ comment child)) == (Just True) = True
   | elem child (children prnt) = True
   | otherwise = False
 
@@ -107,11 +107,11 @@ isDescendent nodeOne nodeTwo -- nodeTwo is nodeOne's child OR nodeTwo is a child
   | otherwise = any ((flip isDescendent) nodeTwo) $ children nodeOne
 
 isRoot :: Node -> Bool
-isRoot = isNothing . parentId . Types.data_
+isRoot = isNothing . parentId . comment
 
 -- Adds child to the first node's children, appling func to each of the children
 appendChild :: Node -> Node -> ([Node] -> [Node]) -> Node
-appendChild (Node c children_ parent_) child func = Node c (func ((Node (Types.data_ child) (children child) (Just (Node c children_ parent_))):children_)) parent_
+appendChild (Node c children_ parent_) child func = Node c (func ((Node (comment child) (children child) (Just (Node c children_ parent_))):children_)) parent_
 
 nestComments :: [Node] -> [Node]
 nestComments [] = []
@@ -125,65 +125,84 @@ nestComments (c:xs) = case c of
                               then (c:xs)
                               else nestComments $ xs ++ [c]
 
--------------------------------------------------------------------------------
+--------------------------------------------------------------------------------
 --- | User data type
   
 data User = User {
-  uid :: !Integer,
-  username :: T.Text,
-  displayName :: T.Text,
-  passwordHash :: Maybe T.Text
+  userUID :: !Integer,
+  userUsername :: T.Text,
+  userDisplayName :: T.Text,
+  userPasswordHash :: Maybe T.Text
 } deriving (Show, Generic, Typeable)
 
-instance ToJSON User
-instance FromJSON User
+instance ToJSON User where
+  toJSON User{..} = Aeson.object [
+    "uid" .= userUID,
+    "username" .= userUsername,
+    "display_name" .= userDisplayName,
+    "password_hash" .= userPasswordHash]
+
+instance FromJSON User where
+  parseJSON (Object o) = User
+    <$> o .:  "uid"
+    <*> o .:  "username"
+    <*> o .:  "displayName"
+    <*> o .:? "passwordHash"
+  parseJSON _ = mzero
 
 instance Eq User where
-  (==) (User uidOne _ _ _) (User uidTwo _ _ _) = ((==) uidOne uidTwo)
+  (User a_ _ _ _) == (User b_ _ _ _) = a_ == b_
 
 instance FromField User where
   fromField f (Just fdata) = do
-    tinfo <- (typeInfo f)
+    tinfo <- typeInfo f
     case tinfo of
       (Composite _ _ _ "users" _ _) -> return $ parseUserRow $ parseRow $ T.decodeUtf8 fdata
       _ -> returnError ConversionFailed f "Failed to read users field."
   fromField f Nothing = do
-    tinfo <- (typeInfo f)
+    tinfo <- typeInfo f
     case tinfo of
       (Composite _ _ _ "users" _ _) -> returnError Incompatible f "Field is a user, but is empty."
       _ -> returnError ConversionFailed f "Failed to read users field."
 
+--------------------------------------------------------------------------------
 instance ToField User where
-  toField u  = Many [Plain $ fromByteString "ROW(",
-                     Plain $ fromByteString $ B.pack $ show $ Types.uid u,
-                     Plain $ fromByteString ",",
-                     Escape $ T.encodeUtf8 $ Types.username u,
-                     Plain $ fromByteString ",",
-                     Escape $ T.encodeUtf8 $ Types.displayName u,
-                     Plain $ fromByteString ",",
-                     (maybe (Plain $ fromByteString "NULL") P.id (Escape . T.encodeUtf8 <$> Types.passwordHash u)),
-                     Plain $ fromByteString ")"
-                     ]
+  toField (User uid uname dname phash) =
+    Many [Plain . fromByteString $ "ROW(",
+          toField uid, comma, toField uname, comma, toField dname, comma,
+          fromMaybe nullv (toField <$> phash),
+          Plain $ fromByteString ")"]
+    where
+      comma = Plain $ fromByteString ","
+      nullv = (Plain $ fromByteString "NULL")
   
 instance FromRow User where
   fromRow = User <$> field <*> field <*> field <*> field
   
 instance ToRow User where
-  toRow (User uid_ username_ displayName_ passwordHash_) = [toField uid_, toField username_, toField displayName_, toField passwordHash_]
+  toRow (User uid username displayName passwordHash) =
+    [toField uid,
+    toField username,
+    toField displayName,
+    toField passwordHash]
 
 parseUserRow :: [T.Text] -> User
-parseUserRow (uid_:username_:dispName_:pwh_:[]) = User (read $ T.unpack uid_) username_ dispName_ (Just pwh_)
-parseUserRow (uid_:username_:dispName_:[]) = User (read $ T.unpack uid_) username_ dispName_ Nothing
+parseUserRow (uid:uname:dname:pwh:[]) = User (read $ T.unpack uid) uname dname (Just pwh)
+parseUserRow (uid:uname:dname:[]) = User (read $ T.unpack uid) uname dname Nothing
 parseUserRow _ = error "Invalid user row."
 
 parseRow :: T.Text -> [T.Text]
 parseRow "()" = []
 parseRow ""   = []
 parseRow str
-  | (T.head str) == '(' && (T.last str) == ')'  = parseRow $ T.init $ T.tail str
-  | (T.head str) == '\"'                        = (T.takeWhile (\c -> c /= '\"') (T.tail str)):(parseRow $ T.tail $ T.dropWhile (\c -> c /= '\"') (T.tail str))
-  | (T.head str) == ','                         = parseRow $ T.tail str
-  | otherwise                                   = (T.takeWhile (\c -> c /= ',') str):(parseRow $ T.dropWhile (\c -> c /= ',') str)
+  | parenthetical str  = parseRow . T.init . T.tail $ str
+  | T.head str == '\"' = (T.takeWhile neQuote . T.tail $ str):(parseRow . T.tail . T.dropWhile neQuote . T.tail $ str)
+  | T.head str == ','  = parseRow $ T.tail str
+  | otherwise          = (T.takeWhile neComma str):(parseRow $ T.dropWhile neComma str)
+  where
+    neQuote = (/=) '\"'
+    neComma = (/=) ','
+    parenthetical s = (T.head s) == '(' && (T.last s) == ')'
 
 -------------------------------------------------------------------------------
 --- | BlogPost data type
@@ -200,14 +219,22 @@ data BlogPost = BlogPost {
 } deriving (Show)
 
 instance Eq BlogPost where
-  (==) one two = (identifier one) == (identifier two)
+  (==) a_ b_ = (identifier a_) == (identifier b_)
 
 instance FromRow BlogPost where
   fromRow = BlogPost <$> field <*> field <*> field <*> field <*> field <*> field <*> field <*> field
   
 instance ToRow BlogPost where
   toRow (BlogPost identifier_ title_ body_ timestamp_ tags_ author_id_ isDraft_ _) =
-    [toField identifier_, toField title_, toField body_, toField timestamp_, Many [Plain $ fromByteString "uniq_cat(tags,", toField tags_, Plain $ fromByteString ")"], toField author_id_, toField isDraft_]
+    [toField identifier_,
+    toField title_,
+    toField body_,
+    toField timestamp_,
+    Many [Plain $ fromByteString "uniq_cat(tags,",
+          toField tags_,
+          Plain $ fromByteString ")"],
+    toField author_id_,
+    toField isDraft_]
   
 instance ToJSON BlogPost where
   toJSON (BlogPost identifier_ title_ body_ timestamp_ tags_ _ isDraft_ author_) =
@@ -215,25 +242,30 @@ instance ToJSON BlogPost where
       "id" .= identifier_,
       "title" .= title_,
       "body" .= body_,
-      "timestamp" .= ((Aeson.String $ T.decodeUtf8 $ BL.toStrict $ toLazyByteString $ utcTimeToBuilder timestamp_) :: Value),
-      "tags" .= ((Aeson.Array $ Vector.fromList $ P.map (Aeson.String . T.pack) tags_) :: Value),
+      "timestamp" .= (timestampToValue timestamp_),
+      "tags" .= (tagsToValue tags_),
       "draft" .= isDraft_,
       "author" .= toJSON author_
     ]
+    where
+      timestampToValue :: UTCTime -> Value
+      timestampToValue = Aeson.String . T.decodeUtf8 . BL.toStrict . toLazyByteString . utcTimeToBuilder
+      tagsToValue :: [String] -> Value
+      tagsToValue = Aeson.Array . Vector.fromList . map (Aeson.String . T.pack)
     
 instance Composable BlogPost where
   -- Unauthenticated
   render (BlogPost identifier_ title_ body_ timestamp_ tags_ _ _ author_) Nothing = do
     a ! href (stringValue $ (++) "/posts/" $ show identifier_) $ do
       h1 ! class_ "post-title" ! A.id (stringValue $ show identifier_) $ toHtml title_
-    h4 ! class_ "post-subtitle" $ toHtml $ T.append (T.pack $ formatDate timestamp_) (T.append " | " $ Types.displayName author_)
+    h4 ! class_ "post-subtitle" $ toHtml $ T.append (T.pack $ formatDate timestamp_) (T.append " | " $ userDisplayName author_)
     toHtml $ map (\t -> a ! class_ "taglink" ! href (stringValue $ "/posts/by/tag/" ++ t) $ h4 ! class_ "post-subtitle" $ toHtml $ t) tags_
     div ! class_ "post-content" ! style "text-align: left;" $ toHtml $ markdown def body_
   -- Authenticated, draft
   render (BlogPost identifier_ title_ body_ timestamp_ tags_ _ True author_) (Just user_) = do
     a ! href (stringValue $ (++) "/posts/" $ show identifier_) $ do
       h1 ! class_ "post-title post-draft" ! A.id (stringValue $ show identifier_) $ toHtml title_
-    h4 ! class_ "post-subtitle post-draft" $ toHtml $ T.append (T.pack $ formatDate timestamp_) (T.append " | " $ Types.displayName author_)
+    h4 ! class_ "post-subtitle post-draft" $ toHtml $ T.append (T.pack $ formatDate timestamp_) (T.append " | " $ userDisplayName author_)
     toHtml $ map (\t -> a ! class_ "taglink" ! href (stringValue $ "/posts/by/tag/" ++ t) $ toHtml $ h4 ! class_ "post-subtitle" $ toHtml $ t) tags_
     when (author_ == user_) $  a ! class_ "post-edit-button post-draft" ! href (stringValue $ ("/posts/" ++ (show identifier_) ++ "/edit")) ! rel "nofollow" $ "edit"
     div ! class_ "post-content post-draft" ! style "text-align: left;" $ toHtml $ markdown def body_
@@ -241,7 +273,7 @@ instance Composable BlogPost where
   render (BlogPost identifier_ title_ body_ timestamp_ tags_ _ False author_) (Just user_) = do
     a ! href (stringValue $ (++) "/posts/" $ show identifier_) $ do
       h1 ! class_ "post-title" ! A.id (stringValue $ show identifier_) $ toHtml title_
-    h4 ! class_ "post-subtitle" $ toHtml $ T.append (T.pack $ formatDate timestamp_) (T.append " | " $ Types.displayName author_)
+    h4 ! class_ "post-subtitle" $ toHtml $ T.append (T.pack $ formatDate timestamp_) (T.append " | " $ userDisplayName author_)
     toHtml $ map (\t -> a ! class_ "taglink" ! href (stringValue $ "/posts/by/tag/" ++ t) $ toHtml $ h4 ! class_ "post-subtitle" $ toHtml $ t) tags_
     when (author_ == user_) $  a ! class_ "post-edit-button" ! href (stringValue $ ("/posts/" ++ (show identifier_) ++ "/edit")) ! rel "nofollow" $ "edit"
     div ! class_ "post-content" ! style "text-align: left;" $ toHtml $ markdown def body_
@@ -254,3 +286,6 @@ instance Composable [BlogPost] where
     unless (null xs) $ do
       hr ! class_ "separator"
       render xs user
+      
+formatDate :: FormatTime t => t -> String
+formatDate = formatTime defaultTimeLocale "%-m • %-e • %-y | %l:%M %p %Z" 

@@ -1,6 +1,6 @@
 name:                blog
-version:             0.0.1
-synopsis:            A custom blog for blog.symer.io
+version:             0.1.0
+synopsis:            The software behind the blog at blog.symer.io
 homepage:            http://blog.symer.io
 license:             MIT
 author:              Nathaniel
@@ -13,7 +13,7 @@ data-dir:            assets
 executable blog
   main-is:           Main.hs
   hs-source-dirs:    src
-  ghc-options:       -threaded -Wall -fwarn-tabs -fno-warn-orphans -fno-warn-unused-do-bind -O
+  ghc-options:       -threaded -Wall -fwarn-tabs -O
   ld-options:        -static -pthread
   build-depends:     base,
                      wai,
@@ -44,4 +44,11 @@ executable blog
                      mime-types,
                      unordered-containers,
                      scotty-tls,
-                     hdaemonize
+                     hdaemonize,
+                     optparse-applicative,
+                     terminal-size,
+                     unix,
+                     stm,
+                     directory,
+                     mtl,
+                     cereal

@@ -1,6 +1,9 @@
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+
 module Blog.State
 (
-  State(..)
+  AppState(..),
+  WebM(..),
   webM,
   gets,
   puts,
@@ -13,7 +16,7 @@ import           Control.Monad.Reader
 import qualified Database.Redis as Redis
 import qualified Database.PostgreSQL.Simple as PG
 
-newtype AppState = AppState { 
+data AppState = AppState { 
   stateRedis :: Redis.Connection,
   statePostgres :: PG.Connection
 }

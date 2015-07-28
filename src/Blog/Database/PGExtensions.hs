@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedStrings, FlexibleInstances, DeriveGeneric #-}
+{-# OPTIONS_GHC -fno-warn-orphans #-}
 
 --
 -- This module contains instances for
@@ -6,7 +7,7 @@
 -- postgres-simple
 --
 
-module PGExtensions where
+module Blog.Database.PGExtensions where
 
 import qualified Data.ByteString.Char8 as B
 import           Database.PostgreSQL.Simple.FromField as PG.FromField
