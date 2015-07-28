@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedStrings, FlexibleInstances #-}
+{-# OPTIONS_GHC -fno-warn-unused-do-bind #-}
 
 module Blog.Cookie 
 (
@@ -6,7 +7,8 @@ module Blog.Cookie
   parseCookie,
   parseCookies,
   serializeCookie,
-  serializeCookies
+  serializeCookies,
+  eitherToMaybe
 )
 where
   

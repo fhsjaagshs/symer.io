@@ -12,6 +12,8 @@ import Blog.Database.Util
 import Blog.Caching
 import Blog.HTMLUtil
 import Blog.Assets
+import Blog.Types
+import Blog.Auth
 
 import           Control.Concurrent.STM
 import           Control.Applicative

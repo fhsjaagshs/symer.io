@@ -1,3 +1,5 @@
+{-# LANGUAGE OverloadedStrings #-}
+
 module Blog.HTMLUtil
 (
   blogTitle,
@@ -14,14 +16,12 @@ module Blog.HTMLUtil
 where
 
 import           Blog.Types as Types
+import           Blog.Database.Config (postsPerPage)
 
-import           Control.Applicative
-import           Control.Monad.IO.Class
 import           Control.Monad
 import           Data.Maybe
 
 import qualified Data.Text as T
-import qualified Data.Text.Encoding as T
 import qualified Data.List as L
 
 import qualified Data.Text.Lazy as TL
@@ -30,7 +30,6 @@ import qualified Data.Text.Lazy.Builder as TL
 
 import           Text.Blaze.Html5 as H hiding (style, param, map)
 import           Text.Blaze.Html5.Attributes as A
-import           Text.Blaze.Html.Renderer.Text as R
 import           Prelude as P hiding (head, div, id)
 
 blogTitle :: T.Text

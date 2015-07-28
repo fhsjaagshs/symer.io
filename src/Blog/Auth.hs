@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedStrings, FlexibleInstances #-}
+{-# OPTIONS_GHC -fno-warn-unused-do-bind #-}
 
 module Blog.Auth
 (
@@ -12,8 +13,14 @@ where
   
 import Blog.State
 import Blog.Cookie
+import Blog.Types
+
+import qualified Data.Text.Lazy as TL
 
 import Control.Monad (void)
+import Control.Monad.IO.Class (liftIO)
+
+import Web.Scotty.Trans as Scotty
 
 import qualified Data.ByteString.Char8 as B
 import qualified Data.ByteString.Lazy.Char8 as BL
@@ -22,52 +29,55 @@ import qualified Database.Redis as R
 
 import System.Random
 
-accessToken :: ActionT e m String
-accessToken = Scotty.reqHeader "Cookie" >>= f
+-- TODO: Fixme
+accessToken :: (ScottyError e, Monad m) => ActionT e m (Maybe String)
+accessToken = do
+  mv <- Scotty.header "Cookie"
+  case mv of
+    Just v -> case parseCookies . TL.unpack $ v of
+      Just parsed -> return . lookup "token" . map cookieToTuple $ parsed
+      _ -> return Nothing
+    _ -> return Nothing
   where
     cookieToTuple (Cookie k v _ _ _ _ _) = (k, v)
-    lookupToken  = (<$>) . T.pack . lookup "token" . map cookieToTuple
-    -- f = (<$>) . lookupToken . fromMaybe [] . parseCookies . TL.unpack
-    -- TODO: Fixme
 
-getUser :: ActionT TL.Text WebM (Maybe User)
+getUser :: (ScottyError e) => ActionT e WebM (Maybe User)
 getUser = do
-  a@(State _ _ authMap) <- webM $ state
-  atoken <- accessToken
-  
-  let res = lookup atoken authMap
-  case res of
-    (Just (user, timeout)) -> 
-  webM $ puts $ a { stateAuthMap = res }
-  
-  
   redis <- webM $ gets stateRedis
-  atoken <- accessToken
-  liftIO $ R.runRedis redis $ do
-    R.expire atoken (3600*24)
-    R.get atoken >>= A.decodeStrict
-      
-setUser :: User -> ActionT TL.Text WebM ()
+  mtoken <- accessToken
+  case mtoken of
+    Nothing -> return Nothing
+    Just token -> do
+      liftIO $ R.runRedis redis $ do
+        R.expire (B.pack token) (3600*24)
+        -- Redis (Either Reply (Maybe ByteString))
+        t <- R.get (B.pack token)
+        case t of
+          Left (R.SingleLine json) -> return $ A.decodeStrict json
+          _ -> return Nothing
+
+setUser :: (ScottyError e) => User -> ActionT e WebM ()
 setUser user = do
-  token <- take 15 $ randomRs ('a','z') <$> newStdGen
+  token <- (take 15 . randomRs ('a','z')) <$> (liftIO $ newStdGen)
   redis <- webM $ gets stateRedis
   saveUser redis token user
   setTokenCookie token
   where
-    cookie token = def { cookieKey = "token", cookieValue = token }
-    saveUser redis token = liftIO . R.runRedis redis . R.set token . BL.toStrict . A.encode
+    cookie token = Cookie "token" token Nothing Nothing Nothing False False
+    saveUser redis token = liftIO . R.runRedis redis . R.set (B.pack token) . BL.toStrict . A.encode
     setTokenCookie = addHeader "Set-Cookie" . TL.pack . serializeCookie . cookie
     
-deleteAuth :: ActionT TL.Text WebM ()
+deleteAuth :: (ScottyError e) => ActionT e WebM ()
 deleteAuth = do
   redis <- webM $ gets stateRedis
-  atoken <- accessToken
-  void $ R.runRedis redis $ R.del [token]
+  mtoken <- accessToken
+  case mtoken of
+    Just token -> liftIO $ void $ R.runRedis redis $ R.del [(B.pack token)]
+    _ -> return ()
 
-authenticate :: ActionT TL.Text WebM (Maybe User)
+authenticate :: (ScottyError e) => ActionT e WebM (Maybe User)
 authenticate = do
-  redis <- webM $ gets stateRedis
-  maybeUser <- (getUser redis)
+  maybeUser <- getUser
   case maybeUser of
     (Just user) -> return $ Just user
     _ -> do
