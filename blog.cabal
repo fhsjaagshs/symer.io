@@ -13,10 +13,8 @@ data-dir:            assets
 executable blog
   main-is:           Main.hs
   hs-source-dirs:    src
-  ghc-options:       -threaded -Wall -fwarn-tabs -O
-  ld-options:        -static -pthread
+  ghc-options:       -threaded -Wall -fwarn-tabs -O2
   build-depends:     base,
-                     wai,
                      http-types,
                      scotty,
                      text,
@@ -37,11 +35,8 @@ executable blog
                      css-text,
                      bcrypt,
                      pureMD5,
-                     old-locale,
                      parsec,
-                     split,
                      data-default,
-                     mime-types,
                      unordered-containers,
                      scotty-tls,
                      hdaemonize,

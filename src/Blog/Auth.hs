@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings, FlexibleInstances #-}
+{-# LANGUAGE OverloadedStrings #-}
 {-# OPTIONS_GHC -fno-warn-unused-do-bind #-}
 
 module Blog.Auth
@@ -53,7 +53,7 @@ getUser = do
         -- Redis (Either Reply (Maybe ByteString))
         t <- R.get (B.pack token)
         case t of
-          Left (R.SingleLine json) -> return $ A.decodeStrict json
+          Left (R.SingleLine j) -> return $ A.decodeStrict j
           _ -> return Nothing
 
 setUser :: (ScottyError e) => User -> ActionT e WebM ()

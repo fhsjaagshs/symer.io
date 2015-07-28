@@ -1,6 +1,7 @@
-module MIME
+module Blog.MIME
 (
-  getMimeAtPath
+  getMimeAtPath,
+  splitList
 )
 where
   
@@ -9,8 +10,12 @@ import           Data.Char (toLower)
 import qualified Data.HashMap.Strict as H
 import           Data.HashMap.Strict (HashMap)
 
-import           Helpers (splitList)
-
+splitList :: (Eq a) => a -> [a] -> [[a]]
+splitList _ [] = []
+splitList sep lst = part : (splitList sep xs)
+  where
+    part = takeWhile ((/=) sep) lst
+    xs = drop (1 + (length part)) lst
 
 getMimeAtPath :: FilePath -> String
 getMimeAtPath fp = go $ mimes fp

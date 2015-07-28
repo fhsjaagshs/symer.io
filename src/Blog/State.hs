@@ -39,4 +39,3 @@ puts v = ask >>= liftIO . atomically . flip writeTVar v
 
 modify :: (AppState -> AppState) -> WebM ()
 modify f = ask >>= liftIO . atomically . flip modifyTVar' f
-

@@ -1,3 +1,6 @@
+{-# LANGUAGE OverloadedStrings #-}
+{-# OPTIONS -fno-warn-unused-do-bind #-}
+
 module Blog.App
 (
   initState,
@@ -12,13 +15,13 @@ import Blog.Database.Util
 import Blog.Caching
 import Blog.HTMLUtil
 import Blog.Assets
-import Blog.Types
+import Blog.Types as Types
 import Blog.Auth
+import Blog.MIME
 
+import           Control.Monad.Reader
 import           Control.Concurrent.STM
 import           Control.Applicative
-import           Control.Monad.IO.Class
-import           Control.Monad
 import           Data.Maybe
 
 import           Web.Scotty.Trans as Scotty
@@ -28,20 +31,21 @@ import           Network.HTTP.Types.Status
 import qualified Database.Redis as Redis
 import qualified Database.PostgreSQL.Simple as PG
 
+import qualified Crypto.BCrypt as BCrypt
+
 import qualified Data.ByteString.Char8 as B
 import qualified Data.ByteString.Lazy.Char8 as BL
 import qualified Data.Text as T
 import Data.List as L
 import qualified Data.Text.Encoding as T
 import qualified Data.Text.Lazy as TL
-import qualified Data.Text.Lazy.Encoding as TL
-import           Data.HashMap.Strict (HashMap)
-import qualified Data.HashMap.Strict as H
 
 import           Text.Blaze.Html5 as H hiding (style, param, map)
 import           Text.Blaze.Html5.Attributes as A
 import           Text.Blaze.Html.Renderer.Text as R
 import           Prelude as P hiding (head, div)
+
+import           System.Environment
 
 -- TODO:
 -- Comment-optional posts
@@ -55,23 +59,24 @@ import           Prelude as P hiding (head, div)
 -- Miscellaneous Ideas:
 -- 1. 'Top 5' tags map in side bar?
 
-initState :: IO State
+initState :: IO AppState
 initState = do
   liftIO $ putStrLn "--| establishing database connections"
-  pg <- PG.connectPostgreSQL $ B.pack $ Config.postgresConnStr
+  pg <- PG.connectPostgreSQL $ B.pack postgresConnStr
   redis <- Redis.connect Redis.defaultConnectInfo
+  env <- fromMaybe "development" <$> lookupEnv "ENV"
   putStrLn $ "--| starting blog: " ++ env
   putStrLn "--| running database migrations"
   runMigrations pg
   putStrLn "--| clearing cached data from Redis"
   Redis.runRedis redis $ Redis.flushall
   putStrLn "--| blog started"
-  return $ State redis pg
+  return $ AppState redis pg
 
-startApp :: Integer -> String -> FilePath -> FilePath -> State -> IO ()
-startApp port env crtfile keyfile state = do
+startApp :: Int -> FilePath -> FilePath -> AppState -> IO ()
+startApp port crtfile keyfile state = do
   sync <- newTVarIO state
-  let runActionToIO = (>>=) sync . runReaderT . runWebM
+  let runActionToIO m = runReaderT (runWebM m) sync
   scottyTTLS port keyfile crtfile runActionToIO app
 
 app :: ScottyT TL.Text WebM ()
@@ -79,7 +84,7 @@ app = do
   -- blog root
   get "/" $ do
     maybeUser <- getUser
-    maybePNum <- maybeParam "page"
+    maybePNum <- lookup "page" <$> params
     let mPageNum = read . TL.unpack <$> maybePNum
     posts <- getBlogPosts mPageNum
     Scotty.html $ R.renderHtml $ docTypeHtml $ do
@@ -90,7 +95,7 @@ app = do
         
   get "/drafts" $ do
     maybeUser <- authenticate
-    maybePNum <- maybeParam "page"
+    maybePNum <- lookup "page" <$> params
     let mPageNum = read . TL.unpack <$> maybePNum
     posts <- getDrafts (fromJust maybeUser) mPageNum
     Scotty.html $ R.renderHtml $ docTypeHtml $ do
@@ -134,7 +139,7 @@ app = do
   get "/posts/by/tag/:tag" $ do
     tag <- param "tag"
     maybeUser <- getUser
-    maybePNum <- maybeParam "page"
+    maybePNum <- lookup "page" <$> params
     let mPageNum = read . TL.unpack <$> maybePNum
     posts <- getBlogPostsByTag tag mPageNum
     Scotty.html $ R.renderHtml $ docTypeHtml $ do
@@ -180,22 +185,22 @@ app = do
   post "/login" $ do
     pUsername <- param "username"
     pPassword <- param "password"
-    pRedirectPath <- maybeParam "redirect"
+    pRedirectPath <- lookup "redirect" <$> params
     res <- getUserWithUsername pUsername
     
     case res of
       Nothing     -> redirect "/login?error_message=Username%20not%20found%2E"
       (Just user) -> do
         -- TODO: rewrite!!!!!
-        if Helpers.checkPassword (fromJust $ Types.passwordHash user) pPassword
+        if checkPassword (fromJust $ userPasswordHash user) pPassword
           then do
-            setAuth user
+            setUser user
             redirect $ fromMaybe "/" pRedirectPath
           else redirect "/login?error_message=Invalid%20password%2E"
 
   -- deletes a BlogPost from the database
   -- returns JSON
-  delete "/posts/:id" $ do
+  Scotty.delete "/posts/:id" $ do
     authUser <- authenticate
     identifier_ <- param "id"
     res <- deleteBlogPost identifier_ (fromJust authUser)
@@ -223,7 +228,7 @@ app = do
     email_ <- param "email"
     displayName_ <- param "display_name"
     body_ <- param "body"
-    parentId_ <- maybeParam "parent_id"
+    parentId_ <- lookup "parent_id" <$> params
     commentId <- insertComment ((read . TL.unpack) <$> parentId_) postId_ email_ displayName_ body_ 
     addHeader "Location" $ TL.pack $ "/posts/" ++ (show postId_)
     case commentId of
@@ -235,22 +240,35 @@ app = do
   -- returns minified JS
   get "/assets/js/:filename" $ do
     filename <- param "filename"
+    env <- fromMaybe "development" <$> (liftIO $ lookupEnv "ENV")
     setHeader "Content-Type" "text/javascript"
     when (env == "production") setCacheControl
-    cachedBody filename $ fromMaybe "" $ js $ B.unpack filename
+    cachedBody filename $ (fromMaybe "") <$> (js $ B.unpack filename)
 
   -- returns minified CSS
   get "/assets/css/:filename" $ do
     filename <- param "filename"
     setHeader "Content-Type" "text/css"
-    env <- fromMaybe "development" <$> lookupEnv "ENV"
+    env <- fromMaybe "development" <$> (liftIO $ lookupEnv "ENV")
     when (env == "production") setCacheControl
-    cachedBody filename $ fromMaybe "" $ css $ B.unpack filename
+    cachedBody filename $ (fromMaybe "") <$> (css $ B.unpack filename)
     
   get (regex "/(assets/.*)") $ do
     relPath <- param "1"
+    env <- fromMaybe "development" <$> (liftIO $ lookupEnv "ENV")
     setHeader "Content-Type" $ TL.pack $ getMimeAtPath $ TL.unpack relPath
     when (env == "production") $ setHeader "Cache-Control" "public, max-age=604800, s-max-age=604800, no-transform" -- one week
     cachedBody (T.encodeUtf8 $ TL.toStrict relPath) $ BL.readFile $ TL.unpack relPath
 
   notFound $ Scotty.text "Not Found."
+
+checkPassword :: T.Text -> T.Text -> Bool
+checkPassword hash pass = BCrypt.validatePassword (T.encodeUtf8 hash) (T.encodeUtf8 pass)
+
+renderInput :: String -> Html
+renderInput kind = input
+                   ! class_ "blogtextfield"
+                   ! customAttribute "autocorrect" "off"
+                   ! customAttribute "autocapitalize" "off"
+                   ! customAttribute "spellcheck" "false"
+                   ! type_ (stringValue kind)
