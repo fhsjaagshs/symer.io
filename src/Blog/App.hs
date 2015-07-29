@@ -19,6 +19,8 @@ import Blog.Types as Types
 import Blog.Auth
 import Blog.MIME
 
+import Network.Wai.Middleware.Gzip
+
 import           Control.Monad.Reader
 import           Control.Concurrent.STM
 import           Control.Applicative
@@ -49,7 +51,14 @@ import           System.Environment
 
 import System.Posix.Syslog (Priority(..),syslog)
 
--- TODO:
+-- TODO: 
+-- Fix auth
+-- Deal with setuid security
+-- take dbpassword from CMDLine args
+-- a more secure approach would be to remove it from the ENV ASAP
+-- do more intelligent things with STDOUT and STDERR
+
+-- TODO (future):
 -- Comment-optional posts
 -- Page numbers at bottom (would require extra db hit)
 -- Site footer (copyright etc)
@@ -68,14 +77,14 @@ printAndLog s = do
 
 initState :: IO AppState
 initState = do
-  printAndLog "--| establishing database connections"
+  printAndLog "establishing database connections"
   pg <- PG.connectPostgreSQL $ B.pack postgresConnStr
   redis <- Redis.connect Redis.defaultConnectInfo
-  printAndLog "--| running database migrations"
+  printAndLog "running database migrations"
   runMigrations pg
-  printAndLog "--| emptying Redis"
-  Redis.runRedis redis $ Redis.flushall
-  printAndLog "--| blog started"
+  printAndLog "emptying Redis"
+  Redis.runRedis redis $ Redis.flushall-- TODO: Don't kill auth
+  printAndLog "blog started"
   return $ AppState redis pg
 
 startApp :: Int -> FilePath -> FilePath -> AppState -> IO ()
@@ -86,6 +95,7 @@ startApp port crtfile keyfile state = do
 
 app :: ScottyT TL.Text WebM ()
 app = do
+  middleware $ gzip $ def { gzipFiles = GzipCompress }
   -- blog root
   get "/" $ do
     maybeUser <- getUser

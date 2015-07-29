@@ -73,13 +73,13 @@ daemonize :: (IO a) -> (a -> IO ()) -> IO ()
 daemonize privilegedAction program = do
   daemonize' $ do
     pidWrite
-    -- forever $ do
-    v <- privilegedAction
-    -- Just ud <- getUserID "daemon"
-    -- Just gd <- getGroupID "daemon"
-    -- setGroupID gd
-    -- setUserID ud
-    program v
+    forever $ do
+      v <- privilegedAction
+      -- Just ud <- getUserID "daemon"
+      -- Just gd <- getGroupID "daemon"
+      -- setGroupID gd 
+      -- setUserID ud
+      program v
     
 {- Internal -}
   
