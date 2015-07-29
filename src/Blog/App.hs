@@ -47,6 +47,8 @@ import           Prelude as P hiding (head, div)
 
 import           System.Environment
 
+import System.Posix.Syslog (Priority(..),syslog)
+
 -- TODO:
 -- Comment-optional posts
 -- Page numbers at bottom (would require extra db hit)
@@ -59,18 +61,21 @@ import           System.Environment
 -- Miscellaneous Ideas:
 -- 1. 'Top 5' tags map in side bar?
 
+printAndLog :: String -> IO ()
+printAndLog s = do
+  putStrLn s
+  syslog Notice s
+
 initState :: IO AppState
 initState = do
-  liftIO $ putStrLn "--| establishing database connections"
+  printAndLog "--| establishing database connections"
   pg <- PG.connectPostgreSQL $ B.pack postgresConnStr
   redis <- Redis.connect Redis.defaultConnectInfo
-  env <- fromMaybe "development" <$> lookupEnv "ENV"
-  putStrLn $ "--| starting blog: " ++ env
-  putStrLn "--| running database migrations"
+  printAndLog "--| running database migrations"
   runMigrations pg
-  putStrLn "--| clearing cached data from Redis"
+  printAndLog "--| emptying Redis"
   Redis.runRedis redis $ Redis.flushall
-  putStrLn "--| blog started"
+  printAndLog "--| blog started"
   return $ AppState redis pg
 
 startApp :: Int -> FilePath -> FilePath -> AppState -> IO ()

@@ -20,12 +20,8 @@ data Cmd
     startCmdSSLCertfile :: FilePath,
     startCmdSSLKeyfile :: FilePath
   }
-  | StopCommand {
-    stopCmdPIDFile :: FilePath
-  }
-  | StatusCommand {
-    statusCmdPIDFile :: FilePath
-  }
+  | StopCommand
+  | StatusCommand
 
 -- options
 
@@ -51,9 +47,9 @@ parseCommand = sp <|> parseStart
       <*> (strOption (long "crtfile" <> short 'c' <> metavar "FILEPATH" <> value "server.crt" <> help "The SSL .crt file used for SSL."))
       <*> (strOption (long "keyfile" <> short 'k' <> metavar "FILEPATH" <> value "server.key" <> help "The SSL .key file used for SSL."))
     parseStop :: Parser Cmd
-    parseStop = pure $ StopCommand "/var/run/blog.pid"
+    parseStop = pure $ StopCommand
     parseStatus :: Parser Cmd
-    parseStatus = pure $ StatusCommand "/var/run/blog.pid"
+    parseStatus = pure $ StatusCommand
 
 -- optparse-applicative Helpers
 

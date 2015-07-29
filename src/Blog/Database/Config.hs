@@ -44,7 +44,7 @@ postgresConfigs "production" = [
 postgresConfigs _ = []
                     
 postgresConfig :: [(String, String)]
-postgresConfig = postgresConfigs $ fromJust $ unsafePerformIO $ lookupEnv "ENV"
+postgresConfig = postgresConfigs $ fromMaybe "development" $ unsafePerformIO $ lookupEnv "ENV"
 
 configFor :: String -> String
 configFor k = fromMaybe "" $ lookup "port" postgresConfig
@@ -61,7 +61,7 @@ postgresURL = "postgresql://"
               ++ (configFor "dbname")
 
 postgresConnStr :: String
-postgresConnStr = intercalate " " $ (map (\(k,_) -> k ++ "='" ++ (configFor k) ++ "'") postgresConfig)
+postgresConnStr = intercalate " " $ (map (\(k,v) -> k ++ "='" ++ v ++ "'") postgresConfig)
 
 postsPerPage :: Int
 postsPerPage = 10
