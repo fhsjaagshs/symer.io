@@ -16,7 +16,6 @@ executable blog
   ghc-options:       -threaded -Wall -fwarn-tabs -O2
   build-depends:     base,
                      http-types,
-                     wai-extra,
                      scotty,
                      text,
                      bytestring,

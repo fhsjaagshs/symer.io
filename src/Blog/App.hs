@@ -19,8 +19,6 @@ import Blog.Types as Types
 import Blog.Auth
 import Blog.MIME
 
-import Network.Wai.Middleware.Gzip
-
 import           Control.Monad.Reader
 import           Control.Concurrent.STM
 import           Control.Applicative
@@ -47,8 +45,9 @@ import           Text.Blaze.Html.Renderer.Text as R
 import           Prelude as P hiding (head, div)
 
 import           System.Environment
+import           System.IO
 
-import System.Posix.Syslog (Priority(..),syslog)
+-- import System.Posix.Syslog (Priority(..),syslog)
 
 -- TODO: 
 -- Fix auth
@@ -79,6 +78,7 @@ initState = do
   putStrLn "blog started"
   return $ AppState redis pg
 
+-- The problem daemonizing comes from Warp
 startApp :: Int -> FilePath -> FilePath -> AppState -> IO ()
 startApp port crtfile keyfile state = do
   sync <- newTVarIO state
@@ -87,11 +87,9 @@ startApp port crtfile keyfile state = do
 
 app :: ScottyT TL.Text WebM ()
 app = do
-  middleware $ gzip $ def { gzipFiles = GzipCompress }
   -- blog root
   get "/" $ do
     maybeUser <- getUser
-    liftIO $ print maybeUser
     mPageNum <- fmap (read . TL.unpack) . lookup "page" <$> params
     posts <- getBlogPosts mPageNum
     Scotty.html $ R.renderHtml $ docTypeHtml $ do
@@ -216,8 +214,8 @@ app = do
 
   -- creates/updates a BlogPost in the database
   post "/posts" $ do
-    a <- authenticate
-    case a of
+    auth <- authenticate
+    case auth of
       Nothing -> status $ Status 401 "Missing authentication"
       (Just authUser) -> do
         ps <- params

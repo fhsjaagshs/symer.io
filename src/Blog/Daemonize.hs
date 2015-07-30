@@ -3,18 +3,17 @@ module Blog.Daemonize
 (
   daemonize,
   daemonizeStatus,
-  daemonizeKill
+  daemonizeKill,
+  redirectIO
 )
 where
   
 import Control.Exception
 import Control.Monad hiding (forever)
 
-import System.IO
 import System.Environment
 import System.Exit
 import System.Posix
-import System.Posix.Syslog (Priority(..),syslog)
 
 pidPath :: IO String
 pidPath = getProgName >>= \n -> return $ "/tmp/" ++ n ++ ".pid" 
@@ -69,36 +68,24 @@ daemonizeStatus = pidExists >>= f where
         if res
           then putStrLn "running"
           else putStrLn "stopped, pidfile remaining"   
-
-daemonize :: Maybe String -> Maybe String -> (IO a) -> (a -> IO ()) -> IO ()
-daemonize outpath errpath privilegedAction program = do
-  daemonize' outpath errpath $ do
-    pidWrite
-    forever $ do
-      v <- privilegedAction
-      -- Just ud <- getUserID "daemon"
-      -- Just gd <- getGroupID "daemon"
-      -- setEffectiveGroupID gd
-      -- setEffectiveUserID ud
-      program v
-    
-{- Internal -}
-  
-daemonize' :: Maybe String -> Maybe String -> IO () -> IO () 
-daemonize' outpath errpath program = do
-  -- must flush or else file desc below doesn't work...
+          
+          
+daemonize :: Maybe String -> Maybe String -> IO () -> IO ()
+daemonize outpath errpath program = do
   -- http://stackoverflow.com/questions/31716551 <- mine
   -- http://stackoverflow.com/questions/5517913
-  hFlush stdout
-  hFlush stderr
   forkProcess $ do
     createSession
     forkProcess $ do
+      pidWrite
       redirectIO outpath errpath
-      blockSignal sigHUP
+      installHandler sigHUP Ignore Nothing
       program
     exitImmediately ExitSuccess
   exitImmediately ExitSuccess
+
+    
+{- Internal -}
   
 redirectIO :: Maybe String -> Maybe String -> IO ()
 redirectIO outpath errpath = do
@@ -119,29 +106,4 @@ redirectIO outpath errpath = do
       setFdOption fd AppendOnWrite True
       dupTo fd stdError
       closeFd fd
-
-forever :: IO () -> IO ()
-forever program = program `catch` restart where
-  restart :: SomeException -> IO () 
-  restart e = do
-    syslog Error $ "unexpected exception: " ++ show e
-    syslog Error "restarting in 5 seconds"
-    usleep 5000000
-    forever program
-  
-blockSignal :: Signal -> IO () 
-blockSignal sig = installHandler sig Ignore Nothing >> (return ())
-
-getGroupID :: String -> IO (Maybe GroupID)
-getGroupID group = try (fmap groupID (getGroupEntryForName group)) >>= return . f
-  where
-    f :: Either IOException GroupID -> Maybe GroupID
-    f (Left _)    = Nothing
-    f (Right gid) = Just gid
-
-getUserID :: String -> IO (Maybe UserID)
-getUserID user = try (fmap userID (getUserEntryForName user)) >>= return . f
-  where
-    f :: Either IOException UserID -> Maybe UserID
-    f (Left _)    = Nothing
-    f (Right uid) = Just uid
+  closeFd dnull
