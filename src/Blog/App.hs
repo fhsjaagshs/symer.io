@@ -45,18 +45,16 @@ import           Text.Blaze.Html.Renderer.Text as R
 import           Prelude as P hiding (head, div)
 
 import           System.Environment
-import           System.IO
 
 -- import System.Posix.Syslog (Priority(..),syslog)
 
 -- TODO: 
--- Fix auth
 -- Deal with setuid security
--- take dbpassword from CMDLine args
--- a more secure approach would be to remove it from the ENV ASAP
--- do more intelligent things with STDOUT and STDERR
+-- take dbpassword from CMDLine args (or maybe read from ENV then remove from ENV)
+-- fix bug where calling Warp.run (scottyTTLS) will mess up IO redirection
 
 -- TODO (future):
+-- redo comments' appearance
 -- Comment-optional posts
 -- Page numbers at bottom (would require extra db hit)
 -- Site footer (copyright etc)
@@ -75,7 +73,6 @@ initState = do
   redis <- Redis.connect Redis.defaultConnectInfo
   putStrLn "running database migrations"
   runMigrations pg
-  putStrLn "blog started"
   return $ AppState redis pg
 
 -- The problem daemonizing comes from Warp
@@ -83,6 +80,7 @@ startApp :: Int -> FilePath -> FilePath -> AppState -> IO ()
 startApp port crtfile keyfile state = do
   sync <- newTVarIO state
   let runActionToIO m = runReaderT (runWebM m) sync
+  putStrLn "starting HTTP"
   scottyTTLS port keyfile crtfile runActionToIO app
 
 app :: ScottyT TL.Text WebM ()
@@ -90,6 +88,7 @@ app = do
   -- blog root
   get "/" $ do
     maybeUser <- getUser
+    liftIO $ print maybeUser
     mPageNum <- fmap (read . TL.unpack) . lookup "page" <$> params
     posts <- getBlogPosts mPageNum
     Scotty.html $ R.renderHtml $ docTypeHtml $ do

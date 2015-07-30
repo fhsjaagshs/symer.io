@@ -11,6 +11,7 @@ where
 import Control.Exception
 import Control.Monad hiding (forever)
 
+import System.IO
 import System.Environment
 import System.Exit
 import System.Posix
@@ -72,8 +73,6 @@ daemonizeStatus = pidExists >>= f where
           
 daemonize :: Maybe String -> Maybe String -> IO () -> IO ()
 daemonize outpath errpath program = do
-  -- http://stackoverflow.com/questions/31716551 <- mine
-  -- http://stackoverflow.com/questions/5517913
   forkProcess $ do
     createSession
     forkProcess $ do
@@ -84,9 +83,6 @@ daemonize outpath errpath program = do
     exitImmediately ExitSuccess
   exitImmediately ExitSuccess
 
-    
-{- Internal -}
-  
 redirectIO :: Maybe String -> Maybe String -> IO ()
 redirectIO outpath errpath = do
   dnull <- openFd "/dev/null" ReadWrite Nothing defaultFileFlags
@@ -98,7 +94,6 @@ redirectIO outpath errpath = do
       setFdOption fd AppendOnWrite True
       dupTo fd stdOutput
       closeFd fd
-      return ()
   case errpath of
     Nothing -> closeFd stdError >> dupTo dnull stdError >> return ()
     Just err -> do
@@ -107,3 +102,9 @@ redirectIO outpath errpath = do
       dupTo fd stdError
       closeFd fd
   closeFd dnull
+  
+  -- set appropriate buffering modes for our newly redirected IO handles
+  -- so that they work if they're not a terminal.
+  hSetBuffering stdin  LineBuffering
+  hSetBuffering stdout LineBuffering
+  hSetBuffering stderr NoBuffering
