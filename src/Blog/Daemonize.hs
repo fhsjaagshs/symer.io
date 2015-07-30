@@ -16,25 +16,6 @@ import System.Environment
 import System.Exit
 import System.Posix
 
-pidPath :: IO String
-pidPath = getProgName >>= \n -> return $ "/tmp/" ++ n ++ ".pid" 
-
-pidWrite :: IO ()
-pidWrite = pidPath >>= \ppath -> getProcessID >>= writeFile ppath . show
-
-pidExists :: IO Bool
-pidExists = pidPath >>= fileExist
-
-pidRead :: IO (Maybe CPid)
-pidRead = pidExists >>= f where
-  f True  = pidPath >>= fmap (Just . read) . readFile
-  f False = return Nothing
-
-pidLive :: CPid -> IO Bool
-pidLive pid = (getProcessPriority pid >> return True) `catch` f where
-  f :: IOException -> IO Bool
-  f _ = return False
-
 daemonizeKill :: IO ()
 daemonizeKill = do
   mpid <- pidRead
@@ -46,16 +27,6 @@ daemonizeKill = do
       when islive $ do
         signalProcess sigTERM pid
         wait 4 pid
-
-wait :: Int -> CPid -> IO ()
-wait secs pid = do
-  islive <- pidLive pid
-  when islive $ do
-    if secs > 0
-      then do
-        usleep 1000000
-        wait (secs-1) pid
-      else signalProcess sigKILL pid
                      
 daemonizeStatus :: IO ()
 daemonizeStatus = pidExists >>= f where
@@ -108,3 +79,34 @@ redirectIO outpath errpath = do
   hSetBuffering stdin  LineBuffering
   hSetBuffering stdout LineBuffering
   hSetBuffering stderr NoBuffering
+  
+{- Internal -}
+
+wait :: Int -> CPid -> IO ()
+wait secs pid = do
+  islive <- pidLive pid
+  when islive $ do
+    if secs > 0
+      then do
+        usleep 1000000
+        wait (secs-1) pid
+      else signalProcess sigKILL pid
+  
+pidPath :: IO String
+pidPath = getProgName >>= \n -> return $ "/tmp/" ++ n ++ ".pid" 
+
+pidWrite :: IO ()
+pidWrite = pidPath >>= \ppath -> getProcessID >>= writeFile ppath . show
+
+pidExists :: IO Bool
+pidExists = pidPath >>= fileExist
+
+pidRead :: IO (Maybe CPid)
+pidRead = pidExists >>= f where
+  f True  = pidPath >>= fmap (Just . read) . readFile
+  f False = return Nothing
+
+pidLive :: CPid -> IO Bool
+pidLive pid = (getProcessPriority pid >> return True) `catch` f where
+  f :: IOException -> IO Bool
+  f _ = return False

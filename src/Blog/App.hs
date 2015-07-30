@@ -46,12 +46,8 @@ import           Prelude as P hiding (head, div)
 
 import           System.Environment
 
--- import System.Posix.Syslog (Priority(..),syslog)
-
 -- TODO: 
--- Deal with setuid security
--- take dbpassword from CMDLine args (or maybe read from ENV then remove from ENV)
--- fix bug where calling Warp.run (scottyTTLS) will mess up IO redirection
+-- Deal with setuid security & port binding
 
 -- TODO (future):
 -- redo comments' appearance
@@ -66,10 +62,10 @@ import           System.Environment
 -- Miscellaneous Ideas:
 -- 1. 'Top 5' tags map in side bar?
 
-initState :: IO AppState
-initState = do
+initState :: String -> IO AppState
+initState dbpass = do
   putStrLn "establishing database connections"
-  pg <- PG.connectPostgreSQL $ B.pack postgresConnStr
+  pg <- PG.connectPostgreSQL $ B.pack $ postgresConnStr dbpass
   redis <- Redis.connect Redis.defaultConnectInfo
   putStrLn "running database migrations"
   runMigrations pg

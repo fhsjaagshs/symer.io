@@ -2,8 +2,6 @@
 
 module Blog.Database.Config
 (
-  postgresConfig,
-  postgresURL,
   postgresConnStr,
   migrations,
   postsPerPage
@@ -25,43 +23,24 @@ migrations = [
   ("drafts.sql", "./migrations/drafts.sql"),
   ("comments.sql", "./migrations/comments.sql")]
 
-postgresConfigs :: String -> [(String, String)]
-postgresConfigs "development" = [
-                    ("user", "nathaniel"),
-                    ("password", ""),
-                    ("host", "localhost"),
-                    ("port", "5432"),
-                    ("dbname", "blog")
-                    ]
-postgresConfigs "production" = [
-                    ("user", "symerdotio"),
-                    ("password", fromJust $ unsafePerformIO $ lookupEnv "PGPASSWORD"),
-                    ("host", "db.symer.io"),
-                    ("port", "5432"),
-                    ("dbname", "blog"),
-                    ("sslmode", "require")
-                    ]
-postgresConfigs _ = []
-                    
-postgresConfig :: [(String, String)]
-postgresConfig = postgresConfigs $ fromMaybe "development" $ unsafePerformIO $ lookupEnv "ENV"
+postgresConfigs :: String -> String -> [(String, String)]
+postgresConfigs _    "development" = [("user", "nathaniel"),
+                                      ("password", ""),
+                                      ("host", "localhost"),
+                                      ("port", "5432"),
+                                      ("dbname", "blog")]
+postgresConfigs pass "production"  = [("user", "symerdotio"),
+                                      ("password", pass),
+                                      ("host", "db.symer.io"),
+                                      ("port", "5432"),
+                                      ("dbname", "blog"),
+                                      ("sslmode", "require")]
+postgresConfigs _ _ = []
 
-configFor :: String -> String
-configFor k = fromMaybe "" $ lookup "port" postgresConfig
-
-postgresURL :: String
-postgresURL = "postgresql://"
-              ++ (configFor "user")
-              ++ (if (configFor "password") == "" then "" else ":" ++ (configFor "password"))
-              ++ "@"
-              ++ (configFor "host")
-              ++ ":"
-              ++ (configFor "port")
-              ++ "/"
-              ++ (configFor "dbname")
-
-postgresConnStr :: String
-postgresConnStr = intercalate " " $ (map (\(k,v) -> k ++ "='" ++ v ++ "'") postgresConfig)
+postgresConnStr :: String -> String
+postgresConnStr pass = intercalate " " $ (map (\(k,v) -> k ++ "='" ++ v ++ "'") (postgresConfigs pass env))
+  where
+    env = fromMaybe "development" $ unsafePerformIO $ lookupEnv "ENV"
 
 postsPerPage :: Int
 postsPerPage = 10
