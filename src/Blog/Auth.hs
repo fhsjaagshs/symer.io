@@ -29,6 +29,8 @@ import qualified Database.Redis as R
 
 import System.Random
 
+import Data.Maybe
+
 -- TODO: Fixme
 accessToken :: (ScottyError e, Monad m) => ActionT e m (Maybe String)
 accessToken = do
@@ -47,13 +49,12 @@ getUser = do
   mtoken <- accessToken
   case mtoken of
     Nothing -> return Nothing
-    Just token -> do
-      liftIO $ R.runRedis redis $ do
+    Just token -> liftIO $ do
+      R.runRedis redis $ do
         R.expire (B.pack token) (3600*24)
-        -- Redis (Either Reply (Maybe ByteString))
-        t <- R.get (B.pack token)
+        t <- R.get $ B.pack token
         case t of
-          Left (R.SingleLine j) -> return $ A.decodeStrict j
+          Right (Just j) -> return $ A.decodeStrict j
           _ -> return Nothing
 
 setUser :: (ScottyError e) => User -> ActionT e WebM ()

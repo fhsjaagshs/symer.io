@@ -10,6 +10,7 @@ where
 import Control.Exception
 import Control.Monad hiding (forever)
 
+import System.IO
 import System.Environment
 import System.Exit
 import System.Posix
@@ -69,31 +70,55 @@ daemonizeStatus = pidExists >>= f where
           then putStrLn "running"
           else putStrLn "stopped, pidfile remaining"   
 
-daemonize :: (IO a) -> (a -> IO ()) -> IO ()
-daemonize privilegedAction program = do
-  daemonize' $ do
+daemonize :: Maybe String -> Maybe String -> (IO a) -> (a -> IO ()) -> IO ()
+daemonize outpath errpath privilegedAction program = do
+  daemonize' outpath errpath $ do
     pidWrite
     forever $ do
       v <- privilegedAction
       -- Just ud <- getUserID "daemon"
       -- Just gd <- getGroupID "daemon"
-      -- setGroupID gd 
-      -- setUserID ud
+      -- setEffectiveGroupID gd
+      -- setEffectiveUserID ud
       program v
     
 {- Internal -}
   
-daemonize' :: IO () -> IO () 
-daemonize' program = do
-  setFileCreationMask 0 
+daemonize' :: Maybe String -> Maybe String -> IO () -> IO () 
+daemonize' outpath errpath program = do
+  -- must flush or else file desc below doesn't work...
+  -- http://stackoverflow.com/questions/31716551 <- mine
+  -- http://stackoverflow.com/questions/5517913
+  hFlush stdout
+  hFlush stderr
   forkProcess $ do
     createSession
     forkProcess $ do
-      closeFileDescriptors
+      redirectIO outpath errpath
       blockSignal sigHUP
-      program 
+      program
     exitImmediately ExitSuccess
   exitImmediately ExitSuccess
+  
+redirectIO :: Maybe String -> Maybe String -> IO ()
+redirectIO outpath errpath = do
+  dnull <- openFd "/dev/null" ReadWrite Nothing defaultFileFlags
+  closeFd stdInput >> dupTo dnull stdInput
+  case outpath of
+    Nothing -> closeFd stdOutput >> dupTo dnull stdOutput >> return ()
+    Just out -> do
+      fd <- openFd out ReadWrite Nothing defaultFileFlags
+      setFdOption fd AppendOnWrite True
+      dupTo fd stdOutput
+      closeFd fd
+      return ()
+  case errpath of
+    Nothing -> closeFd stdError >> dupTo dnull stdError >> return ()
+    Just err -> do
+      fd <- openFd err ReadWrite Nothing defaultFileFlags
+      setFdOption fd AppendOnWrite True
+      dupTo fd stdError
+      closeFd fd
 
 forever :: IO () -> IO ()
 forever program = program `catch` restart where
@@ -103,26 +128,20 @@ forever program = program `catch` restart where
     syslog Error "restarting in 5 seconds"
     usleep 5000000
     forever program
-    
-closeFileDescriptors :: IO ()
-closeFileDescriptors = do
-  dnull <- openFd "/dev/null" ReadWrite Nothing defaultFileFlags
-  let sendTo fd' fd = closeFd fd >> dupTo fd' fd
-  mapM_ (sendTo dnull) $ [stdInput, stdOutput, stdError]
-
+  
 blockSignal :: Signal -> IO () 
 blockSignal sig = installHandler sig Ignore Nothing >> (return ())
 
 getGroupID :: String -> IO (Maybe GroupID)
-getGroupID group = 
-    try (fmap groupID (getGroupEntryForName group)) >>= return . f where
-        f :: Either IOException GroupID -> Maybe GroupID
-        f (Left _)    = Nothing
-        f (Right gid) = Just gid
+getGroupID group = try (fmap groupID (getGroupEntryForName group)) >>= return . f
+  where
+    f :: Either IOException GroupID -> Maybe GroupID
+    f (Left _)    = Nothing
+    f (Right gid) = Just gid
 
 getUserID :: String -> IO (Maybe UserID)
-getUserID user = 
-    try (fmap userID (getUserEntryForName user)) >>= return . f where
-        f :: Either IOException UserID -> Maybe UserID
-        f (Left _)    = Nothing
-        f (Right uid) = Just uid
+getUserID user = try (fmap userID (getUserEntryForName user)) >>= return . f
+  where
+    f :: Either IOException UserID -> Maybe UserID
+    f (Left _)    = Nothing
+    f (Right uid) = Just uid

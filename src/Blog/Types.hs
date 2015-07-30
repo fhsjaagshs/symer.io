@@ -145,8 +145,8 @@ instance FromJSON User where
   parseJSON (Object o) = User
     <$> o .:  "uid"
     <*> o .:  "username"
-    <*> o .:  "displayName"
-    <*> o .:? "passwordHash"
+    <*> o .:  "display_name"
+    <*> o .:? "password_hash"
   parseJSON _ = mzero
 
 instance Eq User where

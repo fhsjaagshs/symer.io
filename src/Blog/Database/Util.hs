@@ -27,7 +27,7 @@ import Data.Maybe
 
 import Web.Scotty.Trans
 
-import Data.Text (Text)
+import Data.Text.Lazy (Text)
 
 import Database.PostgreSQL.Simple as PG
 import Database.PostgreSQL.Simple.Migration as PG.Migration

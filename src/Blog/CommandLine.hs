@@ -18,7 +18,9 @@ data Cmd
     startCmdPort :: Int,
     startCmdDatabasePassword :: String,
     startCmdSSLCertfile :: FilePath,
-    startCmdSSLKeyfile :: FilePath
+    startCmdSSLKeyfile :: FilePath,
+    startCmdOutputPath :: Maybe FilePath,
+    startCmdErrorPath :: Maybe FilePath
   }
   | StopCommand
   | StatusCommand
@@ -46,6 +48,8 @@ parseCommand = sp <|> parseStart
       <*> (strOption (long "dbpasswd" <> short 'l' <> metavar "PASSWORD" <> value "" <> help "The password used to connect to Postgres."))
       <*> (strOption (long "crtfile" <> short 'c' <> metavar "FILEPATH" <> value "server.crt" <> help "The SSL .crt file used for SSL."))
       <*> (strOption (long "keyfile" <> short 'k' <> metavar "FILEPATH" <> value "server.key" <> help "The SSL .key file used for SSL."))
+      <*> (optional $ strOption (long "stdout" <> short 'o' <> metavar "FILEPATH" <> help "Where to redirect STDOUT to. Has no effect unless daemonized."))
+      <*> (optional $ strOption (long "stderr" <> short 'e' <> metavar "FILEPATH" <> help "Where to redirect STDERR to. Has no effect unless daemonized."))
     parseStop :: Parser Cmd
     parseStop = pure $ StopCommand
     parseStatus :: Parser Cmd

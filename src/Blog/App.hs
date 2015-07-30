@@ -37,7 +37,6 @@ import qualified Crypto.BCrypt as BCrypt
 
 import qualified Data.ByteString.Char8 as B
 import qualified Data.ByteString.Lazy.Char8 as BL
-import qualified Data.Text as T
 import Data.List as L
 import qualified Data.Text.Encoding as T
 import qualified Data.Text.Lazy as TL
@@ -70,21 +69,14 @@ import System.Posix.Syslog (Priority(..),syslog)
 -- Miscellaneous Ideas:
 -- 1. 'Top 5' tags map in side bar?
 
-printAndLog :: String -> IO ()
-printAndLog s = do
-  putStrLn s
-  syslog Notice s
-
 initState :: IO AppState
 initState = do
-  printAndLog "establishing database connections"
+  putStrLn "establishing database connections"
   pg <- PG.connectPostgreSQL $ B.pack postgresConnStr
   redis <- Redis.connect Redis.defaultConnectInfo
-  printAndLog "running database migrations"
+  putStrLn "running database migrations"
   runMigrations pg
-  printAndLog "emptying Redis"
-  Redis.runRedis redis $ Redis.flushall-- TODO: Don't kill auth
-  printAndLog "blog started"
+  putStrLn "blog started"
   return $ AppState redis pg
 
 startApp :: Int -> FilePath -> FilePath -> AppState -> IO ()
@@ -99,8 +91,8 @@ app = do
   -- blog root
   get "/" $ do
     maybeUser <- getUser
-    maybePNum <- lookup "page" <$> params
-    let mPageNum = read . TL.unpack <$> maybePNum
+    liftIO $ print maybeUser
+    mPageNum <- fmap (read . TL.unpack) . lookup "page" <$> params
     posts <- getBlogPosts mPageNum
     Scotty.html $ R.renderHtml $ docTypeHtml $ do
       renderHead [] [] blogTitle
@@ -140,7 +132,7 @@ app = do
           Nothing -> when (Types.isDraft post_) (redirect "/notfound")
 
         Scotty.html $ R.renderHtml $ docTypeHtml $ do
-          renderHead ["/assets/css/post.css"] (postTags $ Types.tags post_) $ appendedBlogTitle $ Types.title post_
+          renderHead ["/assets/css/post.css"] (postTags $ Types.tags post_) $ appendedBlogTitle $ TL.fromStrict $ Types.title post_
           renderBody (Just blogTitle) (Just blogSubtitle) maybeUser $ do
             render post_ maybeUser
             hr ! class_ "separator"
@@ -154,12 +146,11 @@ app = do
   get "/posts/by/tag/:tag" $ do
     tag <- param "tag"
     maybeUser <- getUser
-    maybePNum <- lookup "page" <$> params
-    let mPageNum = read . TL.unpack <$> maybePNum
+    mPageNum <- (fmap (read . TL.unpack) . lookup "page") <$> params
     posts <- getBlogPostsByTag tag mPageNum
     Scotty.html $ R.renderHtml $ docTypeHtml $ do
       renderHead [] [] (appendedBlogTitle $ tag)
-      renderBody (Just $ T.append "Posts tagged '" $ T.append tag "'") Nothing maybeUser $ do
+      renderBody (Just $ TL.append "Posts tagged '" $ TL.append tag "'") Nothing maybeUser $ do
         render (take postsPerPage posts) maybeUser
         renderPageControls mPageNum (length posts > postsPerPage)
 
@@ -172,7 +163,7 @@ app = do
       Nothing -> next
       Just post_ -> do
         Scotty.html $ R.renderHtml $ docTypeHtml $ do
-          renderHead ["/assets/css/editor.css","/assets/css/wordlist.css"] [("robots","noindex, nofollow")] (appendedBlogTitle $ Types.title post_)
+          renderHead ["/assets/css/editor.css","/assets/css/wordlist.css"] [("robots","noindex, nofollow")] (appendedBlogTitle $ TL.fromStrict $ Types.title post_)
           renderBody Nothing Nothing Nothing $ do
             renderPostEditor $ Just post_
             
@@ -205,13 +196,13 @@ app = do
     
     case res of
       Nothing     -> redirect "/login?error_message=Username%20not%20found%2E"
-      (Just user) -> do
-        -- TODO: rewrite!!!!!
-        if checkPassword (fromJust $ userPasswordHash user) pPassword
+      (Just user@(User _ _ _ (Just phash))) -> do
+        if BCrypt.validatePassword (T.encodeUtf8 phash) (T.encodeUtf8 pPassword)
           then do
             setUser user
             redirect $ fromMaybe "/" pRedirectPath
           else redirect "/login?error_message=Invalid%20password%2E"
+      _ -> redirect  "/login?error_message=Invalid%20User%2E"
 
   -- deletes a BlogPost from the database
   -- returns JSON
@@ -225,26 +216,30 @@ app = do
 
   -- creates/updates a BlogPost in the database
   post "/posts" $ do
-    authUser <- authenticate
-    ps <- params
-    maybeBPIdentifier <- (upsertBlogPost (fromJust authUser)
-                                         ((read . TL.unpack) <$> lookup "id" ps)
-                                         (TL.toStrict <$> lookup "title" ps)
-                                         (TL.toStrict <$> lookup "body" ps)
-                                         ((splitList ',' . TL.unpack) <$> (lookup "tags" ps))
-                                         ((splitList ',' . TL.unpack) <$> (lookup "deleted_tags" ps))
-                                         (elem (TL.unpack . fromMaybe "True" . lookup "draft" $ ps) ["t", "true", "True", "y", "yes"]))
-    case maybeBPIdentifier of
-      Nothing -> status $ Status 400 "Missing required parameters"
-      Just identifier_ -> addHeader "Location" $ TL.pack $ "/posts/" ++ (show identifier_)
+    a <- authenticate
+    case a of
+      Nothing -> status $ Status 401 "Missing authentication"
+      (Just authUser) -> do
+        ps <- params
+        maybeBPIdentifier <- upsertBlogPost authUser
+                                             (read . TL.unpack <$> lookup "id" ps)
+                                             (lookup "title" ps)
+                                             (lookup "body" ps)
+                                             ((splitList ',' . TL.unpack) <$> (lookup "tags" ps))
+                                             ((splitList ',' . TL.unpack) <$> (lookup "deleted_tags" ps))
+                                             (elem (TL.unpack . fromMaybe "True" . lookup "draft" $ ps) ["t", "true", "True", "y", "yes"])
+        case maybeBPIdentifier of
+          Nothing -> status $ Status 400 "Missing required parameters"
+          Just identifier_ -> addHeader "Location" $ TL.pack $ "/posts/" ++ (show identifier_)
+        
 
   post "/posts/:id/comments" $ do
     postId_ <- param "post_id"
     email_ <- param "email"
     displayName_ <- param "display_name"
     body_ <- param "body"
-    parentId_ <- lookup "parent_id" <$> params
-    commentId <- insertComment ((read . TL.unpack) <$> parentId_) postId_ email_ displayName_ body_ 
+    parentId_ <- (fmap (read . TL.unpack) . lookup "parent_id") <$> params
+    commentId <- insertComment parentId_ postId_ email_ displayName_ body_ 
     addHeader "Location" $ TL.pack $ "/posts/" ++ (show postId_)
     case commentId of
       Just cid_ -> Scotty.text $ TL.pack $ show cid_
@@ -276,9 +271,6 @@ app = do
     cachedBody (T.encodeUtf8 $ TL.toStrict relPath) $ BL.readFile $ TL.unpack relPath
 
   notFound $ Scotty.text "Not Found."
-
-checkPassword :: T.Text -> T.Text -> Bool
-checkPassword hash pass = BCrypt.validatePassword (T.encodeUtf8 hash) (T.encodeUtf8 pass)
 
 renderInput :: String -> Html
 renderInput kind = input

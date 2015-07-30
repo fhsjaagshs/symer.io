@@ -21,24 +21,20 @@ import           Blog.Database.Config (postsPerPage)
 import           Control.Monad
 import           Data.Maybe
 
-import qualified Data.Text as T
 import qualified Data.List as L
-
 import qualified Data.Text.Lazy as TL
-import qualified Data.Text.Lazy.Encoding as TL
-import qualified Data.Text.Lazy.Builder as TL
 
 import           Text.Blaze.Html5 as H hiding (style, param, map)
 import           Text.Blaze.Html5.Attributes as A
 import           Prelude as P hiding (head, div, id)
 
-blogTitle :: T.Text
+blogTitle :: TL.Text
 blogTitle = "Segmentation Fault (core dumped)"
 
-blogSubtitle :: T.Text
+blogSubtitle :: TL.Text
 blogSubtitle = "a blog about code."
 
-seoTags :: [(T.Text, T.Text)]
+seoTags :: [(TL.Text, TL.Text)]
 seoTags = [
             ("revisit-after", "2 days"),
             ("description", "Rants and raves about functional programming, politics, and everything in between."),
@@ -48,7 +44,7 @@ seoTags = [
 -------------------------------------------------------------------------------
 --- | DRY Rendering
 
-renderHead :: [T.Text] -> [(T.Text, T.Text)] -> T.Text -> Html
+renderHead :: [TL.Text] -> [(TL.Text, TL.Text)] -> TL.Text -> Html
 renderHead cssFiles metaTags title_ = H.head $ do
   H.title $ toHtml title_
   meta ! httpEquiv "Content-Type" ! content "text/html; charset=UTF-8"
@@ -57,13 +53,13 @@ renderHead cssFiles metaTags title_ = H.head $ do
   mapM_ metafy (L.nubBy eqltest $ metaTags ++ seoTags)
   where
     eqltest (a, _) (b, _) = a == b
-    linkify x = link ! href (textValue x) ! rel "stylesheet" ! type_ "text/css"
-    metafy x = meta ! A.name (textValue $ fst x) ! content (textValue $ snd x)
+    linkify x = link ! href (lazyTextValue x) ! rel "stylesheet" ! type_ "text/css"
+    metafy x = meta ! A.name (lazyTextValue $ fst x) ! content (lazyTextValue $ snd x)
 
-renderBody :: Maybe T.Text -> Maybe T.Text -> Maybe User -> Html -> Html
+renderBody :: Maybe TL.Text -> Maybe TL.Text -> Maybe User -> Html -> Html
 renderBody maybeTitle maybeSubtitle maybeUser bodyHtml = H.body ! style "text-align: center;" $ do
   a ! href "/" $ do
-    img ! src "/assets/images/philly_skyline.svg" ! width "300" ! height "200" ! alt (textValue blogTitle)
+    img ! src "/assets/images/philly_skyline.svg" ! width "300" ! height "200" ! alt (lazyTextValue blogTitle)
   
   when (isJust maybeTitle) (h2 ! class_ "title" ! id "blog-title" $ toHtml $ fromJust maybeTitle)
   when (isJust maybeSubtitle) (h3 ! id "blog-subtitle" $ toHtml $ fromJust maybeSubtitle)
@@ -106,8 +102,8 @@ renderPageControls (Just pageNum) hasNext = do
 -------------------------------------------------------------------------------
 --- | Specialized Helpers
 
-appendedBlogTitle :: T.Text -> T.Text
-appendedBlogTitle s = T.append s (T.append " | " blogTitle)
+appendedBlogTitle :: TL.Text -> TL.Text
+appendedBlogTitle s = TL.append s (TL.append " | " blogTitle)
     
-postTags :: [String] -> [(T.Text, T.Text)]
-postTags ts = [("keywords", T.append (T.pack $ (L.intercalate ", " ts) ++ ", ") (fromJust $ lookup "keywords" seoTags))]
+postTags :: [String] -> [(TL.Text, TL.Text)]
+postTags ts = [("keywords", TL.append (TL.pack $ (L.intercalate ", " ts) ++ ", ") (fromJust $ lookup "keywords" seoTags))]
