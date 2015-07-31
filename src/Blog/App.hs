@@ -19,7 +19,6 @@ import Blog.Assets
 import Blog.Types as Types
 import Blog.Auth
 import Blog.MIME
-import Blog.Daemonize
 
 import           Control.Monad.Reader
 import           Control.Concurrent.STM
@@ -28,7 +27,7 @@ import           Data.Maybe
 
 import           Web.Scotty.Trans as Scotty
 import           Network.HTTP.Types.Status
-import           Network.Wai (Application, responseLBS, requestHeaderHost, rawPathInfo, rawQueryString)
+import           Network.Wai (responseLBS, requestHeaderHost, rawPathInfo, rawQueryString)
 import           Network.Wai.Handler.Warp (defaultSettings, setPort, setBeforeMainLoop, runSettings)
 import           Network.Wai.Handler.WarpTLS (certFile,defaultTlsSettings,keyFile,runTLS)
 
@@ -49,15 +48,8 @@ import           Text.Blaze.Html.Renderer.Text as R
 import           Prelude as P hiding (head, div)
 
 import           System.Exit
-import           System.Process
 import           System.Posix
-import           System.Posix.User
 import           System.Environment
-import System.Process.Internals
-
--- TODO: 
--- Deal with setuid security & port binding
--- HTTP to HTTPS redirection
 
 -- TODO (future):
 -- redo comments' appearance
@@ -72,8 +64,26 @@ import System.Process.Internals
 -- Miscellaneous Ideas:
 -- 1. 'Top 5' tags map in side bar?
 
+startRedirectProcess :: IO ()
+startRedirectProcess = do
+  pid <- forkProcess $ do
+    installHandler sigTERM (Catch childHandler) Nothing
+    startRedirect
+  void $ installHandler sigTERM (Catch parentHandler) Nothing
+  where
+    childHandler = do
+      putStrLn "Killing redirection service"
+      exitImmediately ExitSuccess
+    parentHandler = do
+      signalProcess sigTERM pid
+      exitImmediately ExitSuccess
+
+resignPrivileges :: IO ()
+resignPrivileges = getUserEntryForName "daemon" >>= setUserID . userID
+
 initState :: String -> IO AppState
 initState dbpass = do
+  startRedirectProcess
   putStrLn "establishing database connections"
   pg <- PG.connectPostgreSQL $ B.pack $ postgresConnStr dbpass
   redis <- Redis.connect Redis.defaultConnectInfo
@@ -84,8 +94,6 @@ initState dbpass = do
 -- The problem daemonizing comes from Warp
 startApp :: Int -> FilePath -> FilePath -> AppState -> IO ()
 startApp port cert key state = do
-  p <- getExecutablePath
-  createProcess (proc p ["redirect-http"])
   putStrLn "starting HTTPS"
   sync <- newTVarIO state
   let runActionToIO m = runReaderT (runWebM m) sync
@@ -106,11 +114,6 @@ startRedirect = do
     where
       warpSettings = setBeforeMainLoop resignPrivileges $ setPort 80 defaultSettings
       mkHeaders r = [("Location", mconcat ["https://", fromJust $ requestHeaderHost r, rawPathInfo r, rawQueryString r])]
-                       
-resignPrivileges :: IO ()
-resignPrivileges = do
-  (UserEntry _ _ uid _ _ _ _) <- getUserEntryForName "daemon"
-  setUserID uid
 
 app :: ScottyT TL.Text WebM ()
 app = do
