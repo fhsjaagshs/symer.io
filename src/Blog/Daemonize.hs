@@ -2,6 +2,9 @@
 module Blog.Daemonize
 (
   daemonize,
+  daemonize',
+  detachProcess,
+  detachProcess',
   daemonizeStatus,
   daemonizeKill,
   redirectIO
@@ -12,14 +15,13 @@ import Control.Exception
 import Control.Monad hiding (forever)
 
 import System.IO
-import System.Environment
 import System.Exit
 import System.Posix
 
-daemonizeKill :: IO ()
-daemonizeKill = do
-  mpid <- pidRead
-  pidPath >>= removeLink
+daemonizeKill :: FilePath -> IO ()
+daemonizeKill pidFile = do
+  mpid <- pidRead pidFile
+  removeLink pidFile
   case mpid of
     Nothing -> return ()
     Just pid -> do 
@@ -28,11 +30,11 @@ daemonizeKill = do
         signalProcess sigTERM pid
         wait 4 pid
                      
-daemonizeStatus :: IO ()
-daemonizeStatus = pidExists >>= f where
+daemonizeStatus :: FilePath -> IO ()
+daemonizeStatus pidFile = pidExists pidFile >>= f where
   f False = putStrLn "stopped"
   f True = do
-    mpid <- pidRead
+    mpid <- pidRead pidFile
     case mpid of
       Nothing -> putStrLn "stopped"
       Just pid -> do
@@ -41,18 +43,27 @@ daemonizeStatus = pidExists >>= f where
           then putStrLn "running"
           else putStrLn "stopped, pidfile remaining"   
           
-          
-daemonize :: Maybe String -> Maybe String -> IO () -> IO ()
-daemonize outpath errpath program = do
-  forkProcess $ do
+daemonize :: FilePath -> Maybe FilePath -> Maybe FilePath -> IO () -> IO ()
+daemonize pidFile outpath errpath program = do
+  detachProcess pidFile outpath errpath program
+  exitImmediately ExitSuccess
+  
+daemonize' :: FilePath -> IO () -> IO ()
+daemonize' pf p = daemonize pf Nothing Nothing p
+  
+detachProcess :: FilePath -> Maybe FilePath -> Maybe FilePath -> IO () -> IO ()
+detachProcess pidFile outpath errpath program = do
+  void $ forkProcess $ do
     createSession
     forkProcess $ do
-      pidWrite
+      pidWrite pidFile
       redirectIO outpath errpath
       installHandler sigHUP Ignore Nothing
       program
     exitImmediately ExitSuccess
-  exitImmediately ExitSuccess
+    
+detachProcess' :: FilePath -> IO () -> IO ()
+detachProcess' pf p = detachProcess pf Nothing Nothing p
 
 redirectIO :: Maybe String -> Maybe String -> IO ()
 redirectIO outpath errpath = do
@@ -75,6 +86,7 @@ redirectIO outpath errpath = do
   closeFd dnull
   
   -- buffering is bad, mmmmkay?
+  -- it's probably fine with terminals, but NOT fine with files
   hSetBuffering stdin  NoBuffering
   hSetBuffering stdout NoBuffering
   hSetBuffering stderr NoBuffering
@@ -89,20 +101,19 @@ wait secs pid = do
       then do
         usleep 1000000
         wait (secs-1) pid
-      else signalProcess sigKILL pid
-  
-pidPath :: IO String
-pidPath = getProgName >>= \n -> return $ "/tmp/" ++ n ++ ".pid" 
+      else do
+        putStrLn $ "sending sigKill to process " ++ (show pid)
+        signalProcess sigKILL pid
 
-pidWrite :: IO ()
-pidWrite = pidPath >>= \ppath -> getProcessID >>= writeFile ppath . show
+pidWrite :: FilePath -> IO ()
+pidWrite pidPath = getProcessID >>= writeFile pidPath . show
 
-pidExists :: IO Bool
-pidExists = pidPath >>= fileExist
+pidExists :: FilePath -> IO Bool
+pidExists = fileExist
 
-pidRead :: IO (Maybe CPid)
-pidRead = pidExists >>= f where
-  f True  = pidPath >>= fmap (Just . read) . readFile
+pidRead :: FilePath -> IO (Maybe CPid)
+pidRead pidFile = pidExists pidFile >>= f where
+  f True  = fmap (Just . read) . readFile $ pidFile
   f False = return Nothing
 
 pidLive :: CPid -> IO Bool

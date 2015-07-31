@@ -18,6 +18,7 @@ import Blog.Assets
 import Blog.Types as Types
 import Blog.Auth
 import Blog.MIME
+import Blog.Daemonize
 
 import           Control.Monad.Reader
 import           Control.Concurrent.STM
@@ -25,8 +26,10 @@ import           Control.Applicative
 import           Data.Maybe
 
 import           Web.Scotty.Trans as Scotty
-import           Web.Scotty.TLS as Scotty
 import           Network.HTTP.Types.Status
+import           Network.Wai (Application(..), responseLBS, requestHeaderHost, rawPathInfo, rawQueryString)
+import           Network.Wai.Handler.Warp (defaultSettings, setPort, setBeforeMainLoop, runSettings)
+import           Network.Wai.Handler.WarpTLS (certFile,defaultTlsSettings,keyFile,runTLS)
 
 import qualified Database.Redis as Redis
 import qualified Database.PostgreSQL.Simple as PG
@@ -44,10 +47,13 @@ import           Text.Blaze.Html5.Attributes as A
 import           Text.Blaze.Html.Renderer.Text as R
 import           Prelude as P hiding (head, div)
 
+import           System.Posix
+import           System.Posix.User
 import           System.Environment
 
 -- TODO: 
 -- Deal with setuid security & port binding
+-- HTTP to HTTPS redirection
 
 -- TODO (future):
 -- redo comments' appearance
@@ -73,11 +79,39 @@ initState dbpass = do
 
 -- The problem daemonizing comes from Warp
 startApp :: Int -> FilePath -> FilePath -> AppState -> IO ()
-startApp port crtfile keyfile state = do
+startApp port cert key state = do
+  startRedirectDaemon  
+  putStrLn "starting HTTPS"
   sync <- newTVarIO state
   let runActionToIO m = runReaderT (runWebM m) sync
-  putStrLn "starting HTTP"
-  scottyTTLS port keyfile crtfile runActionToIO app
+  let tlsSettings = defaultTlsSettings { keyFile = key, certFile = cert }
+  let warpSettings = setBeforeMainLoop resignPrivileges $ setPort port defaultSettings
+  scottyAppT runActionToIO app >>= liftIO . runTLS tlsSettings warpSettings
+  
+startRedirectDaemon :: IO ()
+startRedirectDaemon = do
+  uid <- getEffectiveUserID
+  case uid of
+    0 -> do
+      putStrLn "starting HTTP redirection"
+      installHandler sigTERM (Catch handler) Nothing
+      installHandler sigINT (Catch handler) Nothing
+      detachProcess' "/tmp/blog-redirect.pid" $ do
+        runSettings warpSettings redirectApp
+    _ -> return ()
+    where
+      warpSettings = setBeforeMainLoop resignPrivileges $ setPort 80 defaultSettings
+      handler = daemonizeKill "/tmp/blog-redirect.pid"
+  
+redirectApp :: Application
+redirectApp req respond = respond $ responseLBS status301 headers ""
+  where
+    headers = [("Location", mconcat ["https://", fromJust $ requestHeaderHost req, rawPathInfo req, rawQueryString req])]
+                       
+resignPrivileges :: IO ()
+resignPrivileges = do
+  (UserEntry _ _ uid _ _ _ _) <- getUserEntryForName "daemon"
+  setUserID uid
 
 app :: ScottyT TL.Text WebM ()
 app = do
