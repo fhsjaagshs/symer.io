@@ -74,10 +74,9 @@ redirectIO outpath errpath = do
       closeFd fd
   closeFd dnull
   
-  -- set appropriate buffering modes for our newly redirected IO handles
-  -- so that they work if they're not a terminal.
-  hSetBuffering stdin  LineBuffering
-  hSetBuffering stdout LineBuffering
+  -- buffering is bad, mmmmkay?
+  hSetBuffering stdin  NoBuffering
+  hSetBuffering stdout NoBuffering
   hSetBuffering stderr NoBuffering
   
 {- Internal -}
