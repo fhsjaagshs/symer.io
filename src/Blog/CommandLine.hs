@@ -22,6 +22,7 @@ data Cmd
     startCmdOutputPath :: Maybe FilePath,
     startCmdErrorPath :: Maybe FilePath
   }
+  | RedirectCommand
   | StopCommand
   | StatusCommand
 
@@ -39,7 +40,8 @@ parseCommand = sp <|> parseStart
   where
     sp = subparser ((mkcmd "start" "Start the blog" parseStart) <>
                     (mkcmd "stop" "Stop the blog" parseStop) <>
-                    (mkcmd "status" "Determine if the blog is running" parseStatus)
+                    (mkcmd "status" "Determine if the blog is running" parseStatus) <>
+                    (mkcmd "redirect-http" "Redirect HTTP to HTTPs" parseRedirect)
                     )
     parseStart :: Parser Cmd
     parseStart = StartCommand
@@ -54,6 +56,8 @@ parseCommand = sp <|> parseStart
     parseStop = pure $ StopCommand
     parseStatus :: Parser Cmd
     parseStatus = pure $ StatusCommand
+    parseRedirect :: Parser Cmd
+    parseRedirect = pure $ RedirectCommand
 
 -- optparse-applicative Helpers
 

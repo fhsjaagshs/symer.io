@@ -23,5 +23,6 @@ main = do
     (StartCommand False port dbpass crtfile keyfile outp errp) -> do
       redirectIO outp errp
       (initState dbpass >>= startApp port crtfile keyfile)
-    StopCommand -> daemonizeKill "/tmp/blog.pid"
+    StopCommand -> daemonizeKill 8 "/tmp/blog.pid"
     StatusCommand -> daemonizeStatus "/tmp/blog.pid"
+    RedirectCommand -> startRedirect

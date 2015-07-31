@@ -18,8 +18,8 @@ import System.IO
 import System.Exit
 import System.Posix
 
-daemonizeKill :: FilePath -> IO ()
-daemonizeKill pidFile = do
+daemonizeKill :: Int -> FilePath -> IO ()
+daemonizeKill timeout pidFile = do
   mpid <- pidRead pidFile
   removeLink pidFile
   case mpid of
@@ -28,7 +28,7 @@ daemonizeKill pidFile = do
       islive <- pidLive pid
       when islive $ do
         signalProcess sigTERM pid
-        wait 4 pid
+        wait timeout pid
                      
 daemonizeStatus :: FilePath -> IO ()
 daemonizeStatus pidFile = pidExists pidFile >>= f where

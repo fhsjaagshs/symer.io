@@ -5,6 +5,7 @@ module Blog.App
 (
   initState,
   startApp,
+  startRedirect,
   app
 )
 where
@@ -27,7 +28,7 @@ import           Data.Maybe
 
 import           Web.Scotty.Trans as Scotty
 import           Network.HTTP.Types.Status
-import           Network.Wai (Application(..), responseLBS, requestHeaderHost, rawPathInfo, rawQueryString)
+import           Network.Wai (Application, responseLBS, requestHeaderHost, rawPathInfo, rawQueryString)
 import           Network.Wai.Handler.Warp (defaultSettings, setPort, setBeforeMainLoop, runSettings)
 import           Network.Wai.Handler.WarpTLS (certFile,defaultTlsSettings,keyFile,runTLS)
 
@@ -47,9 +48,12 @@ import           Text.Blaze.Html5.Attributes as A
 import           Text.Blaze.Html.Renderer.Text as R
 import           Prelude as P hiding (head, div)
 
+import           System.Exit
+import           System.Process
 import           System.Posix
 import           System.Posix.User
 import           System.Environment
+import System.Process.Internals
 
 -- TODO: 
 -- Deal with setuid security & port binding
@@ -80,33 +84,28 @@ initState dbpass = do
 -- The problem daemonizing comes from Warp
 startApp :: Int -> FilePath -> FilePath -> AppState -> IO ()
 startApp port cert key state = do
-  startRedirectDaemon  
+  p <- getExecutablePath
+  createProcess (proc p ["redirect-http"])
   putStrLn "starting HTTPS"
   sync <- newTVarIO state
   let runActionToIO m = runReaderT (runWebM m) sync
-  let tlsSettings = defaultTlsSettings { keyFile = key, certFile = cert }
-  let warpSettings = setBeforeMainLoop resignPrivileges $ setPort port defaultSettings
   scottyAppT runActionToIO app >>= liftIO . runTLS tlsSettings warpSettings
+  where
+    tlsSettings = defaultTlsSettings { keyFile = key, certFile = cert }
+    warpSettings = setBeforeMainLoop resignPrivileges $ setPort port defaultSettings
   
-startRedirectDaemon :: IO ()
-startRedirectDaemon = do
+startRedirect :: IO ()
+startRedirect = do
   uid <- getEffectiveUserID
   case uid of
     0 -> do
       putStrLn "starting HTTP redirection"
-      installHandler sigTERM (Catch handler) Nothing
-      installHandler sigINT (Catch handler) Nothing
-      detachProcess' "/tmp/blog-redirect.pid" $ do
-        runSettings warpSettings redirectApp
+      runSettings warpSettings $ \req respond -> do
+        respond $ responseLBS status301 (mkHeaders req) ""
     _ -> return ()
     where
       warpSettings = setBeforeMainLoop resignPrivileges $ setPort 80 defaultSettings
-      handler = daemonizeKill "/tmp/blog-redirect.pid"
-  
-redirectApp :: Application
-redirectApp req respond = respond $ responseLBS status301 headers ""
-  where
-    headers = [("Location", mconcat ["https://", fromJust $ requestHeaderHost req, rawPathInfo req, rawQueryString req])]
+      mkHeaders r = [("Location", mconcat ["https://", fromJust $ requestHeaderHost r, rawPathInfo r, rawQueryString r])]
                        
 resignPrivileges :: IO ()
 resignPrivileges = do
