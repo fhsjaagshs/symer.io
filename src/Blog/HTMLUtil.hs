@@ -52,7 +52,7 @@ renderHead cssFiles metaTags title_ = H.head $ do
   mapM_ linkify ("/assets/css/blog.css":cssFiles)
   mapM_ metafy (L.nubBy eqltest $ metaTags ++ seoTags)
   where
-    eqltest (a, _) (b, _) = a == b
+    eqltest (a1, _) (b1, _) = a1 == b1
     linkify x = link ! href (lazyTextValue x) ! rel "stylesheet" ! type_ "text/css"
     metafy x = meta ! A.name (lazyTextValue $ fst x) ! content (lazyTextValue $ snd x)
 
@@ -73,7 +73,7 @@ renderPostEditor maybeBlogPost = do
   input ! type_ "text" ! id "title-field" ! placeholder "Post title" ! value (textValue $ maybe "" Types.title maybeBlogPost)
 
   div ! id "preview" $ ""
-  textarea ! id "editor" ! customAttribute "post-id" (stringValue $ maybe "-1" (show . Types.identifier) maybeBlogPost) $ H.text $ maybe "" Types.body maybeBlogPost
+  textarea ! id "editor" ! customAttribute "post-id" (stringValue $ show $ maybe (-1) Types.identifier maybeBlogPost) $ H.text $ maybe "" Types.body maybeBlogPost
   textarea ! id "tags" ! class_ "wordlist" $ toHtml $ L.intercalate ", " $ maybe [] Types.tags maybeBlogPost
   
   div ! id "checkbox-container" $ do

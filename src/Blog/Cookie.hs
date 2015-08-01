@@ -112,7 +112,6 @@ cookiesParser = do
     Nothing -> return []
     Just c -> ((:) c) <$> cookiesParser
 
--- cookieParser :: Parser Cookie
 cookieParser :: Parser Cookie
 cookieParser = do
   key <- many1 alphaNum

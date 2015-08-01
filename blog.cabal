@@ -40,6 +40,7 @@ executable blog
                      bcrypt,
                      pureMD5,
                      parsec,
+                     attoparsec,
                      data-default,
                      unordered-containers,
                      scotty-tls,

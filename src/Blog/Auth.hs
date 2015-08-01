@@ -29,9 +29,6 @@ import qualified Database.Redis as R
 
 import System.Random
 
-import Data.Maybe
-
--- TODO: Fixme
 accessToken :: (ScottyError e, Monad m) => ActionT e m (Maybe String)
 accessToken = do
   mv <- Scotty.header "Cookie"

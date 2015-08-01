@@ -6,6 +6,7 @@ module Blog.App
   initState,
   startApp,
   startRedirect,
+  startRedirectProcess,
   app
 )
 where
@@ -66,24 +67,36 @@ import           System.Environment
 
 startRedirectProcess :: IO ()
 startRedirectProcess = do
-  pid <- forkProcess $ do
-    installHandler sigTERM (Catch childHandler) Nothing
-    startRedirect
-  void $ installHandler sigTERM (Catch parentHandler) Nothing
-  where
-    childHandler = do
-      putStrLn "Killing redirection service"
-      exitImmediately ExitSuccess
-    parentHandler = do
-      signalProcess sigTERM pid
-      exitImmediately ExitSuccess
+  privileged <- isPrivileged
+  when privileged $ do
+    putStrLn "spawning redirection process"
+    pname <- getProgName
+    pid <- withProgName (pname ++ "-redirectssl") $ do
+      forkProcess $ do
+        void $ installHandler sigTERM (Catch childHandler) Nothing
+        startRedirect
+    void $ installHandler sigTERM (Catch $ parentHandler pid) Nothing
+    void $ installHandler sigINT (Catch $ parentHandler pid) Nothing
+    where
+      childHandler = do
+        putStrLn "killed redirection process"
+        exitImmediately ExitSuccess
+      parentHandler pid = do
+        putStrLn "killing redirection process"
+        signalProcess sigTERM pid
+        exitImmediately ExitSuccess
 
-resignPrivileges :: IO ()
-resignPrivileges = getUserEntryForName "daemon" >>= setUserID . userID
+resignPrivileges :: String -> IO ()
+resignPrivileges user = do
+  privileged <- isPrivileged
+  when privileged $ do
+    getUserEntryForName user >>= setUserID . userID
+
+isPrivileged :: IO Bool
+isPrivileged = getEffectiveUserID >>= return . ((==) 0)
 
 initState :: String -> IO AppState
 initState dbpass = do
-  startRedirectProcess
   putStrLn "establishing database connections"
   pg <- PG.connectPostgreSQL $ B.pack $ postgresConnStr dbpass
   redis <- Redis.connect Redis.defaultConnectInfo
@@ -94,33 +107,30 @@ initState dbpass = do
 -- The problem daemonizing comes from Warp
 startApp :: Int -> FilePath -> FilePath -> AppState -> IO ()
 startApp port cert key state = do
-  putStrLn "starting HTTPS"
+  putStrLn "starting https"
   sync <- newTVarIO state
   let runActionToIO m = runReaderT (runWebM m) sync
   scottyAppT runActionToIO app >>= liftIO . runTLS tlsSettings warpSettings
   where
     tlsSettings = defaultTlsSettings { keyFile = key, certFile = cert }
-    warpSettings = setBeforeMainLoop resignPrivileges $ setPort port defaultSettings
+    warpSettings = setBeforeMainLoop (resignPrivileges "daemon") $ setPort port defaultSettings
   
 startRedirect :: IO ()
 startRedirect = do
-  uid <- getEffectiveUserID
-  case uid of
-    0 -> do
-      putStrLn "starting HTTP redirection"
-      runSettings warpSettings $ \req respond -> do
-        respond $ responseLBS status301 (mkHeaders req) ""
-    _ -> return ()
-    where
-      warpSettings = setBeforeMainLoop resignPrivileges $ setPort 80 defaultSettings
-      mkHeaders r = [("Location", mconcat ["https://", fromJust $ requestHeaderHost r, rawPathInfo r, rawQueryString r])]
+  privileged <- isPrivileged
+  when privileged $ do
+    putStrLn "redirecting unencrypted traffic"
+    runSettings warpSettings $ \req respond -> do
+      respond $ responseLBS status301 (mkHeaders req) ""
+  where
+    warpSettings = setBeforeMainLoop (resignPrivileges "daemon") $ setPort 80 defaultSettings
+    mkHeaders r = [("Location", mconcat ["https://", fromJust $ requestHeaderHost r, rawPathInfo r, rawQueryString r])]
 
 app :: ScottyT TL.Text WebM ()
 app = do
   -- blog root
   get "/" $ do
     maybeUser <- getUser
-    liftIO $ print maybeUser
     mPageNum <- fmap (read . TL.unpack) . lookup "page" <$> params
     posts <- getBlogPosts mPageNum
     Scotty.html $ R.renderHtml $ docTypeHtml $ do
@@ -254,9 +264,9 @@ app = do
                                              (read . TL.unpack <$> lookup "id" ps)
                                              (lookup "title" ps)
                                              (lookup "body" ps)
-                                             ((splitList ',' . TL.unpack) <$> (lookup "tags" ps))
-                                             ((splitList ',' . TL.unpack) <$> (lookup "deleted_tags" ps))
-                                             (elem (TL.unpack . fromMaybe "True" . lookup "draft" $ ps) ["t", "true", "True", "y", "yes"])
+                                             (splitList ',' . TL.unpack <$> lookup "tags" ps)
+                                             (splitList ',' . TL.unpack <$> lookup "deleted_tags" ps)
+                                             (elem (fromMaybe "True" . lookup "draft" $ ps) ["t", "true", "True", "y", "yes"])
         case maybeBPIdentifier of
           Nothing -> status $ Status 400 "Missing required parameters"
           Just identifier_ -> addHeader "Location" $ TL.pack $ "/posts/" ++ (show identifier_)

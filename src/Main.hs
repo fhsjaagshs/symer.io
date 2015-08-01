@@ -8,6 +8,9 @@ import Blog.App
 import Blog.CommandLine
 import Blog.Daemonize
 
+import Control.Monad
+import Data.Maybe
+
 -- Setup:
 -- ensure your executable is setuid & owned by root:
 -- sudo chmod 4775 dist/build/blog/blog
@@ -19,10 +22,12 @@ main = do
   case cmd of
     (StartCommand True port dbpass crtfile keyfile outp errp) -> do
       daemonize "/tmp/blog.pid" outp errp $ do
+        startRedirectProcess
         initState dbpass >>= startApp port crtfile keyfile
     (StartCommand False port dbpass crtfile keyfile outp errp) -> do
-      redirectIO outp errp
+      when (isJust outp) $ redirectIO outp errp
+      startRedirectProcess
       (initState dbpass >>= startApp port crtfile keyfile)
-    StopCommand -> daemonizeKill 8 "/tmp/blog.pid"
+    StopCommand -> daemonizeKill 4 "/tmp/blog.pid"
     StatusCommand -> daemonizeStatus "/tmp/blog.pid"
     RedirectCommand -> startRedirect

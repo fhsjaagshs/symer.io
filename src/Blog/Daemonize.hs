@@ -72,15 +72,13 @@ redirectIO outpath errpath = do
   case outpath of
     Nothing -> closeFd stdOutput >> dupTo dnull stdOutput >> return ()
     Just out -> do
-      fd <- openFd out ReadWrite Nothing defaultFileFlags
-      setFdOption fd AppendOnWrite True
+      fd <- safeOpenFd out
       dupTo fd stdOutput
       closeFd fd
   case errpath of
     Nothing -> closeFd stdError >> dupTo dnull stdError >> return ()
     Just err -> do
-      fd <- openFd err ReadWrite Nothing defaultFileFlags
-      setFdOption fd AppendOnWrite True
+      fd <- safeOpenFd err
       dupTo fd stdError
       closeFd fd
   closeFd dnull
@@ -90,6 +88,14 @@ redirectIO outpath errpath = do
   hSetBuffering stdin  NoBuffering
   hSetBuffering stdout NoBuffering
   hSetBuffering stderr NoBuffering
+  
+  where
+    safeOpenFd p = do
+      exists <- fileExist p
+      when (not exists) $ writeFile p ""
+      fd <- openFd p ReadWrite Nothing defaultFileFlags
+      setFdOption fd AppendOnWrite True
+      return fd
   
 {- Internal -}
 

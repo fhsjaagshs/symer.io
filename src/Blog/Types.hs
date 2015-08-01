@@ -5,11 +5,11 @@ module Blog.Types where
 import           Blog.Database.PGExtensions()
 
 import           GHC.Generics
-import           Control.Applicative
 import           Control.Monad
 import           Data.Maybe
 
 import qualified Data.ByteString.Lazy.Char8 as BL
+import qualified Data.ByteString.Char8 as B
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
 import qualified Data.Vector as Vector
@@ -27,9 +27,11 @@ import           Database.PostgreSQL.Simple.FromRow as PG.FromRow
 import           Database.PostgreSQL.Simple.ToRow as PG.ToRow
 import           Database.PostgreSQL.Simple.Time as PG.Time
 
-import           Text.Blaze.Html5 as H hiding (style, param, map)
+import           Text.Blaze.Html5 as H hiding (style, param, map, option)
 import           Text.Blaze.Html5.Attributes as A
 import           Blaze.ByteString.Builder (toLazyByteString, fromByteString)
+
+import           Data.Attoparsec.ByteString.Char8 as A
 
 import           Prelude as P hiding (div)
 import           Data.Typeable
@@ -156,7 +158,10 @@ instance FromField User where
   fromField f (Just fdata) = do
     tinfo <- typeInfo f
     case tinfo of
-      (Composite _ _ _ "users" _ _) -> return $ parseUserRow $ parseRow $ T.decodeUtf8 fdata
+      (Composite _ _ _ "users" _ _) -> do
+        case parseUserRow fdata of
+          Just user -> return user
+          Nothing -> returnError ConversionFailed f "Failed to read users field."
       _ -> returnError ConversionFailed f "Failed to read users field."
   fromField f Nothing = do
     tinfo <- typeInfo f
@@ -184,25 +189,28 @@ instance ToRow User where
     toField username,
     toField displayName,
     toField passwordHash]
+    
+parseUserRow :: B.ByteString -> Maybe User
+parseUserRow = eitherToMaybe . parseOnly userRowParser
+  where eitherToMaybe e = case e of
+          Left _ -> Nothing
+          Right r -> Just r
 
-parseUserRow :: [T.Text] -> User
-parseUserRow (uid:uname:dname:pwh:[]) = User (read $ T.unpack uid) uname dname (Just pwh)
-parseUserRow (uid:uname:dname:[]) = User (read $ T.unpack uid) uname dname Nothing
-parseUserRow _ = error "Invalid user row."
-
-parseRow :: T.Text -> [T.Text]
-parseRow "()" = []
-parseRow ""   = []
-parseRow str
-  | parenthetical str  = parseRow . T.init . T.tail $ str
-  | T.head str == '\"' = (T.takeWhile neQuote . T.tail $ str):(parseRow . T.tail . T.dropWhile neQuote . T.tail $ str)
-  | T.head str == ','  = parseRow $ T.tail str
-  | otherwise          = (T.takeWhile neComma str):(parseRow $ T.dropWhile neComma str)
+userRowParser :: Parser User
+userRowParser = User
+  <$> (skipUntakeable >> decimal)
+  <*> (skipUntakeable >> T.decodeUtf8 <$> takeTakeable)
+  <*> (skipUntakeable >> T.decodeUtf8 <$> takeTakeable)
+  <*> (skipUntakeable >> option Nothing (Just . T.decodeUtf8 <$> takeTakeable))
   where
-    neQuote = (/=) '\"'
-    neComma = (/=) ','
-    parenthetical s = (T.head s) == '(' && (T.last s) == ')'
-
+    takeable ',' = False
+    takeable '"' = False
+    takeable ')' = False
+    takeable '(' = False
+    takeable _   = True
+    skipUntakeable = skipWhile (not . takeable)
+    takeTakeable = A.takeWhile takeable
+    
 -------------------------------------------------------------------------------
 --- | BlogPost data type
 
@@ -252,30 +260,43 @@ instance ToJSON BlogPost where
       tagsToValue :: [String] -> Value
       tagsToValue = Aeson.Array . Vector.fromList . map (Aeson.String . T.pack)
     
+--------------------------------------------------------------------------------
 instance Composable BlogPost where
   -- Unauthenticated
-  render (BlogPost identifier_ title_ body_ timestamp_ tags_ _ _ author_) Nothing = do
-    a ! href (stringValue $ (++) "/posts/" $ show identifier_) $ do
-      h1 ! class_ "post-title" ! A.id (stringValue $ show identifier_) $ toHtml title_
-    h4 ! class_ "post-subtitle" $ toHtml $ T.append (T.pack $ formatDate timestamp_) (T.append " | " $ userDisplayName author_)
-    toHtml $ map (\t -> a ! class_ "taglink" ! href (stringValue $ "/posts/by/tag/" ++ t) $ h4 ! class_ "post-subtitle" $ toHtml $ t) tags_
-    div ! class_ "post-content" ! style "text-align: left;" $ toHtml $ markdown def body_
+  render (BlogPost id_ title_ body_ ts_ tags_ _ _ author_) Nothing = do
+    a ! href (stringValue $ "/posts/" ++ show id_) $ do
+      h1 ! class_ "post-title" ! A.id (stringValue $ show id_) $ toHtml title_
+    h4 ! class_ "post-subtitle" $ toHtml $ formatSubtitle ts_ $ userDisplayName author_
+    mapM_ taglink tags_
+    div ! class_ "post-content" $ toHtml $ markdown def body_
   -- Authenticated, draft
-  render (BlogPost identifier_ title_ body_ timestamp_ tags_ _ True author_) (Just user_) = do
-    a ! href (stringValue $ (++) "/posts/" $ show identifier_) $ do
-      h1 ! class_ "post-title post-draft" ! A.id (stringValue $ show identifier_) $ toHtml title_
-    h4 ! class_ "post-subtitle post-draft" $ toHtml $ T.append (T.pack $ formatDate timestamp_) (T.append " | " $ userDisplayName author_)
-    toHtml $ map (\t -> a ! class_ "taglink" ! href (stringValue $ "/posts/by/tag/" ++ t) $ toHtml $ h4 ! class_ "post-subtitle" $ toHtml $ t) tags_
-    when (author_ == user_) $  a ! class_ "post-edit-button post-draft" ! href (stringValue $ ("/posts/" ++ (show identifier_) ++ "/edit")) ! rel "nofollow" $ "edit"
-    div ! class_ "post-content post-draft" ! style "text-align: left;" $ toHtml $ markdown def body_
+  render (BlogPost id_ title_ body_ ts_ tags_ _ True author_) (Just user_) = do
+    a ! href (stringValue $ "/posts/" ++ show id_) $ do
+      h1 ! class_ "post-title post-draft" ! A.id (stringValue $ show id_) $ toHtml title_
+    h4 ! class_ "post-subtitle post-draft" $ toHtml $ formatSubtitle ts_ $ userDisplayName author_
+    mapM_ taglink tags_
+    when (author_ == user_) $ do
+      a ! class_ "post-edit-button post-draft" ! href (stringValue $ "/posts/" ++ show id_ ++ "/edit") ! rel "nofollow" $ "edit"
+    div ! class_ "post-content post-draft" $ toHtml $ markdown def body_
   -- Authenticated, published
-  render (BlogPost identifier_ title_ body_ timestamp_ tags_ _ False author_) (Just user_) = do
-    a ! href (stringValue $ (++) "/posts/" $ show identifier_) $ do
-      h1 ! class_ "post-title" ! A.id (stringValue $ show identifier_) $ toHtml title_
-    h4 ! class_ "post-subtitle" $ toHtml $ T.append (T.pack $ formatDate timestamp_) (T.append " | " $ userDisplayName author_)
-    toHtml $ map (\t -> a ! class_ "taglink" ! href (stringValue $ "/posts/by/tag/" ++ t) $ toHtml $ h4 ! class_ "post-subtitle" $ toHtml $ t) tags_
-    when (author_ == user_) $  a ! class_ "post-edit-button" ! href (stringValue $ ("/posts/" ++ (show identifier_) ++ "/edit")) ! rel "nofollow" $ "edit"
-    div ! class_ "post-content" ! style "text-align: left;" $ toHtml $ markdown def body_
+  render (BlogPost id_ title_ body_ ts_ tags_ _ False author_) (Just user_) = do
+    a ! href (stringValue $ "/posts/" ++ show id_) $ do
+      h1 ! class_ "post-title" ! A.id (stringValue $ show id_) $ toHtml title_
+    h4 ! class_ "post-subtitle" $ toHtml $ formatSubtitle ts_ $ userDisplayName author_
+    mapM_ taglink tags_
+    when (author_ == user_) $ do
+      a ! class_ "post-edit-button" ! href (stringValue $ "/posts/" ++ show id_ ++ "/edit") ! rel "nofollow" $ "edit"
+    div ! class_ "post-content" $ toHtml $ markdown def body_
+    
+taglink :: String -> Html
+taglink t = a ! class_ "taglink" ! href (stringValue $ "/posts/by/tag/" ++ t) $ do
+  h4 ! class_ "post-subtitle" $ toHtml $ t
+
+formatDate :: FormatTime t => t -> String
+formatDate = formatTime defaultTimeLocale "%-m • %-e • %-y | %l:%M %p %Z" 
+
+formatSubtitle :: FormatTime t => t -> T.Text -> T.Text
+formatSubtitle t authorName = mconcat [T.pack $ formatDate t, " | ", authorName]
     
 instance Composable [BlogPost] where
   render [] _ = return ()
@@ -285,6 +306,3 @@ instance Composable [BlogPost] where
     unless (null xs) $ do
       hr ! class_ "separator"
       render xs user
-      
-formatDate :: FormatTime t => t -> String
-formatDate = formatTime defaultTimeLocale "%-m • %-e • %-y | %l:%M %p %Z" 

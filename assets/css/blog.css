@@ -109,6 +109,7 @@ a < img {
 .post-content > * {
   font-size: 20px;
   line-height: 1.35em;
+  text-align: left;
 }
 
 .post-edit-button {
