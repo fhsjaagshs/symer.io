@@ -209,7 +209,7 @@ app = do
   get "/login" $ do
     maybeUser <- getUser
     when (isJust maybeUser) (redirect "/")
-    maybeErrorMessage <- (rescue (Just <$> param "error_message") (\_ -> return Nothing))
+    maybeErrorMessage <- lookup "error_message" <$> params
     Scotty.html $ R.renderHtml $ docTypeHtml $ do
       renderHead [] [("robots","noindex, nofollow")] $ appendedBlogTitle "Login"
       renderBody (Just "Login") maybeErrorMessage Nothing $ do

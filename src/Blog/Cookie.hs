@@ -5,54 +5,35 @@ module Blog.Cookie
 (
   Cookie(..),
   parseCookie,
-  parseCookies,
-  serializeCookie,
-  serializeCookies,
-  eitherToMaybe
+  serializeCookie
 )
 where
-  
-import           Data.Char (toLower)
-import           Data.List (intercalate)
 
-import           Text.Parsec
+import qualified Data.ByteString.Char8 as B
+import           Data.Char (toLower)
+
+import           Data.Attoparsec.ByteString.Char8 as A
 
 import           Data.Time.Format
 import           Data.Time.Clock (UTCTime)
 import           Data.Default
 
+import Debug.Trace
+
 -------------------------------------------------------------------------------
 -- | Types
   
 data Cookie = Cookie {
-  cookieKey :: String,
-  cookieValue :: String,
+  cookiePairs :: [(String, String)],
   cookiePath :: Maybe String,
   cookieDomain :: Maybe String,
   cookieExpires :: Maybe UTCTime,
   cookieSecure :: Bool,
   cookieHttpOnly :: Bool
-}
+} deriving (Show)
 
 instance Default Cookie where
-  def = Cookie "" "" Nothing Nothing Nothing False False
-
-instance Show Cookie where
-  show = serializeCookie
-  
-instance Show [Cookie] where
-  show = serializeCookies
-  
-instance Eq Cookie where
-  (==) a b = (cookieKey a) == (cookieKey b)
-
--------------------------------------------------------------------------------
--- | Utilities
-
-eitherToMaybe :: Either a b -> Maybe b
-eitherToMaybe e = case e of
-  Left _ -> Nothing
-  Right r -> Just r
+  def = Cookie [] Nothing Nothing Nothing False False
 
 -------------------------------------------------------------------------------
 -- | Date Formatting
@@ -69,81 +50,69 @@ formatCookieDate = formatTime defaultTimeLocale cookieDateFormat
 
 -------------------------------------------------------------------------------
 -- | Individual Cookie Parsing
--- | These functions are designed for use with the Set-Cookie header
 
-serializeCookie :: Cookie -> String
-serializeCookie (Cookie k v path domain expires secure httponly) = 
-  k
-  ++ "="
-  ++ v
-  ++ (maybe "" (((++) "; expires=") . formatCookieDate) expires)
-  ++ (maybe "" ((++) "; domain=") domain)
-  ++ (maybe "" ((++) "; path=") path)
-  ++ (if secure then "; Secure" else "")
-  ++ (if httponly then "; HttpOnly" else "")
-  
-parseCookie :: String -> Maybe Cookie
-parseCookie = eitherToMaybe . (parse cookieParser "")
-
--------------------------------------------------------------------------------
--- | Multiple Cookie Parsing
--- | These functions are designed for use with the Cookie header            
-                                                   
-serializeCookies :: [Cookie] -> String
-serializeCookies cookies = intercalate "; " pairs
+-- Generates a list of Set-Cookie headers
+serializeCookie :: Cookie -> [String]
+serializeCookie (Cookie [] _ _ _ _ _) = []
+serializeCookie (Cookie ((k,v):xs) path domain expires secure httponly) = cookie:(serializeCookie remaining)
   where
-    pairs = map (\(Cookie k v _ _ _ _ _) -> k ++ "=" ++ v) cookies
+    cookie = 
+      k ++ "=" ++ v
+      ++ (maybe "" (((++) "; expires=") . formatCookieDate) expires)
+      ++ (maybe "" ((++) "; domain=") domain)
+      ++ (maybe "" ((++) "; path=") path)
+      ++ (if secure then "; Secure" else "")
+      ++ (if httponly then "; HttpOnly" else "")
+    remaining = Cookie xs path domain expires secure httponly
 
-parseCookies :: String -> Maybe [Cookie]
-parseCookies = eitherToMaybe . (parse cookiesParser "")
-
--------------------------------------------------------------------------------
--- | Parsers
-
-type Parser a = Parsec String () a
-
-cookiesParser :: Parser [Cookie]
--- cookiesParser = (:)
---                 <$> cookieParser
---                 <*> (maybe [] id (optional $ cookiesParser))
-cookiesParser = do
-  cookie <- optionMaybe cookieParser
-  case cookie of
-    Nothing -> return []
-    Just c -> ((:) c) <$> cookiesParser
+parseCookie :: B.ByteString -> Maybe Cookie
+parseCookie = maybeResult . flip feed "" . parse cookieParser
 
 cookieParser :: Parser Cookie
 cookieParser = do
-  key <- many1 alphaNum
-  char '='
-  value <- many alphaNum
+  pairs <- parsePairs
   
   expires <- option Nothing $ do
     char ';'
-    skipMany space
+    skipSpace
     string "expires="
-    parseCookieDate <$> many1 anyToken
+    parseCookieDate . B.unpack <$> takeUntil ';'
 
-  domain <- optionMaybe $ do
+  domain <- option Nothing $ do
     char ';'
-    skipMany space
+    skipSpace
     string "domain="
-    many alphaNum
+    Just . B.unpack <$> takeUntil ';'
     
-  path <- optionMaybe $ do
+  path <- option Nothing $ do
     char ';'
-    skipMany space
+    skipSpace
     string "path="
-    many alphaNum
+    Just . B.unpack <$> takeUntil ';'
     
   secure <- option False $ do
     char ';'
-    skipMany space
-    (((==) "secure") . (map toLower)) <$> many1 letter
+    skipSpace
+    (==) "secure" . map toLower <$> many1 letter_iso8859_15
     
   httponly <- option False $ do
     char ';'
-    skipMany space
-    (((==) "httponly") . (map toLower)) <$> many1 letter
+    skipSpace
+    (==) "httponly" . map toLower <$> many1 letter_iso8859_15
+    
+  traceShowId <$> takeByteString
   
-  return $ Cookie key value path domain expires secure httponly
+  return $ Cookie pairs path domain expires secure httponly
+  where
+    takeUntil c = A.takeWhile (not . (==) c)
+    parsePair = do
+      skipSpace
+      key <- B.unpack <$> takeUntil '='
+      char '='
+      value <- B.unpack <$> takeUntil ';'
+      return (key, value)
+    parsePairs = do
+      mp <- option Nothing (Just <$> parsePair)
+      case mp of
+        Nothing -> return []
+        Just p -> ((:) p) <$> parsePairs

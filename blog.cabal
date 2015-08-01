@@ -39,7 +39,6 @@ executable blog
                      css-text,
                      bcrypt,
                      pureMD5,
-                     parsec,
                      attoparsec,
                      data-default,
                      unordered-containers,

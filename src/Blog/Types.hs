@@ -191,10 +191,7 @@ instance ToRow User where
     toField passwordHash]
     
 parseUserRow :: B.ByteString -> Maybe User
-parseUserRow = eitherToMaybe . parseOnly userRowParser
-  where eitherToMaybe e = case e of
-          Left _ -> Nothing
-          Right r -> Just r
+parseUserRow = maybeResult . parse userRowParser
 
 userRowParser :: Parser User
 userRowParser = User

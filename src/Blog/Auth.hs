@@ -16,6 +16,7 @@ import Blog.Cookie
 import Blog.Types
 
 import qualified Data.Text.Lazy as TL
+import qualified Data.Text.Lazy.Encoding as TL
 
 import Control.Monad (void)
 import Control.Monad.IO.Class (liftIO)
@@ -29,16 +30,14 @@ import qualified Database.Redis as R
 
 import System.Random
 
-accessToken :: (ScottyError e, Monad m) => ActionT e m (Maybe String)
+accessToken :: (ScottyError e) => ActionT e WebM (Maybe String)
 accessToken = do
   mv <- Scotty.header "Cookie"
   case mv of
-    Just v -> case parseCookies . TL.unpack $ v of
-      Just parsed -> return . lookup "token" . map cookieToTuple $ parsed
+    Just v -> case parseCookie . BL.toStrict . TL.encodeUtf8 $ v of
+      Just parsed -> return . lookup "token" . cookiePairs $ parsed
       _ -> return Nothing
     _ -> return Nothing
-  where
-    cookieToTuple (Cookie k v _ _ _ _ _) = (k, v)
 
 getUser :: (ScottyError e) => ActionT e WebM (Maybe User)
 getUser = do
@@ -61,9 +60,9 @@ setUser user = do
   saveUser redis token user
   setTokenCookie token
   where
-    cookie token = Cookie "token" token Nothing Nothing Nothing False False
+    cookie token = Cookie [("token",token)] Nothing Nothing Nothing False False
     saveUser redis token = liftIO . R.runRedis redis . R.set (B.pack token) . BL.toStrict . A.encode
-    setTokenCookie = addHeader "Set-Cookie" . TL.pack . serializeCookie . cookie
+    setTokenCookie = mapM_ (addHeader "Set-Cookie" . TL.pack) . serializeCookie . cookie
     
 deleteAuth :: (ScottyError e) => ActionT e WebM ()
 deleteAuth = do
