@@ -38,6 +38,23 @@ import Database.PostgreSQL.Simple.Types as PG.Types
 import           Blaze.ByteString.Builder (toByteString)
 import qualified Blaze.ByteString.Builder.Char.Utf8 as Utf8
 
+import Debug.Trace
+
+{-
+Database TODO:
+
+1. Rename columns
+2. Look into views for blogposts
+
+This will require migrating production:
+1. Finalize migrations
+2. Backup prod
+3. Run migrations in prod
+4. Condense migrations into one .sql file
+5. Manually update prod accordingly
+
+-}
+
 runMigrations :: PG.Connection -> IO ()
 runMigrations pg = do
   execute_ pg "SET client_min_messages=WARNING;"
@@ -67,31 +84,38 @@ upsertPost user Nothing            (Just title_) (Just body_) Nothing      _    
 upsertPost user Nothing            (Just title_) (Just body_) (Just tags_) _                   isdraft = processResult $ webMQuery "INSERT INTO blogposts (title, bodyText, tags, author_id, is_draft) VALUES (?, ?, ?, ?, ?) RETURNING identifier" (title_, body_, tags_, userUID user, isdraft)
 upsertPost _    _                 _            _            _           _                      _       = return Nothing
 
-insertComment :: (ScottyError e) => Maybe Integer -> Integer -> Text -> Text -> Text -> ActionT e WebM (Maybe Integer)
-insertComment (Just parentId_) postId_ email_ displayName_ body_ = processResult $ webMQuery "INSERT INTO comments (parentId,postId,email,displayName,body) VALUES (?,?,?,?,?) RETURNING id" (parentId_, postId_, email_, displayName_, body_)
-insertComment Nothing          postId_ email_ displayName_ body_ = processResult $ webMQuery "INSERT INTO comments (postId,email,displayName,body) VALUES (?,?,?,?) RETURNING id" (postId_, email_, displayName_, body_)
-
 getPostsByTag :: (ScottyError e) => Text -> Maybe Integer -> ActionT e WebM [Post]
-getPostsByTag tag Nothing        = getPostsByTag tag (Just 1)
-getPostsByTag tag (Just pageNum) = webMQuery "SELECT b.*,u FROM blogposts b, users u WHERE is_draft='f'::bool AND u.id=b.author_id AND ?=any(b.tags) ORDER BY identifier DESC OFFSET ? LIMIT ?" (tag,(pageNum-1)*(fromIntegral postsPerPage),postsPerPage+1)
+getPostsByTag tag mPageNum = webMQuery sql (tag,pageNum*(fromIntegral postsPerPage),postsPerPage+1)
+  where
+    pageNum = maybe 0 (flip (-) 1) mPageNum
+    sql = "SELECT b.identifier,b.title,b.bodytext,b.timestamp,b.tags,b.is_draft,u FROM blogposts b, users u WHERE is_draft='f'::bool AND u.id=b.author_id AND ?=any(b.tags) ORDER BY identifier DESC OFFSET ? LIMIT ?"
 
 getPosts :: (ScottyError e) => Maybe Integer -> ActionT e WebM [Post]
-getPosts mPageNum = webMQuery "SELECT b.*,u FROM blogposts b, users u WHERE is_draft='f'::bool AND u.id=b.author_id ORDER BY identifier DESC OFFSET ? LIMIT ?" ((pageNum-1)*(fromIntegral postsPerPage), postsPerPage+1)
+getPosts mPageNum = webMQuery sql (pageNum*(fromIntegral postsPerPage), postsPerPage+1)
   where
-    pageNum = fromMaybe 1 mPageNum
+    pageNum = traceShowId $ maybe 0 (flip (-) 1) mPageNum
+    sql = "SELECT b.identifier,b.title,b.bodytext,b.timestamp,b.tags,b.is_draft,u FROM blogposts b, users u WHERE is_draft='f'::bool AND u.id=b.author_id ORDER BY identifier DESC OFFSET ? LIMIT ?"
 
 getDrafts :: (ScottyError e) => User -> Maybe Integer -> ActionT e WebM [Post]
-getDrafts user (Just pageNum) = webMQuery "SELECT b.*,u FROM blogposts b, users u WHERE is_draft='t'::bool AND b.author_id=? AND u.id=b.author_id ORDER BY identifier DESC OFFSET ? LIMIT ?" (userUID user, (pageNum-1)*(fromIntegral postsPerPage), postsPerPage+1)
-getDrafts user Nothing        = getDrafts user (Just 1)
+getDrafts user mPageNum = webMQuery sql (userUID user, pageNum*(fromIntegral postsPerPage), postsPerPage+1)
+  where
+    pageNum = traceShowId $ maybe 0 (flip (-) 1) mPageNum
+    sql = "SELECT b.identifier,b.title,b.bodytext,b.timestamp,b.tags,b.is_draft,u FROM blogposts b, users u WHERE is_draft='t'::bool AND b.author_id=? AND u.id=b.author_id ORDER BY identifier DESC OFFSET ? LIMIT ?"
 
 getPost :: (ScottyError e) => Integer -> ActionT e WebM (Maybe Post)
-getPost identifier_ = listToMaybe <$> webMQuery "SELECT b.*,u FROM blogposts b, users u WHERE u.id=b.author_id AND identifier=? LIMIT 1" [identifier_]
+getPost identifier_ = listToMaybe <$> webMQuery sql [identifier_]
+  where sql = "SELECT b.identifier,b.title,b.bodytext,b.timestamp,b.tags,b.is_draft,u FROM blogposts b, users u WHERE u.id=b.author_id AND identifier=? LIMIT 1"
 
 deletePost :: (ScottyError e) => Integer -> User -> ActionT e WebM (Maybe Integer)
-deletePost identifier_ (User uid_ _ _ _) = processResult $ webMQuery "DELETE FROM blogposts WHERE identifier=? AND author_id=? RETURNING identifier" (identifier_, uid_)
+deletePost identifier_ (User uid_ _ _ _) = processResult $ webMQuery sql (identifier_, uid_)
+  where sql = "DELETE FROM blogposts WHERE identifier=? AND author_id=? RETURNING identifier"
 
 getCommentsForPost :: (ScottyError e) => Integer -> ActionT e WebM [Comment]
 getCommentsForPost identifier_ = webMQuery "SELECT * FROM comments WHERE postId=?" [identifier_]
+
+insertComment :: (ScottyError e) => Maybe Integer -> Integer -> Text -> Text -> Text -> ActionT e WebM (Maybe Integer)
+insertComment (Just parentId_) postId_ email_ displayName_ body_ = processResult $ webMQuery "INSERT INTO comments (parentId,postId,email,displayName,body) VALUES (?,?,?,?,?) RETURNING id" (parentId_, postId_, email_, displayName_, body_)
+insertComment Nothing          postId_ email_ displayName_ body_ = processResult $ webMQuery "INSERT INTO comments (postId,email,displayName,body) VALUES (?,?,?,?) RETURNING id" (postId_, email_, displayName_, body_)
 
 getUserWithUsername :: (ScottyError e) => Text -> ActionT e WebM (Maybe User)
 getUserWithUsername username = listToMaybe <$> webMQuery "SELECT * FROM users WHERE username=? LIMIT 1" [username]

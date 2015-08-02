@@ -45,6 +45,9 @@ seoTags = [
 -------------------------------------------------------------------------------
 --- | DRY Rendering
 
+blogButton' :: TL.Text -> TL.Text -> Html
+blogButton' btnTitle btnHref = (a ! href (lazyTextValue btnHref) ! class_ "blogbutton" ! rel "nofollow" $ toHtml btnTitle)
+
 renderHead :: [TL.Text] -> [(TL.Text, TL.Text)] -> TL.Text -> Html
 renderHead cssFiles metaTags title_ = H.head $ do
   H.title $ toHtml title_
@@ -64,9 +67,9 @@ renderBody maybeTitle maybeSubtitle maybeUser bodyHtml = H.body ! style "text-al
   
   when (isJust maybeTitle) (h2 ! class_ "title" ! id "blog-title" $ toHtml $ fromJust maybeTitle)
   when (isJust maybeSubtitle) (h3 ! id "blog-subtitle" $ toHtml $ fromJust maybeSubtitle)
-  when (isJust maybeUser) (a ! href "/logout" ! class_ "blogbutton" ! rel "nofollow" $ "Logout")
-  when (isJust maybeUser) (a ! href "/posts/new" ! class_ "blogbutton" ! rel "nofollow" $ "New Post")
-  when (isJust maybeUser) (a ! href "/drafts" ! class_ "blogbutton" ! rel "nofollow" $ "Drafts")
+  when (isJust maybeUser) (blogButton' "Log Out" "/logout")
+  when (isJust maybeUser) (blogButton' "New Post" "/posts/new")
+  when (isJust maybeUser) (blogButton' "Drafts" "/drafts")
   div ! id "content" $ bodyHtml
 
 renderPostEditor :: Maybe Post -> Html
@@ -79,7 +82,7 @@ renderPostEditor maybeBlogPost = do
   
   div ! id "checkbox-container" $ do
     case maybeBlogPost of
-      Just (Post _ _ _ _ _ _ False _) -> input ! type_ "checkbox" ! id "public-checkbox" ! A.checked ""
+      Just (Post _ _ _ _ _ False _) -> input ! type_ "checkbox" ! id "public-checkbox" ! A.checked ""
       _                                   -> input ! type_ "checkbox" ! id "public-checkbox"
     H.label ! customAttribute "for" "public-checkbox" $ "Public"
     
