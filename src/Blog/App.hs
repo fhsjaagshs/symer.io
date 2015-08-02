@@ -17,7 +17,10 @@ import Blog.Database.Util
 import Blog.Caching
 import Blog.HTMLUtil
 import Blog.Assets
-import Blog.Types as Types
+import Blog.Composable
+import Blog.Comment
+import Blog.User
+import Blog.BlogPost as Post
 import Blog.Auth
 import Blog.MIME
 
@@ -167,11 +170,11 @@ app = do
       Nothing -> next
       Just post_ -> do
         case maybeUser of
-          Just user -> unless ((Types.author post_) == user) (redirect "/notfound")
-          Nothing -> when (Types.isDraft post_) (redirect "/notfound")
+          Just user -> unless ((Post.author post_) == user) (redirect "/notfound")
+          Nothing -> when (Post.isDraft post_) (redirect "/notfound")
 
         Scotty.html $ R.renderHtml $ docTypeHtml $ do
-          renderHead ["/assets/css/post.css"] (postTags $ Types.tags post_) $ appendedBlogTitle $ TL.fromStrict $ Types.title post_
+          renderHead ["/assets/css/post.css"] (postTags $ Post.tags post_) $ appendedBlogTitle $ TL.fromStrict $ Post.title post_
           renderBody (Just blogTitle) (Just blogSubtitle) maybeUser $ do
             render post_ maybeUser
             hr ! class_ "separator"
@@ -202,7 +205,7 @@ app = do
       Nothing -> next
       Just post_ -> do
         Scotty.html $ R.renderHtml $ docTypeHtml $ do
-          renderHead ["/assets/css/editor.css","/assets/css/wordlist.css"] [("robots","noindex, nofollow")] (appendedBlogTitle $ TL.fromStrict $ Types.title post_)
+          renderHead ["/assets/css/editor.css","/assets/css/wordlist.css"] [("robots","noindex, nofollow")] (appendedBlogTitle $ TL.fromStrict $ Post.title post_)
           renderBody Nothing Nothing Nothing $ do
             renderPostEditor $ Just post_
             

@@ -13,7 +13,7 @@ where
   
 import Blog.State
 import Blog.Cookie
-import Blog.Types
+import Blog.User
 
 import qualified Data.Text.Lazy as TL
 import qualified Data.Text.Lazy.Encoding as TL

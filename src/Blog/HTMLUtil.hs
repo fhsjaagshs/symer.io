@@ -15,7 +15,8 @@ module Blog.HTMLUtil
 )
 where
 
-import           Blog.Types as Types
+import           Blog.User
+import           Blog.BlogPost as Post
 import           Blog.Database.Config (postsPerPage)
 
 import           Control.Monad
@@ -70,11 +71,11 @@ renderBody maybeTitle maybeSubtitle maybeUser bodyHtml = H.body ! style "text-al
 
 renderPostEditor :: Maybe BlogPost -> Html
 renderPostEditor maybeBlogPost = do
-  input ! type_ "text" ! id "title-field" ! placeholder "Post title" ! value (textValue $ maybe "" Types.title maybeBlogPost)
+  input ! type_ "text" ! id "title-field" ! placeholder "Post title" ! value (textValue $ maybe "" Post.title maybeBlogPost)
 
   div ! id "preview" $ ""
-  textarea ! id "editor" ! customAttribute "post-id" (stringValue $ show $ maybe (-1) Types.identifier maybeBlogPost) $ H.text $ maybe "" Types.body maybeBlogPost
-  textarea ! id "tags" ! class_ "wordlist" $ toHtml $ L.intercalate ", " $ maybe [] Types.tags maybeBlogPost
+  textarea ! id "editor" ! customAttribute "post-id" (stringValue $ show $ maybe (-1) Post.identifier maybeBlogPost) $ H.text $ maybe "" Post.body maybeBlogPost
+  textarea ! id "tags" ! class_ "wordlist" $ toHtml $ L.intercalate ", " $ maybe [] Post.tags maybeBlogPost
   
   div ! id "checkbox-container" $ do
     case maybeBlogPost of

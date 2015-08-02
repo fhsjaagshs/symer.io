@@ -16,9 +16,11 @@ module Blog.Database.Util
 )
 where
 
-import Blog.Types as Types
 import Blog.Database.Config
 import Blog.State
+import Blog.User
+import Blog.Comment
+import Blog.BlogPost
 
 import Control.Monad
 import Control.Monad.IO.Class
