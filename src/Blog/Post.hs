@@ -1,8 +1,8 @@
 {-# LANGUAGE OverloadedStrings, FlexibleInstances #-}
 
-module Blog.BlogPost
+module Blog.Post
 (
-  BlogPost(..)
+  Post(..)
 )
 where
   
@@ -33,25 +33,25 @@ import           Text.Blaze.Html5.Attributes as A
 import           Blaze.ByteString.Builder (toLazyByteString, fromByteString)
 import           Prelude as P hiding (div)
 
-data BlogPost = BlogPost {
-  identifier :: !Integer,
-  title :: T.Text,
-  body :: T.Text,
-  timestamp :: UTCTime,
-  tags :: [String],
-  author_id :: !Integer,
-  isDraft :: !Bool,
-  author :: User
+data Post = Post {
+  postID :: !Integer,
+  postTitle :: T.Text,
+  postBody :: T.Text,
+  postTimestamp :: UTCTime,
+  postTags :: [String],
+  postAuthorID :: !Integer,
+  postIsDraft :: !Bool,
+  postAuthor :: User
 } deriving (Show)
 
-instance Eq BlogPost where
-  (==) a_ b_ = (identifier a_) == (identifier b_)
+instance Eq Post where
+  (==) a_ b_ = (postID a_) == (postID b_)
 
-instance FromRow BlogPost where
-  fromRow = BlogPost <$> field <*> field <*> field <*> field <*> field <*> field <*> field <*> field
+instance FromRow Post where
+  fromRow = Post <$> field <*> field <*> field <*> field <*> field <*> field <*> field <*> field
   
-instance ToRow BlogPost where
-  toRow (BlogPost identifier_ title_ body_ timestamp_ tags_ author_id_ isDraft_ _) =
+instance ToRow Post where
+  toRow (Post identifier_ title_ body_ timestamp_ tags_ author_id_ isDraft_ _) =
     [toField identifier_,
     toField title_,
     toField body_,
@@ -62,8 +62,8 @@ instance ToRow BlogPost where
     toField author_id_,
     toField isDraft_]
   
-instance ToJSON BlogPost where
-  toJSON (BlogPost identifier_ title_ body_ timestamp_ tags_ _ isDraft_ author_) =
+instance ToJSON Post where
+  toJSON (Post identifier_ title_ body_ timestamp_ tags_ _ isDraft_ author_) =
     Aeson.object [
       "id" .= identifier_,
       "title" .= title_,
@@ -80,16 +80,16 @@ instance ToJSON BlogPost where
       tagsToValue = Aeson.Array . Vector.fromList . map (Aeson.String . T.pack)
     
 --------------------------------------------------------------------------------
-instance Composable BlogPost where
+instance Composable Post where
   -- Unauthenticated
-  render (BlogPost id_ title_ body_ ts_ tags_ _ _ author_) Nothing = do
+  render (Post id_ title_ body_ ts_ tags_ _ _ author_) Nothing = do
     a ! href (stringValue $ "/posts/" ++ show id_) $ do
       h1 ! class_ "post-title" ! A.id (stringValue $ show id_) $ toHtml title_
     h4 ! class_ "post-subtitle" $ toHtml $ formatSubtitle ts_ $ userDisplayName author_
     mapM_ taglink tags_
     div ! class_ "post-content" $ toHtml $ markdown def body_
   -- Authenticated, draft
-  render (BlogPost id_ title_ body_ ts_ tags_ _ True author_) (Just user_) = do
+  render (Post id_ title_ body_ ts_ tags_ _ True author_) (Just user_) = do
     a ! href (stringValue $ "/posts/" ++ show id_) $ do
       h1 ! class_ "post-title post-draft" ! A.id (stringValue $ show id_) $ toHtml title_
     h4 ! class_ "post-subtitle post-draft" $ toHtml $ formatSubtitle ts_ $ userDisplayName author_
@@ -98,7 +98,7 @@ instance Composable BlogPost where
       a ! class_ "post-edit-button post-draft" ! href (stringValue $ "/posts/" ++ show id_ ++ "/edit") ! rel "nofollow" $ "edit"
     div ! class_ "post-content post-draft" $ toHtml $ markdown def body_
   -- Authenticated, published
-  render (BlogPost id_ title_ body_ ts_ tags_ _ False author_) (Just user_) = do
+  render (Post id_ title_ body_ ts_ tags_ _ False author_) (Just user_) = do
     a ! href (stringValue $ "/posts/" ++ show id_) $ do
       h1 ! class_ "post-title" ! A.id (stringValue $ show id_) $ toHtml title_
     h4 ! class_ "post-subtitle" $ toHtml $ formatSubtitle ts_ $ userDisplayName author_
@@ -117,7 +117,7 @@ formatDate = formatTime defaultTimeLocale "%-m • %-e • %-y | %l:%M %p %Z"
 formatSubtitle :: FormatTime t => t -> T.Text -> T.Text
 formatSubtitle t authorName = mconcat [T.pack $ formatDate t, " | ", authorName]
     
-instance Composable [BlogPost] where
+instance Composable [Post] where
   render [] _ = return ()
   render [x] user = render x user
   render (x:xs) user = do

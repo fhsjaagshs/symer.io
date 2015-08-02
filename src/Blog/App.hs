@@ -20,7 +20,7 @@ import Blog.Assets
 import Blog.Composable
 import Blog.Comment
 import Blog.User
-import Blog.BlogPost as Post
+import Blog.Post as Post
 import Blog.Auth
 import Blog.MIME
 
@@ -135,7 +135,7 @@ app = do
   get "/" $ do
     maybeUser <- getUser
     mPageNum <- fmap (read . TL.unpack) . lookup "page" <$> params
-    posts <- getBlogPosts mPageNum
+    posts <- getPosts mPageNum
     Scotty.html $ R.renderHtml $ docTypeHtml $ do
       renderHead [] [] blogTitle
       renderBody (Just blogTitle) (Just blogSubtitle) maybeUser $ do
@@ -165,16 +165,16 @@ app = do
   get "/posts/:id" $ do
     identifier_ <- param "id"
     maybeUser <- getUser
-    res <- getBlogPost identifier_
+    res <- getPost identifier_
     case res of
       Nothing -> next
       Just post_ -> do
         case maybeUser of
-          Just user -> unless ((Post.author post_) == user) (redirect "/notfound")
-          Nothing -> when (Post.isDraft post_) (redirect "/notfound")
+          Just user -> unless ((postAuthor post_) == user) (redirect "/notfound")
+          Nothing -> when (postIsDraft post_) (redirect "/notfound")
 
         Scotty.html $ R.renderHtml $ docTypeHtml $ do
-          renderHead ["/assets/css/post.css"] (postTags $ Post.tags post_) $ appendedBlogTitle $ TL.fromStrict $ Post.title post_
+          renderHead ["/assets/css/post.css"] (mkPostTags $ postTags post_) $ appendedBlogTitle $ TL.fromStrict $ postTitle post_
           renderBody (Just blogTitle) (Just blogSubtitle) maybeUser $ do
             render post_ maybeUser
             hr ! class_ "separator"
@@ -189,7 +189,7 @@ app = do
     tag <- param "tag"
     maybeUser <- getUser
     mPageNum <- (fmap (read . TL.unpack) . lookup "page") <$> params
-    posts <- getBlogPostsByTag tag mPageNum
+    posts <- getPostsByTag tag mPageNum
     Scotty.html $ R.renderHtml $ docTypeHtml $ do
       renderHead [] [] (appendedBlogTitle $ tag)
       renderBody (Just $ TL.append "Posts tagged '" $ TL.append tag "'") Nothing maybeUser $ do
@@ -200,12 +200,12 @@ app = do
   get "/posts/:id/edit" $ do
     authenticate
     identifier_ <- param "id"
-    res <- getBlogPost identifier_
+    res <- getPost identifier_
     case res of
       Nothing -> next
       Just post_ -> do
         Scotty.html $ R.renderHtml $ docTypeHtml $ do
-          renderHead ["/assets/css/editor.css","/assets/css/wordlist.css"] [("robots","noindex, nofollow")] (appendedBlogTitle $ TL.fromStrict $ Post.title post_)
+          renderHead ["/assets/css/editor.css","/assets/css/wordlist.css"] [("robots","noindex, nofollow")] (appendedBlogTitle $ TL.fromStrict $ postTitle post_)
           renderBody Nothing Nothing Nothing $ do
             renderPostEditor $ Just post_
             
@@ -251,7 +251,7 @@ app = do
   Scotty.delete "/posts/:id" $ do
     authUser <- authenticate
     identifier_ <- param "id"
-    res <- deleteBlogPost identifier_ (fromJust authUser)
+    res <- deletePost identifier_ (fromJust authUser)
     case (res :: Maybe Integer) of
       Nothing -> status $ Status 404 "blog post not found."
       Just _ -> Scotty.text "ok"
@@ -263,13 +263,13 @@ app = do
       Nothing -> status $ Status 401 "Missing authentication"
       (Just authUser) -> do
         ps <- params
-        maybeBPIdentifier <- upsertBlogPost authUser
-                                             (read . TL.unpack <$> lookup "id" ps)
-                                             (lookup "title" ps)
-                                             (lookup "body" ps)
-                                             (splitList ',' . TL.unpack <$> lookup "tags" ps)
-                                             (splitList ',' . TL.unpack <$> lookup "deleted_tags" ps)
-                                             (elem (fromMaybe "True" . lookup "draft" $ ps) ["t", "true", "True", "y", "yes"])
+        maybeBPIdentifier <- upsertPost authUser
+                                        (read . TL.unpack <$> lookup "id" ps)
+                                        (lookup "title" ps)
+                                        (lookup "body" ps)
+                                        (splitList ',' . TL.unpack <$> lookup "tags" ps)
+                                        (splitList ',' . TL.unpack <$> lookup "deleted_tags" ps)
+                                        (elem (fromMaybe "True" . lookup "draft" $ ps) ["t", "true", "True", "y", "yes"])
         case maybeBPIdentifier of
           Nothing -> status $ Status 400 "Missing required parameters"
           Just identifier_ -> addHeader "Location" $ TL.pack $ "/posts/" ++ (show identifier_)

@@ -11,12 +11,12 @@ module Blog.HTMLUtil
   renderPostEditor,
   renderPageControls,
   appendedBlogTitle,
-  postTags
+  mkPostTags
 )
 where
 
 import           Blog.User
-import           Blog.BlogPost as Post
+import           Blog.Post as Post
 import           Blog.Database.Config (postsPerPage)
 
 import           Control.Monad
@@ -69,17 +69,17 @@ renderBody maybeTitle maybeSubtitle maybeUser bodyHtml = H.body ! style "text-al
   when (isJust maybeUser) (a ! href "/drafts" ! class_ "blogbutton" ! rel "nofollow" $ "Drafts")
   div ! id "content" $ bodyHtml
 
-renderPostEditor :: Maybe BlogPost -> Html
+renderPostEditor :: Maybe Post -> Html
 renderPostEditor maybeBlogPost = do
-  input ! type_ "text" ! id "title-field" ! placeholder "Post title" ! value (textValue $ maybe "" Post.title maybeBlogPost)
+  input ! type_ "text" ! id "title-field" ! placeholder "Post title" ! value (textValue $ maybe "" postTitle maybeBlogPost)
 
   div ! id "preview" $ ""
-  textarea ! id "editor" ! customAttribute "post-id" (stringValue $ show $ maybe (-1) Post.identifier maybeBlogPost) $ H.text $ maybe "" Post.body maybeBlogPost
-  textarea ! id "tags" ! class_ "wordlist" $ toHtml $ L.intercalate ", " $ maybe [] Post.tags maybeBlogPost
+  textarea ! id "editor" ! customAttribute "post-id" (stringValue $ show $ maybe (-1) postID maybeBlogPost) $ H.text $ maybe "" postBody maybeBlogPost
+  textarea ! id "tags" ! class_ "wordlist" $ toHtml $ L.intercalate ", " $ maybe [] postTags maybeBlogPost
   
   div ! id "checkbox-container" $ do
     case maybeBlogPost of
-      Just (BlogPost _ _ _ _ _ _ False _) -> input ! type_ "checkbox" ! id "public-checkbox" ! A.checked ""
+      Just (Post _ _ _ _ _ _ False _) -> input ! type_ "checkbox" ! id "public-checkbox" ! A.checked ""
       _                                   -> input ! type_ "checkbox" ! id "public-checkbox"
     H.label ! customAttribute "for" "public-checkbox" $ "Public"
     
@@ -106,5 +106,5 @@ renderPageControls (Just pageNum) hasNext = do
 appendedBlogTitle :: TL.Text -> TL.Text
 appendedBlogTitle s = TL.append s (TL.append " | " blogTitle)
     
-postTags :: [String] -> [(TL.Text, TL.Text)]
-postTags ts = [("keywords", TL.append (TL.pack $ (L.intercalate ", " ts) ++ ", ") (fromJust $ lookup "keywords" seoTags))]
+mkPostTags :: [String] -> [(TL.Text, TL.Text)]
+mkPostTags ts = [("keywords", TL.append (TL.pack $ (L.intercalate ", " ts) ++ ", ") (fromJust $ lookup "keywords" seoTags))]
