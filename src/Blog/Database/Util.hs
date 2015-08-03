@@ -38,8 +38,6 @@ import Database.PostgreSQL.Simple.Types as PG.Types
 import           Blaze.ByteString.Builder (toByteString)
 import qualified Blaze.ByteString.Builder.Char.Utf8 as Utf8
 
-import Debug.Trace
-
 {-
 Database TODO:
 
@@ -87,19 +85,19 @@ upsertPost _    _                 _            _            _           _       
 getPostsByTag :: (ScottyError e) => Text -> Maybe Integer -> ActionT e WebM [Post]
 getPostsByTag tag mPageNum = webMQuery sql (tag,pageNum*(fromIntegral postsPerPage),postsPerPage+1)
   where
-    pageNum = maybe 0 (flip (-) 1) mPageNum
+    pageNum = fromMaybe 0 mPageNum
     sql = "SELECT b.identifier,b.title,b.bodytext,b.timestamp,b.tags,b.is_draft,u FROM blogposts b, users u WHERE is_draft='f'::bool AND u.id=b.author_id AND ?=any(b.tags) ORDER BY identifier DESC OFFSET ? LIMIT ?"
 
 getPosts :: (ScottyError e) => Maybe Integer -> ActionT e WebM [Post]
 getPosts mPageNum = webMQuery sql (pageNum*(fromIntegral postsPerPage), postsPerPage+1)
   where
-    pageNum = traceShowId $ maybe 0 (flip (-) 1) mPageNum
+    pageNum = fromMaybe 0 mPageNum
     sql = "SELECT b.identifier,b.title,b.bodytext,b.timestamp,b.tags,b.is_draft,u FROM blogposts b, users u WHERE is_draft='f'::bool AND u.id=b.author_id ORDER BY identifier DESC OFFSET ? LIMIT ?"
 
 getDrafts :: (ScottyError e) => User -> Maybe Integer -> ActionT e WebM [Post]
 getDrafts user mPageNum = webMQuery sql (userUID user, pageNum*(fromIntegral postsPerPage), postsPerPage+1)
   where
-    pageNum = traceShowId $ maybe 0 (flip (-) 1) mPageNum
+    pageNum = fromMaybe 0 mPageNum
     sql = "SELECT b.identifier,b.title,b.bodytext,b.timestamp,b.tags,b.is_draft,u FROM blogposts b, users u WHERE is_draft='t'::bool AND b.author_id=? AND u.id=b.author_id ORDER BY identifier DESC OFFSET ? LIMIT ?"
 
 getPost :: (ScottyError e) => Integer -> ActionT e WebM (Maybe Post)

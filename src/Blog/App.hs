@@ -129,6 +129,12 @@ startRedirect = do
     warpSettings = setBeforeMainLoop (resignPrivileges "daemon") $ setPort 80 defaultSettings
     mkHeaders r = [("Location", mconcat ["https://", fromJust $ requestHeaderHost r, rawPathInfo r, rawQueryString r])]
 
+keywords :: [TL.Text]
+keywords = ["computer science", "functional programming", "fp", "politics", "haskell", "ruby", "web development", "art", "blogs", "computers", "startups", "tutorial", "rails"]
+
+description :: TL.Text
+description = "Rants and raves about functional programming, politics, and everything in between."
+
 app :: ScottyT TL.Text WebM ()
 app = do
   -- blog root
@@ -136,19 +142,20 @@ app = do
     maybeUser <- getUser
     mPageNum <- fmap (read . TL.unpack) . lookup "page" <$> params
     posts <- getPosts mPageNum
-    Scotty.html $ R.renderHtml $ docTypeHtml $ do
-      renderHead [] [] blogTitle
+    Scotty.html . R.renderHtml . docTypeHtml $ do
+      renderHead blogTitle $ do
+        renderMeta "description" description
+        renderMeta "keywords" (TL.intercalate ", " keywords)
       renderBody (Just blogTitle) (Just blogSubtitle) maybeUser $ do
         render (take postsPerPage posts) maybeUser
         renderPageControls mPageNum (length posts > postsPerPage)
         
   get "/drafts" $ do
     maybeUser <- authenticate
-    maybePNum <- lookup "page" <$> params
-    let mPageNum = read . TL.unpack <$> maybePNum
+    mPageNum <- fmap (read . TL.unpack) . lookup "page" <$> params
     posts <- getDrafts (fromJust maybeUser) mPageNum
-    Scotty.html $ R.renderHtml $ docTypeHtml $ do
-      renderHead [] [("robots","noindex, nofollow")] (appendedBlogTitle "Drafts")
+    Scotty.html . R.renderHtml . docTypeHtml $ do
+      renderHiddenHead' $ appendedBlogTitle "Drafts"
       renderBody (Just "Drafts") Nothing maybeUser $ do
         render (take postsPerPage posts) maybeUser
         renderPageControls mPageNum (length posts > postsPerPage)
@@ -156,25 +163,29 @@ app = do
   -- create a post
   get "/posts/new" $ do
     authenticate
-    Scotty.html $ R.renderHtml $ docTypeHtml $ do
-      renderHead ["/assets/css/editor.css","/assets/css/wordlist.css"] [("robots","noindex, nofollow")] $ appendedBlogTitle "New Post"
+    Scotty.html . R.renderHtml . docTypeHtml $ do
+      renderHiddenHead (appendedBlogTitle "New Post") $ do
+        renderStylesheet "/assets/css/editor.css"
+        renderStylesheet "/assets/css/wordlist.css"
       renderBody Nothing Nothing Nothing $ do
         renderPostEditor Nothing
   
   -- view a specific post
   get "/posts/:id" $ do
-    identifier_ <- param "id"
-    maybeUser <- getUser
-    res <- getPost identifier_
-    case res of
-      Nothing -> next
+    mpost <- param "id" >>= getPost
+    case mpost of
+      Nothing -> redirect "/notfound"
       Just post_ -> do
-        case maybeUser of
-          Just user -> unless ((postAuthor post_) == user) (redirect "/notfound")
-          Nothing -> when (postIsDraft post_) (redirect "/notfound")
+        maybeUser <- getUser
+        
+        when (postIsDraft post_) $ do
+          when (maybe True ((/=) (postAuthor post_)) maybeUser) (redirect "/notfound")
 
-        Scotty.html $ R.renderHtml $ docTypeHtml $ do
-          renderHead ["/assets/css/post.css"] (mkPostTags $ postTags post_) $ appendedBlogTitle $ TL.fromStrict $ postTitle post_
+        Scotty.html . R.renderHtml . docTypeHtml $ do
+          renderHead (appendedBlogTitle $ TL.fromStrict $ postTitle post_) $ do
+            renderStylesheet "/assets/css/post.css"
+            renderMeta "keywords" (TL.pack . L.intercalate ", " . postTags $ post_)
+            renderMeta "description" (TL.take 150 . TL.fromStrict $ postBody post_)
           renderBody (Just blogTitle) (Just blogSubtitle) maybeUser $ do
             render post_ maybeUser
             hr ! class_ "separator"
@@ -190,8 +201,10 @@ app = do
     maybeUser <- getUser
     mPageNum <- (fmap (read . TL.unpack) . lookup "page") <$> params
     posts <- getPostsByTag tag mPageNum
-    Scotty.html $ R.renderHtml $ docTypeHtml $ do
-      renderHead [] [] (appendedBlogTitle $ tag)
+    Scotty.html . R.renderHtml . docTypeHtml $ do
+      renderHead (appendedBlogTitle $ tag) $ do
+        renderMeta "description" description
+        renderMeta "keywords" (TL.intercalate ", " keywords)
       renderBody (Just $ TL.append "Posts tagged '" $ TL.append tag "'") Nothing maybeUser $ do
         render (take postsPerPage posts) maybeUser
         renderPageControls mPageNum (length posts > postsPerPage)
@@ -203,18 +216,19 @@ app = do
     res <- getPost identifier_
     case res of
       Nothing -> next
-      Just post_ -> do
-        Scotty.html $ R.renderHtml $ docTypeHtml $ do
-          renderHead ["/assets/css/editor.css","/assets/css/wordlist.css"] [("robots","noindex, nofollow")] (appendedBlogTitle $ TL.fromStrict $ postTitle post_)
-          renderBody Nothing Nothing Nothing $ do
-            renderPostEditor $ Just post_
+      Just post_ -> Scotty.html . R.renderHtml . docTypeHtml $ do
+        renderHiddenHead (appendedBlogTitle $ TL.fromStrict $ postTitle post_) $ do
+          renderStylesheet "/assets/css/editor.css"
+          renderStylesheet "/assets/css/wordlist.css"
+        renderBody Nothing Nothing Nothing $ do
+          renderPostEditor $ Just post_
             
   get "/login" $ do
     maybeUser <- getUser
     when (isJust maybeUser) (redirect "/")
     maybeErrorMessage <- lookup "error_message" <$> params
-    Scotty.html $ R.renderHtml $ docTypeHtml $ do
-      renderHead [] [("robots","noindex, nofollow")] $ appendedBlogTitle "Login"
+    Scotty.html . R.renderHtml . docTypeHtml $ do
+      renderHiddenHead' (appendedBlogTitle "Login")
       renderBody (Just "Login") maybeErrorMessage Nothing $ do
         H.form ! A.id "loginform" ! action "/login" ! method "POST" $ do
           input ! type_ "hidden" ! A.name "source" ! value "form"
