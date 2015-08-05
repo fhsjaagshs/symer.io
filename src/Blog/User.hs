@@ -12,14 +12,12 @@ import Data.Maybe
 import           Data.Attoparsec.ByteString.Char8 as A
 
 import           Data.Text (Text)
--- import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
   
 import           Data.ByteString.Char8 (ByteString)
 import           Blaze.ByteString.Builder (fromByteString)
   
 import           Data.Aeson as Aeson
-import           Data.Aeson.Types()
 import           Database.PostgreSQL.Simple.FromField as PG.FromField
 import           Database.PostgreSQL.Simple.ToField as PG.ToField
 import           Database.PostgreSQL.Simple.FromRow as PG.FromRow

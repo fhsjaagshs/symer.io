@@ -23,11 +23,9 @@ import           Database.PostgreSQL.Simple.FromField as PG.FromField
 import           Database.PostgreSQL.Simple.ToField as PG.ToField
 import           Blaze.ByteString.Builder (fromByteString)
 import           Database.PostgreSQL.Simple.Internal
-
-import Debug.Trace
   
 instance FromField [Text] where
-  fromField f@(Field _ _ (Oid 1009)) (Just fdata) = case parse1DArray $ T.decodeUtf8 $ traceShowId fdata of
+  fromField f@(Field _ _ (Oid 1009)) (Just fdata) = case parse1DArray $ T.decodeUtf8 fdata of
     Right ary -> return ary
     Left err -> returnError Incompatible f $ "Failed to parse list: " ++ err
   fromField (Field _ _ (Oid 1009)) Nothing = return []

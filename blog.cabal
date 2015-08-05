@@ -15,7 +15,6 @@ executable blog
   hs-source-dirs:    src
   ghc-options:       -threaded -Wall -fwarn-tabs -O2
   build-depends:     base,
-                     tostring,
                      http-types,
                      warp,
                      warp-tls,
@@ -35,21 +34,16 @@ executable blog
                      vector,
                      aeson,
                      random,
-                     time-lens,
                      hjsmin,
                      css-text,
                      bcrypt,
                      pureMD5,
                      attoparsec,
                      data-default,
-                     unordered-containers,
-                     scotty-tls,
-                     hdaemonize,
                      optparse-applicative,
                      terminal-size,
                      unix,
                      stm,
                      directory,
                      mtl,
-                     cereal,
-                     hsyslog
+                     cereal
