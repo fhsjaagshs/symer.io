@@ -23,13 +23,15 @@ import           Database.PostgreSQL.Simple.FromField as PG.FromField
 import           Database.PostgreSQL.Simple.ToField as PG.ToField
 import           Blaze.ByteString.Builder (fromByteString)
 import           Database.PostgreSQL.Simple.Internal
+
+import Debug.Trace
   
 instance FromField [Text] where
-  fromField f@(Field _ _ (Oid 1009)) (Just fdata) = case parse1DArray $ T.decodeUtf8 fdata of
-    Just ary -> return ary
-    Nothing -> returnError Incompatible f "Field is not a valid string list."
+  fromField f@(Field _ _ (Oid 1009)) (Just fdata) = case parse1DArray $ T.decodeUtf8 $ traceShowId fdata of
+    Right ary -> return ary
+    Left err -> returnError Incompatible f $ "Failed to parse list: " ++ err
   fromField (Field _ _ (Oid 1009)) Nothing = return []
-  fromField f _ = returnError Incompatible f "Field is not a valid string list."
+  fromField f _ = returnError Incompatible f "Field is not a valid text list."
   
 instance ToField [Text] where
   toField v  = Many [plain "ARRAY[", csList v, plain "]"]
@@ -37,8 +39,8 @@ instance ToField [Text] where
       plain = Plain . fromByteString
       csList = Many . intersperse (plain ",") . map (Escape . T.encodeUtf8)
 
-parse1DArray :: Text -> Maybe [Text]
-parse1DArray = fmap reverse . maybeResult . A.parse arrayParser
+parse1DArray :: Text -> Either String [Text]
+parse1DArray = fmap reverse . eitherResult . A.parse arrayParser
 
 arrayParser :: Parser [Text]
 arrayParser = do
@@ -50,12 +52,12 @@ arrayParser = do
 arrayParser' :: [Text] -> Parser [Text]
 arrayParser' accum = do
   skipWhile skipable
-  v <- takeTill skipable
-  skipWhile skipable
   nextChar <- peekChar
   case nextChar of
-    Just '}' -> return (v:accum)
-    Nothing -> return (v:accum)
-    _ -> arrayParser' (v:accum)
+    Just '}' -> return accum
+    Nothing -> return accum
+    _ -> do
+      v <- takeTill skipable
+      arrayParser' (v:accum)
   where
     skipable v = (v == ',') || (v == '\"')
