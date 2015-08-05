@@ -5,20 +5,21 @@ module Blog.User
   User(..)
 )
 where
-  
+
 import Control.Monad
 import Data.Maybe
 
 import           Data.Attoparsec.ByteString.Char8 as A
 
-import           Blaze.ByteString.Builder (fromByteString)
-  
-import qualified Data.Text as T
+import           Data.Text (Text)
+-- import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
   
-import qualified Data.ByteString.Char8 as B
+import           Data.ByteString.Char8 (ByteString)
+import           Blaze.ByteString.Builder (fromByteString)
   
 import           Data.Aeson as Aeson
+import           Data.Aeson.Types()
 import           Database.PostgreSQL.Simple.FromField as PG.FromField
 import           Database.PostgreSQL.Simple.ToField as PG.ToField
 import           Database.PostgreSQL.Simple.FromRow as PG.FromRow
@@ -26,9 +27,9 @@ import           Database.PostgreSQL.Simple.ToRow as PG.ToRow
 
 data User = User {
   userUID :: !Integer,
-  userUsername :: T.Text,
-  userDisplayName :: T.Text,
-  userPasswordHash :: Maybe T.Text
+  userUsername :: Text,
+  userDisplayName :: Text,
+  userPasswordHash :: Maybe Text
 } deriving (Show)
 
 instance ToJSON User where
@@ -39,10 +40,10 @@ instance ToJSON User where
 
 instance FromJSON User where
   parseJSON (Object o) = User
-    <$> o .:  "uid"
-    <*> o .:  "username"
-    <*> o .:  "display_name"
-    <*> o .:? "password_hash"
+    <$> o .: "uid"
+    <*> o .: "username"
+    <*> o .: "display_name"
+    <*> (o .:? "password_hash")
   parseJSON _ = mzero
 
 instance Eq User where
@@ -66,13 +67,14 @@ instance FromField User where
 --------------------------------------------------------------------------------
 instance ToField User where
   toField (User uid uname dname phash) =
-    Many [Plain $ fromByteString "ROW(",
+    Many [plain "ROW(",
           toField uid, comma, toField uname, comma, toField dname, comma,
           fromMaybe nullv (toField <$> phash),
-          Plain $ fromByteString ")"]
+          plain ")"]
     where
-      comma = Plain $ fromByteString ","
-      nullv = (Plain $ fromByteString "NULL")
+      plain = Plain . fromByteString
+      comma = plain ","
+      nullv = plain "NULL"
   
 instance FromRow User where
   fromRow = User <$> field <*> field <*> field <*> field
@@ -84,12 +86,13 @@ instance ToRow User where
     toField displayName,
     toField passwordHash]
     
-parseUserRow :: B.ByteString -> Maybe User
-parseUserRow = maybeResult . parse userRowParser
+parseUserRow :: ByteString -> Maybe User
+parseUserRow = maybeResult . A.parse userRowParser
 
+-- TODO: Allow for end paren aka ')' to be part of a field
 userRowParser :: Parser User
 userRowParser = User
-  <$> (skipUntakeable >> decimal)
+  <$> (char '(' >> decimal)
   <*> (skipUntakeable >> T.decodeUtf8 <$> takeTakeable)
   <*> (skipUntakeable >> T.decodeUtf8 <$> takeTakeable)
   <*> (skipUntakeable >> option Nothing (Just . T.decodeUtf8 <$> takeTakeable))
@@ -97,7 +100,6 @@ userRowParser = User
     takeable ',' = False
     takeable '"' = False
     takeable ')' = False
-    takeable '(' = False
     takeable _   = True
     skipUntakeable = skipWhile (not . takeable)
     takeTakeable = A.takeWhile takeable

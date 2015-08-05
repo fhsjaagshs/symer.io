@@ -14,7 +14,7 @@ import Control.Monad
 import           Cheapskate
 import           Data.Aeson as Aeson
 
-import qualified Data.ByteString.Lazy.Char8 as BL
+import           Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
 import qualified Data.Vector as Vector
@@ -30,15 +30,15 @@ import           Database.PostgreSQL.Simple.Time as PG.Time
 
 import           Text.Blaze.Html5 as H hiding (style,param,map,option,body,title)
 import           Text.Blaze.Html5.Attributes as A hiding (title)
-import           Blaze.ByteString.Builder (toLazyByteString,fromByteString)
+import           Blaze.ByteString.Builder (toByteString,fromByteString)
 import           Prelude as P hiding (div)
 
 data Post = Post {
   postID :: !Integer,
-  postTitle :: T.Text,
-  postBody :: T.Text,
+  postTitle :: Text,
+  postBody :: Text,
   postTimestamp :: UTCTime,
-  postTags :: [String],
+  postTags :: [Text],
   postIsDraft :: !Bool,
   postAuthor :: User
 } deriving (Show)
@@ -74,9 +74,9 @@ instance ToJSON Post where
     ]
     where
       timestampToValue :: UTCTime -> Value
-      timestampToValue = Aeson.String . T.decodeUtf8 . BL.toStrict . toLazyByteString . utcTimeToBuilder -- TODO: remove round trip through lazy-land
-      tagsToValue :: [String] -> Value
-      tagsToValue = Aeson.Array . Vector.fromList . map (Aeson.String . T.pack)
+      timestampToValue = Aeson.String . T.decodeUtf8 . toByteString . utcTimeToBuilder
+      tagsToValue :: [Text] -> Value
+      tagsToValue = Aeson.Array . Vector.fromList . map Aeson.String
     
 --------------------------------------------------------------------------------
 instance Composable Post where
@@ -106,15 +106,15 @@ instance Composable Post where
       a ! class_ "post-edit-button" ! href (stringValue $ "/posts/" ++ show pid ++ "/edit") ! rel "nofollow" $ "edit"
     div ! class_ "post-content" $ toHtml $ markdown def body
     
-taglink :: String -> Html
-taglink t = a ! class_ "taglink" ! href (stringValue $ "/posts/by/tag/" ++ t) $ do
-  h4 ! class_ "post-subtitle" $ toHtml $ t
+taglink :: Text -> Html
+taglink t = a ! class_ "taglink" ! href (textValue $ mconcat ["/posts/by/tag/", t]) $ do
+  h4 ! class_ "post-subtitle" $ toHtml t
 
-formatDate :: FormatTime t => t -> String
-formatDate = formatTime defaultTimeLocale "%-m • %-e • %-y | %l:%M %p %Z" 
+formatDate :: FormatTime t => t -> Text
+formatDate = T.pack . formatTime defaultTimeLocale "%-m • %-e • %-y | %l:%M %p %Z" 
 
-formatSubtitle :: FormatTime t => t -> T.Text -> T.Text
-formatSubtitle t authorName = mconcat [T.pack $ formatDate t, " | ", authorName]
+formatSubtitle :: FormatTime t => t -> Text -> Text
+formatSubtitle t authorName = mconcat [formatDate t, " | ", authorName]
 
 instance Composable [Post] where
   render [] _ = return ()

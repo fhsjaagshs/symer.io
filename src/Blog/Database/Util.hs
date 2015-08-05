@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE OverloadedStrings, FlexibleInstances #-}
 {-# OPTIONS_GHC -fno-warn-unused-do-bind #-}
 
 module Blog.Database.Util
@@ -27,9 +27,11 @@ import Control.Monad.IO.Class
 
 import Data.Maybe
 
-import Web.Scotty.Trans
+import Web.Scotty.Trans (ActionT, ScottyError)
 
-import Data.Text.Lazy (Text)
+import Data.Text (Text)
+
+import Blog.Database.PGExtensions()
 
 import Database.PostgreSQL.Simple as PG
 import Database.PostgreSQL.Simple.Migration as PG.Migration
@@ -63,24 +65,24 @@ runMigrations pg = do
       runMigration $ MigrationContext (MigrationFile f p) True pg
 
 -- TODO: only update if user is correct
-upsertPost :: (ScottyError e) => User -> Maybe Integer -> Maybe Text -> Maybe Text -> Maybe [String] -> Maybe [String] -> Bool -> ActionT e WebM (Maybe Integer)
-upsertPost _    (Just identifier_) Nothing       Nothing      Nothing      Nothing             isdraft = processResult $ webMQuery "UPDATE blogposts SET is_draft=? WHERE identifier=? RETURNING identifier" (isdraft, identifier_)
-upsertPost _    (Just identifier_) (Just title_) Nothing      Nothing      Nothing             isdraft = processResult $ webMQuery "UPDATE blogposts SET title=?, is_draft=? WHERE identifier=? RETURNING identifier" (title_, isdraft, identifier_)
-upsertPost _    (Just identifier_) (Just title_) (Just body_) Nothing      Nothing             isdraft = processResult $ webMQuery "UPDATE blogposts SET title=?, bodyText=?, is_draft=? WHERE identifier=? RETURNING identifier" (title_, body_, isdraft, identifier_)
-upsertPost _    (Just identifier_) (Just title_) (Just body_) (Just tags_) Nothing             isdraft = processResult $ webMQuery "UPDATE blogposts SET title=?, bodyText=?, tags=uniq_cat(tags,?), is_draft=? WHERE identifier=? RETURNING identifier" (title_, body_, tags_, isdraft, identifier_)
-upsertPost _    (Just identifier_) (Just title_) (Just body_) (Just tags_) (Just deletedTags_) isdraft = processResult $ webMQuery "UPDATE blogposts SET title=?, bodyText=?, tags=array_diff(uniq_cat(tags,?),?), is_draft=? WHERE identifier=? RETURNING identifier" (title_, body_, tags_, deletedTags_, isdraft, identifier_)
-upsertPost _    (Just identifier_) Nothing       (Just body_) Nothing      Nothing             isdraft = processResult $ webMQuery "UPDATE blogposts SET bodyText=?, is_draft=? WHERE identifier=? RETURNING identifier" (body_, isdraft, identifier_)
-upsertPost _    (Just identifier_) Nothing       Nothing      (Just tags_) Nothing             isdraft = processResult $ webMQuery "UPDATE blogposts SET tags=uniq_cat(tags,?), is_draft=? WHERE identifier=? RETURNING identifier" (tags_, isdraft, identifier_)
-upsertPost _    (Just identifier_) Nothing       (Just body_) (Just tags_) Nothing             isdraft = processResult $ webMQuery "UPDATE blogposts SET bodyText=?, tags=uniq_cat(tags,?), is_draft=? WHERE identifier=? RETURNING identifier" (body_, tags_, isdraft, identifier_)
-upsertPost _    (Just identifier_) (Just title_) Nothing      (Just tags_) Nothing             isdraft = processResult $ webMQuery "UPDATE blogposts SET title=?, tags=uniq_cat(tags,?), is_draft=? WHERE identifier=? RETURNING identifier" (title_, tags_, isdraft, identifier_)
-upsertPost _    (Just identifier_) Nothing       Nothing      Nothing      (Just deletedTags_) isdraft = processResult $ webMQuery "UPDATE blogposts SET tags=array_diff(tags,?), is_draft=? WHERE identifier=? RETURNING identifier" (deletedTags_, isdraft, identifier_)
-upsertPost _    (Just identifier_) Nothing       Nothing      (Just tags_) (Just deletedTags_) isdraft = processResult $ webMQuery "UPDATE blogposts SET tags=uniq_cat(array_diff(tags,?),?), is_draft=? WHERE identifier=? RETURNING identifier" (deletedTags_, tags_, isdraft, identifier_)
-upsertPost _    (Just identifier_) Nothing       (Just body_) Nothing      (Just deletedTags_) isdraft = processResult $ webMQuery "UPDATE blogposts SET bodyText=?, tags=array_diff(tags,?), is_draft=? WHERE identifier=? RETURNING identifier" (body_, deletedTags_, isdraft, identifier_)
-upsertPost _    (Just identifier_) (Just title_) Nothing      Nothing      (Just deletedTags_) isdraft = processResult $ webMQuery "UPDATE blogposts SET title=?, tags=array_diff(tags,?), is_draft=? WHERE identifier=? RETURNING identifier" (title_, deletedTags_, isdraft, identifier_)
-upsertPost _    (Just identifier_) (Just title_) (Just body_) Nothing      (Just deletedTags_) isdraft = processResult $ webMQuery "UPDATE blogposts SET title=?, bodyText=?, tags=array_diff(tags,?), is_draft=? WHERE identifier=? RETURNING identifier" (title_, body_, deletedTags_, isdraft, identifier_)
-upsertPost user Nothing            (Just title_) (Just body_) Nothing      _                   isdraft = processResult $ webMQuery "INSERT INTO blogposts (title, bodyText, author_id, is_draft) VALUES (?, ?, ?, ?) RETURNING identifier" (title_, body_, userUID user, isdraft)
-upsertPost user Nothing            (Just title_) (Just body_) (Just tags_) _                   isdraft = processResult $ webMQuery "INSERT INTO blogposts (title, bodyText, tags, author_id, is_draft) VALUES (?, ?, ?, ?, ?) RETURNING identifier" (title_, body_, tags_, userUID user, isdraft)
-upsertPost _    _                 _            _            _           _                      _       = return Nothing
+upsertPost :: (ScottyError e) => User -> Maybe Integer -> Maybe Text -> Maybe Text -> Maybe [Text] -> Maybe [Text] -> Bool -> ActionT e WebM (Maybe Integer)
+upsertPost _    (Just pid) Nothing      Nothing     Nothing     Nothing             draft = processResult $ webMQuery "UPDATE blogposts SET is_draft=? WHERE identifier=? RETURNING identifier" (draft, pid)
+upsertPost _    (Just pid) (Just title) Nothing     Nothing     Nothing             draft = processResult $ webMQuery "UPDATE blogposts SET title=?, is_draft=? WHERE identifier=? RETURNING identifier" (title, draft, pid)
+upsertPost _    (Just pid) (Just title) (Just body) Nothing     Nothing             draft = processResult $ webMQuery "UPDATE blogposts SET title=?, bodyText=?, is_draft=? WHERE identifier=? RETURNING identifier" (title, body, draft, pid)
+upsertPost _    (Just pid) (Just title) (Just body) (Just tags) Nothing             draft = processResult $ webMQuery "UPDATE blogposts SET title=?, bodyText=?, tags=uniq_cat(tags,?), is_draft=? WHERE identifier=? RETURNING identifier" (title, body, tags, draft, pid)
+upsertPost _    (Just pid) (Just title) (Just body) (Just tags) (Just deletedTags_) draft = processResult $ webMQuery "UPDATE blogposts SET title=?, bodyText=?, tags=array_diff(uniq_cat(tags,?),?), is_draft=? WHERE identifier=? RETURNING identifier" (title, body, tags, deletedTags_, draft, pid)
+upsertPost _    (Just pid) Nothing      (Just body) Nothing     Nothing             draft = processResult $ webMQuery "UPDATE blogposts SET bodyText=?, is_draft=? WHERE identifier=? RETURNING identifier" (body, draft, pid)
+upsertPost _    (Just pid) Nothing      Nothing     (Just tags) Nothing             draft = processResult $ webMQuery "UPDATE blogposts SET tags=uniq_cat(tags,?), is_draft=? WHERE identifier=? RETURNING identifier" (tags, draft, pid)
+upsertPost _    (Just pid) Nothing      (Just body) (Just tags) Nothing             draft = processResult $ webMQuery "UPDATE blogposts SET bodyText=?, tags=uniq_cat(tags,?), is_draft=? WHERE identifier=? RETURNING identifier" (body, tags, draft, pid)
+upsertPost _    (Just pid) (Just title) Nothing     (Just tags) Nothing             draft = processResult $ webMQuery "UPDATE blogposts SET title=?, tags=uniq_cat(tags,?), is_draft=? WHERE identifier=? RETURNING identifier" (title, tags, draft, pid)
+upsertPost _    (Just pid) Nothing      Nothing     Nothing     (Just deletedTags_) draft = processResult $ webMQuery "UPDATE blogposts SET tags=array_diff(tags,?), is_draft=? WHERE identifier=? RETURNING identifier" (deletedTags_, draft, pid)
+upsertPost _    (Just pid) Nothing      Nothing     (Just tags) (Just deletedTags_) draft = processResult $ webMQuery "UPDATE blogposts SET tags=uniq_cat(array_diff(tags,?),?), is_draft=? WHERE identifier=? RETURNING identifier" (deletedTags_, tags, draft, pid)
+upsertPost _    (Just pid) Nothing      (Just body) Nothing     (Just deletedTags_) draft = processResult $ webMQuery "UPDATE blogposts SET bodyText=?, tags=array_diff(tags,?), is_draft=? WHERE identifier=? RETURNING identifier" (body, deletedTags_, draft, pid)
+upsertPost _    (Just pid) (Just title) Nothing     Nothing     (Just deletedTags_) draft = processResult $ webMQuery "UPDATE blogposts SET title=?, tags=array_diff(tags,?), is_draft=? WHERE identifier=? RETURNING identifier" (title, deletedTags_, draft, pid)
+upsertPost _    (Just pid) (Just title) (Just body) Nothing     (Just deletedTags_) draft = processResult $ webMQuery "UPDATE blogposts SET title=?, bodyText=?, tags=array_diff(tags,?), is_draft=? WHERE identifier=? RETURNING identifier" (title, body, deletedTags_, draft, pid)
+upsertPost user Nothing    (Just title) (Just body) Nothing     _                   draft = processResult $ webMQuery "INSERT INTO blogposts (title, bodyText, author_id, is_draft) VALUES (?, ?, ?, ?) RETURNING identifier" (title, body, userUID user, draft)
+upsertPost user Nothing    (Just title) (Just body) (Just tags) _                   draft = processResult $ webMQuery "INSERT INTO blogposts (title, bodyText, tags, author_id, is_draft) VALUES (?, ?, ?, ?, ?) RETURNING identifier" (title, body, tags, userUID user, draft)
+upsertPost _    _          _            _           _           _                   _     = return Nothing
 
 getPostsByTag :: (ScottyError e) => Text -> Maybe Integer -> ActionT e WebM [Post]
 getPostsByTag tag mPageNum = webMQuery sql (tag,pageNum*(fromIntegral postsPerPage),postsPerPage+1)

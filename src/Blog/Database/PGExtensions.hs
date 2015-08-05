@@ -1,5 +1,5 @@
 {-# LANGUAGE OverloadedStrings, FlexibleInstances, DeriveGeneric #-}
-{-# OPTIONS_GHC -fno-warn-orphans #-}
+{-# OPTIONS_GHC -fno-warn-orphans -fno-warn-unused-do-bind #-}
 
 --
 -- This module contains instances for
@@ -7,38 +7,55 @@
 -- postgres-simple
 --
 
-module Blog.Database.PGExtensions where
+module Blog.Database.PGExtensions 
+(
+  parse1DArray
+)
+where
 
-import qualified Data.ByteString.Char8 as B
+import           Data.Text (Text)
+import qualified Data.Text.Encoding as T
+import           Data.List (intersperse)
+
+import           Data.Attoparsec.Text as A
+
 import           Database.PostgreSQL.Simple.FromField as PG.FromField
 import           Database.PostgreSQL.Simple.ToField as PG.ToField
 import           Blaze.ByteString.Builder (fromByteString)
 import           Database.PostgreSQL.Simple.Internal
   
--- Treats text[] as a String
-instance FromField [String] where
-  fromField (Field _ _ (Oid 1009)) (Just fdata) = return (parseArray $ B.unpack fdata)
+instance FromField [Text] where
+  fromField f@(Field _ _ (Oid 1009)) (Just fdata) = case parse1DArray $ T.decodeUtf8 fdata of
+    Just ary -> return ary
+    Nothing -> returnError Incompatible f "Field is not a valid string list."
   fromField (Field _ _ (Oid 1009)) Nothing = return []
-  fromField f _ = returnError Incompatible f "Field is not a text array."
+  fromField f _ = returnError Incompatible f "Field is not a valid string list."
+  
+instance ToField [Text] where
+  toField v  = Many [plain "ARRAY[", csList v, plain "]"]
+    where
+      plain = Plain . fromByteString
+      csList = Many . intersperse (plain ",") . map (Escape . T.encodeUtf8)
 
--- Treats text[] as a String
-instance ToField [String] where
-  toField [] = Plain $ fromByteString "ARRAY[]"
-  toField [s] = Many [Plain $ fromByteString "ARRAY[",
-                      Escape $ B.pack s,
-                      Plain $ fromByteString "]"
-                      ]
-  toField v  = Many [Plain $ fromByteString "ARRAY[",
-                     Many $ map (\str -> do Many [Escape $ B.pack str, Plain $ fromByteString ","]) (Prelude.init v),
-                     Escape $ B.pack $ last v,
-                     Plain $ fromByteString "]"
-                     ]
-                     
-parseArray :: String -> [String]
-parseArray "{}" = []
-parseArray ""   = []
-parseArray (x:xs)
- | x == '{'  = parseArray $ init xs
- | x == '\"' = concat [[takeWhile (\c -> c /= '\"') xs], (parseArray $ tail $ dropWhile (\c -> c /= '\"') xs)]
- | x == ','  = parseArray xs
- | otherwise = concat [[takeWhile (\c -> c /= ',') (x:xs)], (parseArray $ dropWhile (\c -> c /= ',') (x:xs))]
+parse1DArray :: Text -> Maybe [Text]
+parse1DArray = fmap reverse . maybeResult . A.parse arrayParser
+
+arrayParser :: Parser [Text]
+arrayParser = do
+  char '{'
+  v <- arrayParser' []
+  char '}'
+  return v
+
+arrayParser' :: [Text] -> Parser [Text]
+arrayParser' accum = do
+  skipWhile skipable
+  v <- takeTill skipable
+  skipWhile skipable
+  nextChar <- peekChar
+  case nextChar of
+    Just '}' -> return (v:accum)
+    Nothing -> return (v:accum)
+    _ -> arrayParser' (v:accum)
+  where
+    skipable v = (v == ',') || (v == '\"')

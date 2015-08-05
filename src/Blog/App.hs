@@ -43,6 +43,7 @@ import qualified Crypto.BCrypt as BCrypt
 import qualified Data.ByteString.Char8 as B
 import qualified Data.ByteString.Lazy.Char8 as BL
 import Data.List as L
+import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
 import qualified Data.Text.Lazy as TL
 
@@ -129,12 +130,7 @@ startRedirect = do
     warpSettings = setBeforeMainLoop (resignPrivileges "daemon") $ setPort 80 defaultSettings
     mkHeaders r = [("Location", mconcat ["https://", fromJust $ requestHeaderHost r, rawPathInfo r, rawQueryString r])]
 
-keywords :: [TL.Text]
-keywords = ["computer science", "functional programming", "fp", "politics", "haskell", "ruby", "web development", "art", "blogs", "computers", "startups", "tutorial", "rails"]
-
-description :: TL.Text
-description = "Rants and raves about functional programming, politics, and everything in between."
-
+--------------------------------------------------------------------------------
 app :: ScottyT TL.Text WebM ()
 app = do
   -- blog root
@@ -145,7 +141,7 @@ app = do
     Scotty.html . R.renderHtml . docTypeHtml $ do
       renderHead blogTitle $ do
         renderMeta "description" description
-        renderMeta "keywords" (TL.intercalate ", " keywords)
+        renderMeta "keywords" (TL.fromStrict $ T.intercalate ", " keywords)
       renderBody (Just blogTitle) (Just blogSubtitle) maybeUser $ do
         render (take postsPerPage posts) maybeUser
         renderPageControls mPageNum (length posts > postsPerPage)
@@ -184,7 +180,7 @@ app = do
         Scotty.html . R.renderHtml . docTypeHtml $ do
           renderHead (appendedBlogTitle $ TL.fromStrict $ postTitle post_) $ do
             renderStylesheet "/assets/css/post.css"
-            renderMeta "keywords" (TL.pack . L.intercalate ", " . postTags $ post_)
+            renderMeta "keywords" (TL.fromStrict $ T.intercalate ", " . flip (++) keywords . postTags $ post_)
             renderMeta "description" (TL.take 150 . TL.fromStrict $ postBody post_)
           renderBody (Just blogTitle) (Just blogSubtitle) maybeUser $ do
             render post_ maybeUser
@@ -202,10 +198,10 @@ app = do
     mPageNum <- (fmap (read . TL.unpack) . lookup "page") <$> params
     posts <- getPostsByTag tag mPageNum
     Scotty.html . R.renderHtml . docTypeHtml $ do
-      renderHead (appendedBlogTitle $ tag) $ do
+      renderHead (appendedBlogTitle $ TL.fromStrict tag) $ do
         renderMeta "description" description
-        renderMeta "keywords" (TL.intercalate ", " keywords)
-      renderBody (Just $ TL.append "Posts tagged '" $ TL.append tag "'") Nothing maybeUser $ do
+        renderMeta "keywords" (TL.fromStrict $ T.intercalate ", " keywords)
+      renderBody (Just $ mconcat ["Posts tagged '", TL.fromStrict tag, "'"]) Nothing maybeUser $ do
         render (take postsPerPage posts) maybeUser
         renderPageControls mPageNum (length posts > postsPerPage)
 
@@ -223,6 +219,7 @@ app = do
         renderBody Nothing Nothing Nothing $ do
           renderPostEditor $ Just post_
             
+  -- TODO: Remove the inline javascript
   get "/login" $ do
     maybeUser <- getUser
     when (isJust maybeUser) (redirect "/")
@@ -240,20 +237,14 @@ app = do
     deleteAuth
     redirect "/"
   
-  get "/posts/:id/comments.json" $ do
-    identifier_ <- param "id"
-    getCommentsForPost identifier_ >>= Scotty.json . nestComments . (map (\c -> Node c [] Nothing))
-  
   post "/login" $ do
-    pUsername <- param "username"
-    pPassword <- param "password"
+    pPassword <- T.encodeUtf8 <$> param "password"
     pRedirectPath <- lookup "redirect" <$> params
-    res <- getUserWithUsername pUsername
-    
-    case res of
-      Nothing     -> redirect "/login?error_message=Username%20not%20found%2E"
+    mUser <- param "username" >>= getUserWithUsername
+    case mUser of
+      Nothing -> redirect "/login?error_message=Username%20does%20not%20exist%2E"
       (Just user@(User _ _ _ (Just phash))) -> do
-        if BCrypt.validatePassword (T.encodeUtf8 phash) (T.encodeUtf8 pPassword)
+        if BCrypt.validatePassword (T.encodeUtf8 phash) pPassword
           then do
             setUser user
             redirect $ fromMaybe "/" pRedirectPath
@@ -268,7 +259,11 @@ app = do
     res <- deletePost identifier_ (fromJust authUser)
     case (res :: Maybe Integer) of
       Nothing -> status $ Status 404 "blog post not found."
-      Just _ -> Scotty.text "ok"
+      Just _  -> Scotty.text "ok"
+      
+  get "/posts/:id/comments.json" $ do
+    identifier_ <- param "id"
+    getCommentsForPost identifier_ >>= Scotty.json . nestComments . (map (\c -> Node c [] Nothing))
 
   -- creates/updates a BlogPost in the database
   post "/posts" $ do
@@ -277,17 +272,16 @@ app = do
       Nothing -> status $ Status 401 "Missing authentication"
       (Just authUser) -> do
         ps <- params
-        maybeBPIdentifier <- upsertPost authUser
-                                        (read . TL.unpack <$> lookup "id" ps)
-                                        (lookup "title" ps)
-                                        (lookup "body" ps)
-                                        (splitList ',' . TL.unpack <$> lookup "tags" ps)
-                                        (splitList ',' . TL.unpack <$> lookup "deleted_tags" ps)
-                                        (elem (fromMaybe "True" . lookup "draft" $ ps) ["t", "true", "True", "y", "yes"])
-        case maybeBPIdentifier of
+        mPostID <- upsertPost authUser
+                              (read . TL.unpack <$> lookup "id" ps)
+                              (TL.toStrict <$> lookup "title" ps)
+                              (TL.toStrict <$> lookup "body" ps)
+                              (map TL.toStrict . TL.splitOn "," <$> lookup "tags" ps)
+                              (map TL.toStrict . TL.splitOn "," <$> lookup "deleted_tags" ps)
+                              (elem (fromMaybe "True" . lookup "draft" $ ps) ["t", "true", "True", "y", "yes"])
+        case mPostID of
           Nothing -> status $ Status 400 "Missing required parameters"
-          Just identifier_ -> addHeader "Location" $ TL.pack $ "/posts/" ++ (show identifier_)
-        
+          Just pid -> addHeader "Location" $ TL.pack $ "/posts/" ++ (show pid)
 
   post "/posts/:id/comments" $ do
     postId_ <- param "post_id"
@@ -327,11 +321,9 @@ app = do
     cachedBody (T.encodeUtf8 $ TL.toStrict relPath) $ BL.readFile $ TL.unpack relPath
 
   notFound $ Scotty.text "Not Found."
+                   
+keywords :: [T.Text]
+keywords = ["computer science", "functional programming", "fp", "politics", "haskell", "ruby", "web development", "art", "blogs", "computers", "startups", "tutorial", "rails"]
 
-renderInput :: String -> Html
-renderInput kind = input
-                   ! class_ "blogtextfield"
-                   ! customAttribute "autocorrect" "off"
-                   ! customAttribute "autocapitalize" "off"
-                   ! customAttribute "spellcheck" "false"
-                   ! type_ (stringValue kind)
+description :: TL.Text
+description = "Rants and raves about functional programming, politics, and everything in between."
