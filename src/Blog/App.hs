@@ -65,6 +65,7 @@ import           System.Environment
 -- Make sure comments are rendered safely
 -- Links in comments *** nofollow them
 -- search
+-- truncate post body when more than one post is visible.
 
 -- Miscellaneous Ideas:
 -- 1. 'Top 5' tags map in side bar?
@@ -133,7 +134,6 @@ startRedirect = do
 --------------------------------------------------------------------------------
 app :: ScottyT TL.Text WebM ()
 app = do
-  -- blog root
   get "/" $ do
     maybeUser <- getUser
     mPageNum <- fmap (read . TL.unpack) . lookup "page" <$> params
@@ -171,19 +171,18 @@ app = do
     mpost <- param "id" >>= getPost
     case mpost of
       Nothing -> redirect "/notfound"
-      Just post_ -> do
+      Just p@(Post _ title body _ tags draft author) -> do
         maybeUser <- getUser
         
-        when (postIsDraft post_) $ do
-          when (maybe True ((/=) (postAuthor post_)) maybeUser) (redirect "/notfound")
+        when (draft && (maybe True ((/=) author) maybeUser)) (redirect "/notfound")
 
         Scotty.html . R.renderHtml . docTypeHtml $ do
-          renderHead (appendedBlogTitle $ TL.fromStrict $ postTitle post_) $ do
+          renderHead (appendedBlogTitle $ TL.fromStrict title) $ do
             renderStylesheet "/assets/css/post.css"
-            renderMeta "keywords" (TL.fromStrict $ T.intercalate ", " . flip (++) keywords . postTags $ post_)
-            renderMeta "description" (TL.take 150 . TL.fromStrict $ postBody post_)
+            renderMeta "keywords" . TL.fromStrict . T.intercalate ", " . flip (++) keywords $ tags
+            renderMeta "description" . TL.take 150 . TL.fromStrict $ body
           renderBody (Just blogTitle) (Just blogSubtitle) maybeUser $ do
-            render post_ maybeUser
+            render p maybeUser
             hr ! class_ "separator"
             div ! A.id "comments" $ do
               div ! A.id "spinner-container" $ ""
@@ -200,7 +199,7 @@ app = do
     Scotty.html . R.renderHtml . docTypeHtml $ do
       renderHead (appendedBlogTitle $ TL.fromStrict tag) $ do
         renderMeta "description" description
-        renderMeta "keywords" (TL.fromStrict $ T.intercalate ", " keywords)
+        renderMeta "keywords" . TL.fromStrict . T.intercalate ", " $ keywords
       renderBody (Just $ mconcat ["Posts tagged '", TL.fromStrict tag, "'"]) Nothing maybeUser $ do
         render (take postsPerPage posts) maybeUser
         renderPageControls mPageNum (length posts > postsPerPage)
@@ -255,15 +254,13 @@ app = do
   -- returns JSON
   Scotty.delete "/posts/:id" $ do
     authUser <- authenticate
-    identifier_ <- param "id"
-    res <- deletePost identifier_ (fromJust authUser)
+    res <- param "id" >>= (flip deletePost $ fromJust authUser)
     case (res :: Maybe Integer) of
       Nothing -> status $ Status 404 "blog post not found."
       Just _  -> Scotty.text "ok"
       
   get "/posts/:id/comments.json" $ do
-    identifier_ <- param "id"
-    getCommentsForPost identifier_ >>= Scotty.json . nestComments . (map (\c -> Node c [] Nothing))
+    param "id" >>= getCommentsForPost >>= Scotty.json . nestComments
 
   -- creates/updates a BlogPost in the database
   post "/posts" $ do
