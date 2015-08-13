@@ -16,6 +16,9 @@ module Blog.HTMLUtil
   renderPostEditor,
   renderPageControls,
   renderInput,
+  renderButton,
+  renderButton',                        
+  renderButton'',
   appendedBlogTitle
 )
 where

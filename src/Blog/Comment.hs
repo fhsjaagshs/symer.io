@@ -43,7 +43,7 @@ instance ToJSON Comment where
                   
 instance ToJSON [Comment] where
   toJSON = Aeson.Array . V.fromList . map toJSON
-                  
+  
 instance FromRow Comment where
   fromRow = Comment
     <$> field
@@ -61,22 +61,7 @@ isParent prnt child
   | fmap ((==) (commentID prnt)) (commentParentID child) == (Just True) = True
   | elem child (commentChildren prnt) = True
   | otherwise = False
-  
-isRoot :: Comment -> Bool
-isRoot = isNothing . commentParentID
-
-hasParentID :: Comment -> Bool
-hasParentID (Comment _ (Just _) _ _ _ _ _ _ _) = True
-hasParentID _ = False
-
-isDescendent :: Comment -> Comment -> Bool
-isDescendent _ (Comment _ Nothing _ _ _ _ _ _ _) = False
-isDescendent anc desc
-  | isParent anc desc = True
-  | otherwise = any f $ commentChildren anc
-    where
-      f = flip isDescendent $ desc
-      
+     
 appendChild :: Comment -> Comment -> Comment
 appendChild p c = p { commentChildren = (c:commentChildren p) }
 

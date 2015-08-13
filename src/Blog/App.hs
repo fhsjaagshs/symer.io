@@ -165,24 +165,24 @@ app = do
         renderStylesheet "/assets/css/wordlist.css"
       renderBody Nothing Nothing Nothing $ do
         renderPostEditor Nothing
-  
+
   -- view a specific post
   get "/posts/:id" $ do
     mpost <- param "id" >>= getPost
     case mpost of
       Nothing -> redirect "/notfound"
-      Just p@(Post _ title body _ tags draft author) -> do
+      Just pst@(Post _ ttl bdy _ tags draft author) -> do
         maybeUser <- getUser
         
         when (draft && (maybe True ((/=) author) maybeUser)) (redirect "/notfound")
 
         Scotty.html . R.renderHtml . docTypeHtml $ do
-          renderHead (appendedBlogTitle $ TL.fromStrict title) $ do
+          renderHead (appendedBlogTitle $ TL.fromStrict ttl) $ do
             renderStylesheet "/assets/css/post.css"
             renderMeta "keywords" . TL.fromStrict . T.intercalate ", " . flip (++) keywords $ tags
-            renderMeta "description" . TL.take 150 . TL.fromStrict $ body
+            renderMeta "description" . TL.take 150 . TL.fromStrict $ bdy
           renderBody (Just blogTitle) (Just blogSubtitle) maybeUser $ do
-            render p maybeUser
+            render pst maybeUser
             hr ! class_ "separator"
             div ! A.id "comments" $ do
               div ! A.id "spinner-container" $ ""
@@ -217,24 +217,30 @@ app = do
           renderStylesheet "/assets/css/wordlist.css"
         renderBody Nothing Nothing Nothing $ do
           renderPostEditor $ Just post_
-            
-  -- TODO: Remove the inline javascript
+
   get "/login" $ do
     maybeUser <- getUser
     when (isJust maybeUser) (redirect "/")
     maybeErrorMessage <- lookup "error_message" <$> params
     Scotty.html . R.renderHtml . docTypeHtml $ do
-      renderHiddenHead' (appendedBlogTitle "Login")
+      renderHiddenHead' $ appendedBlogTitle "Login"
       renderBody (Just "Login") maybeErrorMessage Nothing $ do
         H.form ! A.id "loginform" ! action "/login" ! method "POST" $ do
           input ! type_ "hidden" ! A.name "source" ! value "form"
-          renderInput "text" ! A.id "username" ! placeholder "Username" ! A.name "username" ! onkeydown "if(event.keyCode==13)document.getElementById('password').focus()"
-          renderInput "password" ! A.id "password" ! placeholder "Password" ! A.name "password" ! onkeydown "if(event.keyCode==13)document.getElementById('submit').click()"
-        a ! A.id "submit" ! onclick "document.getElementById('loginform').submit();" ! class_ "blogbutton" ! rel "nofollow" $ "Login"
+          renderInput "text" ! A.id "username" ! placeholder "Username" ! A.name "username"
+          renderInput "password" ! A.id "password" ! placeholder "Password" ! A.name "password"
+        renderButton'' "Login" "submit"
+        script $ toHtml $ unlines [
+          "var passwd = document.getElementById('password');",
+          "var uname = document.getElementById('username');",
+          "var form = document.getElementById('loginform');",
+          "var submit = document.getElementById('submit')",
+          "uname.onkeydown = function(e) {if(e.keyCode==13)passwd.focus();}",
+          "passwd.onkeydown = function(e) {if(e.keyCode==13)submit.click();}",
+          "submit.onclick = function() {form.submit();}"
+          ]
 
-  get "/logout" $ do
-    deleteAuth
-    redirect "/"
+  get "/logout" $ deleteAuth >> redirect "/"
   
   post "/login" $ do
     pPassword <- T.encodeUtf8 <$> param "password"
@@ -318,7 +324,7 @@ app = do
     cachedBody (T.encodeUtf8 $ TL.toStrict relPath) $ BL.readFile $ TL.unpack relPath
 
   notFound $ Scotty.text "Not Found."
-                   
+           
 keywords :: [T.Text]
 keywords = ["computer science", "functional programming", "fp", "politics", "haskell", "ruby", "web development", "art", "blogs", "computers", "startups", "tutorial", "rails"]
 
