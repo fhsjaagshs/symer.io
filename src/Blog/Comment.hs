@@ -80,28 +80,18 @@ isDescendent anc desc
 appendChild :: Comment -> Comment -> Comment
 appendChild p c = p { commentChildren = (c:commentChildren p) }
 
--- TODO: properly nest children of a node
+addChildIfChild :: Comment -> Comment -> Comment
+addChildIfChild p c = if isParent p c then appendChild p c else p
+
 nestComments :: [Comment] -> [Comment]
 nestComments [] = []
 nestComments [x] = [x]
-nestComments (c:xs)
-  | hasParentID c = case filter (flip isDescendent $ c) xs of
-                      [] -> c:nestComments xs
-                      prnts -> nestComments $ (map (flip appendChild $ c) prnts) ++ (xs \\ prnts)
-  | otherwise = if all isRoot (c:xs) then (c:xs) else nestComments $ xs ++ [c]
-
--- -- Adds child to the first node's children, appling func to each of the children
--- appendChild :: Node -> Node -> ([Node] -> [Node]) -> Node
--- appendChild (Node c children_ parent_) child func = Node c (func ((Node (comment child) (children child) (Just (Node c children_ parent_))):children_)) parent_
---
--- nestComments :: [Node] -> [Node]
--- nestComments [] = []
--- nestComments [x] = [x]
--- nestComments (c:xs) = case c of
---                         (Node (Comment _ (Just _) _ _ _ _ _) _ _) -> do
---                           case (filter ((flip isDescendent) c) xs) of
---                             [] -> c:nestComments xs
---                             prnts -> nestComments $ (map (\prnt -> appendChild prnt c nestComments) prnts) ++ (xs \\ prnts)
---                         _ -> if all isRoot (c:xs)
---                               then (c:xs)
---                               else nestComments $ xs ++ [c]
+nestComments comments
+  | (length leaves) == (length comments) = comments
+  | otherwise = nestComments ((comments \\ (leaves++leafParents))++newParents)
+  where
+    hasNoChildren c = isNothing $ find (isParent c) (delete c comments)
+    hasChildInLeaves p = isJust $ find (isParent p) leaves
+    leaves = filter hasNoChildren comments
+    leafParents = filter hasChildInLeaves (comments \\ leaves)
+    newParents = map (\p -> foldl addChildIfChild p leaves) leafParents
