@@ -55,12 +55,9 @@ instance FromRow Comment where
     <*> field
     <*> return []
     <*> return Nothing
-
+    
 isParent :: Comment -> Comment -> Bool
-isParent prnt child
-  | fmap ((==) (commentID prnt)) (commentParentID child) == (Just True) = True
-  | elem child (commentChildren prnt) = True
-  | otherwise = False
+isParent prnt child = maybe False ((==) (commentID prnt)) (commentParentID child)
      
 appendChild :: Comment -> Comment -> Comment
 appendChild p c = p { commentChildren = (c:commentChildren p) }
