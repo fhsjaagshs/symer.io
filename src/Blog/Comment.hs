@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings, FlexibleInstances, DeriveGeneric, DeriveDataTypeable, RecordWildCards #-}
+{-# LANGUAGE OverloadedStrings, FlexibleInstances #-}
 
 module Blog.Comment
 (
