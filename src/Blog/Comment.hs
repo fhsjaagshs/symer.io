@@ -11,25 +11,25 @@ import           Data.Maybe
 import           Data.List
 import qualified Data.Vector as V
 import           Data.Time.Clock
-import qualified Data.Text as T
+import           Data.Text (Text)
 import           Data.Aeson as Aeson
 
-import           Database.PostgreSQL.Simple.FromRow as PG.FromRow
+import           Database.PostgreSQL.Simple.FromRow
 
 data Comment = Comment {
   commentID :: !Integer,
   commentParentID :: Maybe Integer,
   commentPostID :: !Integer,
-  commentEmail :: T.Text,
-  commentDisplayName :: T.Text,
+  commentEmail :: Text,
+  commentDisplayName :: Text,
   commentTimestamp :: UTCTime,
-  commentBody :: T.Text,
+  commentBody :: Text,
   commentChildren :: [Comment],
   commentParent :: Maybe Comment
 } deriving (Show)
 
 instance Eq Comment where
-  a == b = (commentID a) == (commentID b)
+  a == b = commentID a == commentID b
 
 instance ToJSON Comment where
  toJSON (Comment cid _ postId email dname ts body children _) =
@@ -69,8 +69,8 @@ nestComments :: [Comment] -> [Comment]
 nestComments [] = []
 nestComments [x] = [x]
 nestComments comments
-  | (length leaves) == (length comments) = comments
-  | otherwise = nestComments ((comments \\ (leaves++leafParents))++newParents)
+  | length leaves == length comments = comments
+  | otherwise = nestComments $ (comments \\ (leaves ++ leafParents)) ++ newParents
   where
     hasNoChildren c = isNothing $ find (isParent c) (delete c comments)
     hasChildInLeaves p = isJust $ find (isParent p) leaves
