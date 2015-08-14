@@ -70,10 +70,9 @@ nestComments [] = []
 nestComments [x] = [x]
 nestComments comments
   | length leaves == length comments = comments
-  | otherwise = nestComments $ (comments \\ (leaves ++ leafParents)) ++ newParents
+  | otherwise = nestComments $ processed ++ singletonLeaves
   where
-    hasNoChildren c = isNothing $ find (isParent c) (delete c comments)
-    hasChildInLeaves p = isJust $ find (isParent p) leaves
+    hasNoChildren cmnt = isNothing $ find (isParent cmnt) (delete cmnt comments)
     leaves = filter hasNoChildren comments
-    leafParents = filter hasChildInLeaves (comments \\ leaves)
-    newParents = map (\p -> foldl addChildIfChild p leaves) leafParents
+    singletonLeaves = filter (isNothing . commentParentID) leaves
+    processed = map (\p -> foldl addChildIfChild p leaves) (comments \\ leaves)
