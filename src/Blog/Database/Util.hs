@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings, FlexibleInstances #-}
+{-# LANGUAGE OverloadedStrings #-}
 {-# OPTIONS_GHC -fno-warn-unused-do-bind #-}
 
 module Blog.Database.Util
@@ -66,23 +66,23 @@ runMigrations pg = do
 
 -- TODO: only update if user is correct
 upsertPost :: (ScottyError e) => User -> Maybe Integer -> Maybe Text -> Maybe Text -> Maybe [Text] -> Maybe [Text] -> Bool -> ActionT e WebM (Maybe Integer)
-upsertPost _    (Just pid) Nothing      Nothing     Nothing     Nothing             draft = processResult $ webMQuery "UPDATE blogposts SET is_draft=? WHERE identifier=? RETURNING identifier" (draft, pid)
-upsertPost _    (Just pid) (Just title) Nothing     Nothing     Nothing             draft = processResult $ webMQuery "UPDATE blogposts SET title=?, is_draft=? WHERE identifier=? RETURNING identifier" (title, draft, pid)
-upsertPost _    (Just pid) (Just title) (Just body) Nothing     Nothing             draft = processResult $ webMQuery "UPDATE blogposts SET title=?, bodyText=?, is_draft=? WHERE identifier=? RETURNING identifier" (title, body, draft, pid)
-upsertPost _    (Just pid) (Just title) (Just body) (Just tags) Nothing             draft = processResult $ webMQuery "UPDATE blogposts SET title=?, bodyText=?, tags=uniq_cat(tags,?), is_draft=? WHERE identifier=? RETURNING identifier" (title, body, tags, draft, pid)
-upsertPost _    (Just pid) (Just title) (Just body) (Just tags) (Just deletedTags_) draft = processResult $ webMQuery "UPDATE blogposts SET title=?, bodyText=?, tags=array_diff(uniq_cat(tags,?),?), is_draft=? WHERE identifier=? RETURNING identifier" (title, body, tags, deletedTags_, draft, pid)
-upsertPost _    (Just pid) Nothing      (Just body) Nothing     Nothing             draft = processResult $ webMQuery "UPDATE blogposts SET bodyText=?, is_draft=? WHERE identifier=? RETURNING identifier" (body, draft, pid)
-upsertPost _    (Just pid) Nothing      Nothing     (Just tags) Nothing             draft = processResult $ webMQuery "UPDATE blogposts SET tags=uniq_cat(tags,?), is_draft=? WHERE identifier=? RETURNING identifier" (tags, draft, pid)
-upsertPost _    (Just pid) Nothing      (Just body) (Just tags) Nothing             draft = processResult $ webMQuery "UPDATE blogposts SET bodyText=?, tags=uniq_cat(tags,?), is_draft=? WHERE identifier=? RETURNING identifier" (body, tags, draft, pid)
-upsertPost _    (Just pid) (Just title) Nothing     (Just tags) Nothing             draft = processResult $ webMQuery "UPDATE blogposts SET title=?, tags=uniq_cat(tags,?), is_draft=? WHERE identifier=? RETURNING identifier" (title, tags, draft, pid)
-upsertPost _    (Just pid) Nothing      Nothing     Nothing     (Just deletedTags_) draft = processResult $ webMQuery "UPDATE blogposts SET tags=array_diff(tags,?), is_draft=? WHERE identifier=? RETURNING identifier" (deletedTags_, draft, pid)
-upsertPost _    (Just pid) Nothing      Nothing     (Just tags) (Just deletedTags_) draft = processResult $ webMQuery "UPDATE blogposts SET tags=uniq_cat(array_diff(tags,?),?), is_draft=? WHERE identifier=? RETURNING identifier" (deletedTags_, tags, draft, pid)
-upsertPost _    (Just pid) Nothing      (Just body) Nothing     (Just deletedTags_) draft = processResult $ webMQuery "UPDATE blogposts SET bodyText=?, tags=array_diff(tags,?), is_draft=? WHERE identifier=? RETURNING identifier" (body, deletedTags_, draft, pid)
-upsertPost _    (Just pid) (Just title) Nothing     Nothing     (Just deletedTags_) draft = processResult $ webMQuery "UPDATE blogposts SET title=?, tags=array_diff(tags,?), is_draft=? WHERE identifier=? RETURNING identifier" (title, deletedTags_, draft, pid)
-upsertPost _    (Just pid) (Just title) (Just body) Nothing     (Just deletedTags_) draft = processResult $ webMQuery "UPDATE blogposts SET title=?, bodyText=?, tags=array_diff(tags,?), is_draft=? WHERE identifier=? RETURNING identifier" (title, body, deletedTags_, draft, pid)
-upsertPost user Nothing    (Just title) (Just body) Nothing     _                   draft = processResult $ webMQuery "INSERT INTO blogposts (title, bodyText, author_id, is_draft) VALUES (?, ?, ?, ?) RETURNING identifier" (title, body, userUID user, draft)
-upsertPost user Nothing    (Just title) (Just body) (Just tags) _                   draft = processResult $ webMQuery "INSERT INTO blogposts (title, bodyText, tags, author_id, is_draft) VALUES (?, ?, ?, ?, ?) RETURNING identifier" (title, body, tags, userUID user, draft)
-upsertPost _    _          _            _           _           _                   _     = return Nothing
+upsertPost _    (Just pid) Nothing      Nothing     Nothing     Nothing            draft = processResult $ webMQuery "UPDATE blogposts SET is_draft=? WHERE identifier=? RETURNING identifier" (draft, pid)
+upsertPost _    (Just pid) (Just title) Nothing     Nothing     Nothing            draft = processResult $ webMQuery "UPDATE blogposts SET title=?, is_draft=? WHERE identifier=? RETURNING identifier" (title, draft, pid)
+upsertPost _    (Just pid) (Just title) (Just body) Nothing     Nothing            draft = processResult $ webMQuery "UPDATE blogposts SET title=?, bodyText=?, is_draft=? WHERE identifier=? RETURNING identifier" (title, body, draft, pid)
+upsertPost _    (Just pid) (Just title) (Just body) (Just tags) Nothing            draft = processResult $ webMQuery "UPDATE blogposts SET title=?, bodyText=?, tags=uniq_cat(tags,?), is_draft=? WHERE identifier=? RETURNING identifier" (title, body, tags, draft, pid)
+upsertPost _    (Just pid) (Just title) (Just body) (Just tags) (Just deletedTags) draft = processResult $ webMQuery "UPDATE blogposts SET title=?, bodyText=?, tags=array_diff(uniq_cat(tags,?),?), is_draft=? WHERE identifier=? RETURNING identifier" (title, body, tags, deletedTags, draft, pid)
+upsertPost _    (Just pid) Nothing      (Just body) Nothing     Nothing            draft = processResult $ webMQuery "UPDATE blogposts SET bodyText=?, is_draft=? WHERE identifier=? RETURNING identifier" (body, draft, pid)
+upsertPost _    (Just pid) Nothing      Nothing     (Just tags) Nothing            draft = processResult $ webMQuery "UPDATE blogposts SET tags=uniq_cat(tags,?), is_draft=? WHERE identifier=? RETURNING identifier" (tags, draft, pid)
+upsertPost _    (Just pid) Nothing      (Just body) (Just tags) Nothing            draft = processResult $ webMQuery "UPDATE blogposts SET bodyText=?, tags=uniq_cat(tags,?), is_draft=? WHERE identifier=? RETURNING identifier" (body, tags, draft, pid)
+upsertPost _    (Just pid) (Just title) Nothing     (Just tags) Nothing            draft = processResult $ webMQuery "UPDATE blogposts SET title=?, tags=uniq_cat(tags,?), is_draft=? WHERE identifier=? RETURNING identifier" (title, tags, draft, pid)
+upsertPost _    (Just pid) Nothing      Nothing     Nothing     (Just deletedTags) draft = processResult $ webMQuery "UPDATE blogposts SET tags=array_diff(tags,?), is_draft=? WHERE identifier=? RETURNING identifier" (deletedTags, draft, pid)
+upsertPost _    (Just pid) Nothing      Nothing     (Just tags) (Just deletedTags) draft = processResult $ webMQuery "UPDATE blogposts SET tags=uniq_cat(array_diff(tags,?),?), is_draft=? WHERE identifier=? RETURNING identifier" (deletedTags, tags, draft, pid)
+upsertPost _    (Just pid) Nothing      (Just body) Nothing     (Just deletedTags) draft = processResult $ webMQuery "UPDATE blogposts SET bodyText=?, tags=array_diff(tags,?), is_draft=? WHERE identifier=? RETURNING identifier" (body, deletedTags, draft, pid)
+upsertPost _    (Just pid) (Just title) Nothing     Nothing     (Just deletedTags) draft = processResult $ webMQuery "UPDATE blogposts SET title=?, tags=array_diff(tags,?), is_draft=? WHERE identifier=? RETURNING identifier" (title, deletedTags, draft, pid)
+upsertPost _    (Just pid) (Just title) (Just body) Nothing     (Just deletedTags) draft = processResult $ webMQuery "UPDATE blogposts SET title=?, bodyText=?, tags=array_diff(tags,?), is_draft=? WHERE identifier=? RETURNING identifier" (title, body, deletedTags, draft, pid)
+upsertPost user Nothing    (Just title) (Just body) Nothing     _                  draft = processResult $ webMQuery "INSERT INTO blogposts (title, bodyText, author_id, is_draft) VALUES (?, ?, ?, ?) RETURNING identifier" (title, body, userUID user, draft)
+upsertPost user Nothing    (Just title) (Just body) (Just tags) _                  draft = processResult $ webMQuery "INSERT INTO blogposts (title, bodyText, tags, author_id, is_draft) VALUES (?, ?, ?, ?, ?) RETURNING identifier" (title, body, tags, userUID user, draft)
+upsertPost _    _          _            _           _           _                  _     = return Nothing
 
 getPostsByTag :: (ScottyError e) => Text -> Maybe Integer -> ActionT e WebM [Post]
 getPostsByTag tag mPageNum = webMQuery sql (tag,pageNum*(fromIntegral postsPerPage),postsPerPage+1)
@@ -114,8 +114,8 @@ getCommentsForPost :: (ScottyError e) => Integer -> ActionT e WebM [Comment]
 getCommentsForPost identifier_ = webMQuery "SELECT * FROM comments WHERE postId=?" [identifier_]
 
 insertComment :: (ScottyError e) => Maybe Integer -> Integer -> Text -> Text -> Text -> ActionT e WebM (Maybe Integer)
-insertComment (Just parentId_) postId_ email_ displayName_ body_ = processResult $ webMQuery "INSERT INTO comments (parentId,postId,email,displayName,body) VALUES (?,?,?,?,?) RETURNING id" (parentId_, postId_, email_, displayName_, body_)
-insertComment Nothing          postId_ email_ displayName_ body_ = processResult $ webMQuery "INSERT INTO comments (postId,email,displayName,body) VALUES (?,?,?,?) RETURNING id" (postId_, email_, displayName_, body_)
+insertComment (Just parentId) pid email displayName body = processResult $ webMQuery "INSERT INTO comments (parentId,postId,email,displayName,body) VALUES (?,?,?,?,?) RETURNING id" (parentId, pid, email, displayName, body)
+insertComment Nothing         pid email displayName body = processResult $ webMQuery "INSERT INTO comments (postId,email,displayName,body) VALUES (?,?,?,?) RETURNING id" (pid, email, displayName, body)
 
 getUserWithUsername :: (ScottyError e) => Text -> ActionT e WebM (Maybe User)
 getUserWithUsername username = listToMaybe <$> webMQuery "SELECT * FROM users WHERE username=? LIMIT 1" [username]

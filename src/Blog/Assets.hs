@@ -5,9 +5,11 @@ module Blog.Assets
 )
 where
   
-import qualified Text.CSS.Parse as CSS
-import qualified Text.CSS.Render as CSS
-import qualified Text.Jasmine as Jasmine (minify)
+import Blog.Env
+  
+import qualified Text.CSS.Parse as CSS (parseNestedBlocks)
+import qualified Text.CSS.Render as CSS (renderNestedBlocks)
+import qualified Text.Jasmine as JS (minifym)
 
 import qualified Data.Text.Encoding as T
 import qualified Data.Text.Lazy.Encoding as TL
@@ -15,26 +17,15 @@ import qualified Data.Text.Lazy.Builder as TL
 
 import qualified Data.ByteString.Lazy.Char8 as BL
 
-import System.Environment
-import Data.Maybe
-  
--- TODO: Better error handling
-  
-js :: String -> IO (Maybe BL.ByteString)
-js filename = do
-  env <- fromMaybe "development" <$> lookupEnv "ENV"
-  raw <- BL.readFile $ "assets/js/" ++ filename
-  let f = if env == "production" then Jasmine.minify else id
-  return $ Just $ f raw
+js :: FilePath -> IO (Either String BL.ByteString)
+js filename = f <$> appEnvIO <*> (BL.readFile filename)
+  where 
+    f "production" = JS.minifym
+    f _ = Right
 
-css :: String -> IO (Maybe BL.ByteString)
-css filename = do
-  env <- fromMaybe "development" <$> lookupEnv "ENV"
-  raw <- BL.readFile $ "assets/css/" ++ filename
-  if env == "production" 
-    then return . minify . BL.toStrict $ raw
-    else return $ Just raw
+css :: FilePath -> IO (Either String BL.ByteString)
+css filename = f <$> appEnvIO <*> (BL.readFile filename)
   where
-    minify cssdata = case CSS.renderNestedBlocks <$> (CSS.parseNestedBlocks $ T.decodeUtf8 cssdata) of
-                  Left _ -> Nothing
-                  Right cssbuilder -> Just $ TL.encodeUtf8 $ TL.toLazyText cssbuilder
+    minify = fmap (TL.toLazyText . CSS.renderNestedBlocks) . CSS.parseNestedBlocks
+    f "production" = fmap TL.encodeUtf8 . minify . T.decodeUtf8 . BL.toStrict
+    f _ = Right

@@ -23,6 +23,7 @@ import Blog.User
 import Blog.Post as Post
 import Blog.Auth
 import Blog.MIME
+import Blog.Env
 
 import           Control.Monad.Reader
 import           Control.Concurrent.STM
@@ -55,6 +56,7 @@ import           Prelude as P hiding (head, div)
 import           System.Exit
 import           System.Posix
 import           System.Environment
+import           System.Directory
 
 -- TODO (future):
 -- redo comments' appearance
@@ -234,7 +236,7 @@ app = do
           "var passwd = document.getElementById('password');",
           "var uname = document.getElementById('username');",
           "var form = document.getElementById('loginform');",
-          "var submit = document.getElementById('submit')",
+          "var submit = document.getElementById('submit');",
           "uname.onkeydown = function(e) {if(e.keyCode==13)passwd.focus();}",
           "passwd.onkeydown = function(e) {if(e.keyCode==13)submit.click();}",
           "submit.onclick = function() {form.submit();}"
@@ -243,15 +245,15 @@ app = do
   get "/logout" $ deleteAuth >> redirect "/"
   
   post "/login" $ do
-    pPassword <- T.encodeUtf8 <$> param "password"
-    pRedirectPath <- lookup "redirect" <$> params
     mUser <- param "username" >>= getUserWithUsername
     case mUser of
       Nothing -> redirect "/login?error_message=Username%20does%20not%20exist%2E"
       (Just user@(User _ _ _ (Just phash))) -> do
+        pPassword <- T.encodeUtf8 <$> param "password"
         if BCrypt.validatePassword (T.encodeUtf8 phash) pPassword
           then do
             setUser user
+            pRedirectPath <- lookup "redirect" <$> params
             redirect $ fromMaybe "/" pRedirectPath
           else redirect "/login?error_message=Invalid%20password%2E"
       _ -> redirect  "/login?error_message=Invalid%20User%2E"
@@ -287,41 +289,35 @@ app = do
           Just pid -> addHeader "Location" $ TL.pack $ "/posts/" ++ (show pid)
 
   post "/posts/:id/comments" $ do
-    postId_ <- param "post_id"
-    email_ <- param "email"
-    displayName_ <- param "display_name"
-    body_ <- param "body"
-    parentId_ <- (fmap (read . TL.unpack) . lookup "parent_id") <$> params
-    commentId <- insertComment parentId_ postId_ email_ displayName_ body_ 
-    addHeader "Location" $ TL.pack $ "/posts/" ++ (show postId_)
-    case commentId of
-      Just cid_ -> Scotty.text $ TL.pack $ show cid_
+    postId <- param "id"
+    email <- param "email"
+    displayName <- param "display_name"
+    bdy <- param "body"
+    parentId <- fmap (read . TL.unpack) . lookup "parent_id" <$> params
+    mCommentId <- insertComment parentId postId email displayName bdy
+    case mCommentId of
+      Just commentId -> do
+        addHeader "Location" $ TL.pack $ "/posts/" ++ (show postId)
+        Scotty.text . TL.pack . show $ commentId
       Nothing -> do
         Scotty.status $ Status 500 "Failed to insert comment."
         Scotty.text "Failed to insert comment."
 
-  -- returns minified JS
-  get "/assets/js/:filename" $ do
-    filename <- param "filename"
-    env <- fromMaybe "development" <$> (liftIO $ lookupEnv "ENV")
-    setHeader "Content-Type" "text/javascript"
-    when (env == "production") setCacheControl
-    cachedBody filename $ (fromMaybe "") <$> (js $ B.unpack filename)
-
-  -- returns minified CSS
-  get "/assets/css/:filename" $ do
-    filename <- param "filename"
-    setHeader "Content-Type" "text/css"
-    env <- fromMaybe "development" <$> (liftIO $ lookupEnv "ENV")
-    when (env == "production") setCacheControl
-    cachedBody filename $ (fromMaybe "") <$> (css $ B.unpack filename)
-    
   get (regex "/(assets/.*)") $ do
+    production setCacheControl
     relPath <- param "1"
-    env <- fromMaybe "development" <$> (liftIO $ lookupEnv "ENV")
-    setHeader "Content-Type" $ TL.pack $ getMimeAtPath $ TL.unpack relPath
-    when (env == "production") $ setHeader "Cache-Control" "public, max-age=604800, s-max-age=604800, no-transform" -- one week
-    cachedBody (T.encodeUtf8 $ TL.toStrict relPath) $ BL.readFile $ TL.unpack relPath
+    let mimetype = getMimeAtPath relPath
+    let f = cachedBody (B.pack relPath)
+    let eact err = (Scotty.status . Status 500 . B.pack $ err) >> return ""
+    setHeader "Content-Type" $ TL.pack mimetype
+
+    exists <- liftIO $ doesFileExist relPath
+    if not exists
+      then Scotty.status . Status 404 . B.pack $ "File " ++ relPath ++ " does not exist."
+      else case mimetype of
+        "application/javascript" -> f $ (liftIO $ js relPath) >>= either eact return
+        "text/css" -> f $ (liftIO $ css relPath) >>= either eact return
+        _ -> f . liftIO . BL.readFile $ relPath
 
   notFound $ Scotty.text "Not Found."
            

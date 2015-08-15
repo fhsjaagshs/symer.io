@@ -5,23 +5,23 @@ module Blog.MIME
 )
 where
 
-import           Data.Char (toLower)
+import Data.Char (toLower)
 
 splitList :: (Eq a) => a -> [a] -> [[a]]
 splitList _ [] = []
 splitList sep lst = part : (splitList sep xs)
   where
-    part = takeWhile ((/=) sep) lst
+    part = takeWhile (/= sep) lst
     xs = drop (1 + (length part)) lst
 
 getMimeAtPath :: FilePath -> String
-getMimeAtPath fp = go $ mimes fp
+getMimeAtPath fp = f $ mimes fp
   where
     dropToExt = drop 1 . dropWhile (/= '.')
     extensions = splitList '.' . map toLower . dropToExt
     mimes = map mimeMap . extensions
-    go [] = "application/octet-stream"
-    go (mime:_) = mime
+    f [] = "application/octet-stream"
+    f (mime:_) = mime
   
 mimeMap :: String -> String
 mimeMap "123" = "application/vnd.lotus-1-2-3"

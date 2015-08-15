@@ -71,7 +71,6 @@ function comment_bang(commentButton, parentId) {
   var e = commentButton.parentNode;
   
   var params = {
-    post_id:postId,
     email:e.childNodes[0].value,
     display_name:e.childNodes[1].value,
     body:e.childNodes[2].value

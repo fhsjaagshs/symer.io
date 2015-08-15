@@ -72,7 +72,7 @@ nestComments comments
   | length leaves == length comments = comments
   | otherwise = nestComments $ processed ++ singletonLeaves
   where
-    hasNoChildren cmnt = isNothing $ find (isParent cmnt) (delete cmnt comments)
-    leaves = filter hasNoChildren comments
-    singletonLeaves = filter (isNothing . commentParentID) leaves
-    processed = map (\p -> foldl addChildIfChild p leaves) (comments \\ leaves)
+    isLeaf cmnt = isNothing $ find (isParent cmnt) (delete cmnt comments) -- O(n)
+    leaves = filter isLeaf comments -- O(n^2)
+    singletonLeaves = filter (isNothing . commentParentID) leaves -- O(l)
+    processed = map (\p -> foldl addChildIfChild p leaves) (comments \\ leaves) -- O((n-l)*l)
