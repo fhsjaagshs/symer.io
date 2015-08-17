@@ -48,6 +48,7 @@ import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
 import qualified Data.Text.Lazy as TL
 
+import           Data.Aeson (encode)
 import           Text.Blaze.Html5 as H hiding (style, param, map)
 import           Text.Blaze.Html5.Attributes as A
 import           Text.Blaze.Html.Renderer.Text as R
@@ -68,6 +69,10 @@ import           System.Directory
 -- Links in comments *** nofollow them
 -- search
 -- truncate post body when more than one post is visible.
+
+-- TODO (optimization)
+-- Compression for assets
+-- fix render-blocking CSS
 
 -- Miscellaneous Ideas:
 -- 1. 'Top 5' tags map in side bar?
@@ -258,18 +263,6 @@ app = do
           else redirect "/login?error_message=Invalid%20password%2E"
       _ -> redirect  "/login?error_message=Invalid%20User%2E"
 
-  -- deletes a BlogPost from the database
-  -- returns JSON
-  Scotty.delete "/posts/:id" $ do
-    authUser <- authenticate
-    res <- param "id" >>= (flip deletePost $ fromJust authUser)
-    case (res :: Maybe Integer) of
-      Nothing -> status $ Status 404 "blog post not found."
-      Just _  -> Scotty.text "ok"
-      
-  get "/posts/:id/comments.json" $ do
-    param "id" >>= getCommentsForPost >>= Scotty.json . nestComments
-
   -- creates/updates a BlogPost in the database
   post "/posts" $ do
     auth <- authenticate
@@ -288,6 +281,15 @@ app = do
           Nothing -> status $ Status 400 "Missing required parameters"
           Just pid -> addHeader "Location" $ TL.pack $ "/posts/" ++ (show pid)
 
+  -- deletes a BlogPost from the database
+  -- returns JSON
+  Scotty.delete "/posts/:id" $ do
+    authUser <- authenticate
+    res <- param "id" >>= (flip deletePost $ fromJust authUser)
+    case (res :: Maybe Integer) of
+      Nothing -> status $ Status 404 "blog post not found."
+      Just _  -> Scotty.text "ok"
+
   post "/posts/:id/comments" $ do
     postId <- param "id"
     email <- param "email"
@@ -302,7 +304,13 @@ app = do
       Nothing -> do
         Scotty.status $ Status 500 "Failed to insert comment."
         Scotty.text "Failed to insert comment."
-
+        
+  get "/posts/:id/comments.json" $ do
+    path <- rawPathInfo <$> request
+    setHeader "Content-Type" "application/json"
+    let act = param "id" >>= getCommentsForPost >>= return . encode . nestComments
+    cachedBody path act
+    
   get (regex "/(assets/.*)") $ do
     production setCacheControl
     relPath <- param "1"
