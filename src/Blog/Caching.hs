@@ -19,12 +19,12 @@ import Web.Scotty.Trans as Scotty (ScottyError(..), ActionT, raw, setHeader, hea
 import Network.HTTP.Types.Status (Status(..))
 import qualified Database.Redis as Redis (runRedis, get, set, expire)
 
+import qualified Data.ByteString.Base16 as B16
 import qualified Data.ByteString.Lazy.Char8 as BL
 import qualified Data.ByteString.Char8 as B
 import qualified Data.Text.Lazy.Encoding as TL
 
-import Data.Serialize
-import qualified Data.Digest.Pure.MD5 as MD5
+import Crypto.Hash.MD5 as MD5 (hashlazy)
 
 setCacheControl :: (Monad m, ScottyError e) => ActionT e m ()
 setCacheControl = Scotty.setHeader "Cache-Control" "public, max-age=3600, s-max-age=3600, no-cache, must-revalidate, proxy-revalidate, no-transform" -- 1 hour
@@ -48,7 +48,9 @@ rawBodyCached :: (Monad m, ScottyError e) => BL.ByteString -> ActionT e m ()
 rawBodyCached str = do
   Scotty.setHeader "Vary" "Accept-Encoding"
   Scotty.header "If-None-Match" >>= f . maybe False (== hashSum)
+  Scotty.raw str
   where
-    hashSum = TL.decodeUtf8 . encodeLazy . MD5.md5 $ str
-    f False = Scotty.status $ Status 304 ""
-    f True = Scotty.setHeader "ETag" hashSum >> Scotty.raw str
+    md5sum = BL.fromStrict . B16.encode . MD5.hashlazy
+    hashSum = TL.decodeUtf8 . md5sum $ str
+    f True = Scotty.status $ Status 304 ""
+    f False = Scotty.setHeader "ETag" hashSum >> Scotty.raw str

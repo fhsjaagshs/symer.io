@@ -37,7 +37,8 @@ executable blog
                      hjsmin,
                      css-text,
                      bcrypt,
-                     pureMD5,
+                     cryptohash,
+                     base16-bytestring,
                      attoparsec,
                      data-default,
                      optparse-applicative,
@@ -45,5 +46,5 @@ executable blog
                      unix,
                      stm,
                      directory,
-                     mtl,
-                     cereal
+                     mtl
+                     
