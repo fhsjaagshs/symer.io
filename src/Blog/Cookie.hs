@@ -20,8 +20,6 @@ import           Data.Time.Format
 import           Data.Time.Clock (UTCTime)
 import           Data.Default
 
-import Debug.Trace
-
 -------------------------------------------------------------------------------
 -- | Types
   
@@ -101,9 +99,7 @@ cookieParser = do
     char ';'
     skipSpace
     (==) "httponly" . map toLower <$> many1 letter_iso8859_15
-    
-  traceShowId <$> takeByteString
-  
+
   return $ Cookie pairs path domain expires secure httponly
   where
     takeUntil c = A.takeWhile (not . (==) c)
