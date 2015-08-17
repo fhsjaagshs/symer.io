@@ -23,7 +23,7 @@ import           Database.PostgreSQL.Simple.FromField as PG.FromField
 import           Database.PostgreSQL.Simple.ToField as PG.ToField
 import           Blaze.ByteString.Builder (fromByteString)
 import           Database.PostgreSQL.Simple.Internal
-  
+
 instance FromField [Text] where
   fromField f@(Field _ _ (Oid 1009)) (Just fdata) = case parse1DArray $ T.decodeUtf8 fdata of
     Right ary -> return ary
@@ -55,7 +55,8 @@ arrayParser' accum = do
     Just '}' -> return accum
     Nothing -> return accum
     _ -> do
-      v <- takeTill skipable
+      v <- A.takeWhile takeable
       arrayParser' (v:accum)
   where
-    skipable v = (v == ',') || (v == '\"')
+    skipable v = v == ',' || v == '\"'
+    takeable v = v /= ',' && v /= '\"' && v /= '}'

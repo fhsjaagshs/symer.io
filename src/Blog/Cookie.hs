@@ -14,8 +14,6 @@ import           Data.Char (toLower)
 
 import           Data.Attoparsec.ByteString.Char8 as A
 
-import           Control.Applicative
-
 import           Data.Time.Format
 import           Data.Time.Clock (UTCTime)
 import           Data.Default
