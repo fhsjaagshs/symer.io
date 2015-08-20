@@ -306,6 +306,7 @@ app = do
         Scotty.text "Failed to insert comment."
         
   get "/posts/:id/comments.json" $ do
+    production setCacheControl
     path <- rawPathInfo <$> request
     setHeader "Content-Type" "application/json"
     let act = param "id" >>= getCommentsForPost >>= return . encode . nestComments
