@@ -142,7 +142,7 @@ startRedirect = do
 --------------------------------------------------------------------------------
 app :: ScottyT TL.Text WebM ()
 app = do
-  middleware $ gzip $ def { gzipFiles = GzipCompress }
+  middleware $ gzip def
   
   get "/" $ do
     maybeUser <- getUser
