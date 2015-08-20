@@ -35,6 +35,7 @@ import           Network.HTTP.Types.Status
 import           Network.Wai (responseLBS, requestHeaderHost, rawPathInfo, rawQueryString)
 import           Network.Wai.Handler.Warp (defaultSettings, setPort, setBeforeMainLoop, runSettings)
 import           Network.Wai.Handler.WarpTLS (certFile,defaultTlsSettings,keyFile,runTLS)
+import           Network.Wai.Middleware.Gzip
 
 import qualified Database.Redis as Redis
 import qualified Database.PostgreSQL.Simple as PG
@@ -141,6 +142,8 @@ startRedirect = do
 --------------------------------------------------------------------------------
 app :: ScottyT TL.Text WebM ()
 app = do
+  middleware $ gzip $ def { gzipFiles = GzipCompress }
+  
   get "/" $ do
     maybeUser <- getUser
     mPageNum <- fmap (read . TL.unpack) . lookup "page" <$> params
