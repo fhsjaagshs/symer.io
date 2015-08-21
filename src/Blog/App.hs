@@ -188,13 +188,10 @@ app = do
 
         Scotty.html . R.renderHtml . docTypeHtml $ do
           renderHead (appendedBlogTitle $ TL.fromStrict ttl) $ do
-            renderStylesheet "/assets/css/post.css"
             renderMeta "keywords" . TL.fromStrict . T.intercalate ", " . flip (++) keywords $ tags
             renderMeta "description" . TL.take 150 . TL.fromStrict $ bdy
           renderBody (Just blogTitle) (Just blogSubtitle) maybeUser $ do
             render pst maybeUser
-            hr ! class_ "separator"
-            div ! A.id "comments" $ ""
             script ! src "/assets/js/common.js" $ ""
             script ! src "/assets/js/post.js" $ ""
             

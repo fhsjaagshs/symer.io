@@ -17,7 +17,7 @@ var CommentTextarea = function CommentTextarea(aPlaceholder) {
 
 var Editor = function Editor(hidden, id) {
   this.nameField = new CommentField('Name');
-  this.emailField = new CommentField('Email');
+  this.emailField = new CommentField('Email (not displayed)');
   this.textarea = new CommentTextarea('Speak your mind...');
   
   this.id = id;
@@ -34,7 +34,7 @@ var Editor = function Editor(hidden, id) {
       body: e.commentBody
     };
     
-    if (e.id) {
+    if (e.id != -1) {
       params.parent_id = e.id;
       e.hide();
     }
@@ -162,7 +162,7 @@ Comment.prototype = {
 }
 
 Comment.commentMap = {};
-Comment.div = document.getElementById('comments');
+Comment.div = document.getElementById('content').appendChild(document.createElement('div'));
 
 Comment.fromJSON = function(json) {
   return new Comment(json.email, json.display_name, json.body, json.id);
@@ -188,13 +188,19 @@ function renderComments(comments, pid) {
 }
 
 // Globals
-var postId = +document.getElementsByClassName('post-title')[0].id;
-var rootEditor = Comment.div.appendChild((new Editor(false, -1)).el).__ref;
+var postId = +document.getElementsByClassName('post-title')[0].id,
+    rootEditor = new Editor(false, -1);
 
 window.onload = function() {
   sendHTTP('GET', '/posts/' + postId + '/comments.json', {}, function(http) {
+    Comment.div.appendChild(rootEditor.el);
     if (http.status == 200) {
       renderComments(JSON.parse(http.responseText), -1);
     }
   });
+  var css = document.createElement('link');
+  css.rel = 'stylesheet';
+  css.type = 'text/css';
+  css.href = '/assets/css/comments.css';
+  document.body.appendChild(css);
 }

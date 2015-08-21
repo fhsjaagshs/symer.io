@@ -116,6 +116,10 @@ code {
   padding-right: 5px;
 }
 
+pre code {
+  width: 100%;
+}
+
 .post-edit-button {
   display: block;
 }

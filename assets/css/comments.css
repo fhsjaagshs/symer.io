@@ -21,7 +21,7 @@
   margin-top: 0px;
 }
 
-.editor {
+div.editor {
   text-align: left;
 }
 
@@ -39,7 +39,7 @@ div.gobutton:active {
 }
 
 textarea.comment-textarea {
-  width: 540px;
+  width: calc(100% - 140px );
   height: 200px;
   margin: 10px 10px 10px 0px;
   padding: 8px 8px 8px 10px;
@@ -55,7 +55,7 @@ textarea.comment-textarea {
 }
 
 input.comment-field {
-  width: 270px;
+  width: calc(50% - 72.5px);
   height: 40px;
   margin: 0px 20px 10px 0px;
   border: none;
@@ -63,7 +63,7 @@ input.comment-field {
   background-color: rgba(0,0,0,0);
   outline: none;
   font-family: Arial, sans-serif;
-  font-size: 22pt;
+  font-size: 16pt;
   color: #4A4A4A;
 }
 
