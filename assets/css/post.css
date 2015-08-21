@@ -1,40 +1,28 @@
-#spinner-container {
-  text-align:middle;
-  height:200px;
-  position: relative;
-}
-
 .comment {
   text-align: left;
-  margin: 10px;
   padding: 10px;
   background-color: #EAEAEA;
-  border-radius: 10px;
+  position: relative;
+  border-left: 1px solid gray;
 }
 
-.editor {
-  text-align: left;
-  margin: 10px;
-}
-
-.comment-avatar {
-  width: 60px;
-  height: 60px;
-  margin-top: 0px;
-  border-radius: 30px;
-  border: none;
-  height: 100%;
-  vertical-align: top;
+/* partial bottom border */
+.comment:after {
+  content:''; 
+  width: 50px; 
+  height: 1px;
+  background: gray; 
+  position: absolute;
+  bottom: 0px;
+  left: 0px;
 }
 
 .comment-name {
   margin-top: 0px;
 }
 
-.comment > div {
-  margin-left: 10px;
-  height: 100%;
-  vertical-align: middle;
+.editor {
+  text-align: left;
 }
 
 div.gobutton {
@@ -56,13 +44,12 @@ textarea.comment-textarea {
   margin: 10px 10px 10px 0px;
   padding: 8px 8px 8px 10px;
   border: none;
-  border-left: 4px solid #E7950E;
+  border-left: 2px solid #E7950E;
   resize: none;
   outline: none;
-  font-size: 23pt;
+  font-size: 15pt;
   background-color: #E6E6E6;
   font-family: Helvetica, sans-serif;
-  display: inline;
   display: inline-block;
   vertical-align: middle;
 }
@@ -76,7 +63,7 @@ input.comment-field {
   background-color: rgba(0,0,0,0);
   outline: none;
   font-family: Arial, sans-serif;
-  font-size: 25pt;
+  font-size: 22pt;
   color: #4A4A4A;
 }
 

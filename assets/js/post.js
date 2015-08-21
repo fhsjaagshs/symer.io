@@ -18,7 +18,7 @@ var CommentTextarea = function CommentTextarea(aPlaceholder) {
 var Editor = function Editor(hidden, id) {
   this.nameField = new CommentField('Name');
   this.emailField = new CommentField('Email');
-  this.textarea = new CommentTextarea('Start writing...');
+  this.textarea = new CommentTextarea('Speak your mind...');
   
   this.id = id;
   
@@ -48,9 +48,10 @@ var Editor = function Editor(hidden, id) {
         params.id = +http.responseText;
         var c = Comment.fromJSON(params);
         if (e.id == -1) {
-          comment(c);
+          Comment.addComment(c);
         } else {
-          reply(c, e.id); // FIXME: Adds to last comment
+          var parentComment = Comment.commentMap[e.id];
+          if (parentComment) parentComment.appendChild(c);
         }
       } else {
         alert('Failed to post comment.');
@@ -115,7 +116,6 @@ var Comment = function Comment(email,dname,body,id) {
 
   this.el = document.createElement('div');
   this.el.className = 'comment';
-  this.el.id = 'comment' + id;
   this.el.__ref = this;
   this.editor = editor;
   
@@ -161,35 +161,35 @@ Comment.prototype = {
   }
 }
 
+Comment.commentMap = {};
+Comment.div = document.getElementById('comments');
+
 Comment.fromJSON = function(json) {
   return new Comment(json.email, json.display_name, json.body, json.id);
 }
 
-function comment(c) {
-  commentsDiv.appendChild(c.el);
-}
-
-function reply(c, parentId) {
-  if (parentId != -1) {
-    var parentElem = document.getElementById("comment" + parentId);
-    if (parentElem) parentElem.__ref.appendChild(c);
-  }
+Comment.addComment = function(c) {
+  this.div.appendChild(c.el);
+  this.commentMap[c.id] = c;
 }
 
 function renderComments(comments, pid) {
   if (comments.length > 0) {
     var c = comments.shift();
-    if (pid == -1) comment(Comment.fromJSON(c));
-    else           reply(Comment.fromJSON(c), pid);
+    if (pid == -1) {
+      Comment.addComment(Comment.fromJSON(c));
+    } else {
+      var parentComment = Comment.commentMap[pid];
+      if (parentComment) parentComment.appendChild(Comment.fromJSON(c));
+    }
     renderComments(c.children, c.id);
     renderComments(comments, pid);
   }
 }
 
 // Globals
-var commentsDiv = document.getElementById('comments');
 var postId = +document.getElementsByClassName('post-title')[0].id;
-var rootEditor = commentsDiv.appendChild((new Editor(false, -1)).el).__ref;
+var rootEditor = Comment.div.appendChild((new Editor(false, -1)).el).__ref;
 
 window.onload = function() {
   sendHTTP('GET', '/posts/' + postId + '/comments.json', {}, function(http) {
