@@ -194,10 +194,7 @@ app = do
           renderBody (Just blogTitle) (Just blogSubtitle) maybeUser $ do
             render pst maybeUser
             hr ! class_ "separator"
-            div ! A.id "comments" $ do
-              div ! A.id "spinner-container" $ ""
-            script ! src "/assets/js/spin.js" $ ""
-            script ! src "/assets/js/md5.js" $ ""
+            div ! A.id "comments" $ ""
             script ! src "/assets/js/common.js" $ ""
             script ! src "/assets/js/post.js" $ ""
             
@@ -330,6 +327,8 @@ app = do
         "application/javascript" -> f $ (liftIO $ js relPath) >>= either eact return
         "text/css" -> f $ (liftIO $ css relPath) >>= either eact return
         _ -> f . liftIO . BL.readFile $ relPath
+
+  get (regex "/favicon.*") $ redirect "/assets/images/philly_skyline.svg"
 
   notFound $ Scotty.text "Not Found."
            
