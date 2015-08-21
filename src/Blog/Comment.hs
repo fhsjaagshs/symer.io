@@ -14,6 +14,9 @@ import           Data.Time.Clock
 import           Data.Text (Text)
 import           Data.Aeson as Aeson
 
+import           Cheapskate
+import           Cheapskate.Html
+import           Text.Blaze.Html.Renderer.Text (renderHtml)
 import           Database.PostgreSQL.Simple.FromRow
 
 data Comment = Comment {
@@ -38,7 +41,7 @@ instance ToJSON Comment where
                   "email" .= email,
                   "display_name" .= dname,
                   "timestamp" .= ts,
-                  "body" .= body,
+                  "body" .= (renderHtml $ renderDoc $ markdown def body),
                   "children" .= map toJSON children]
                   
 instance ToJSON [Comment] where

@@ -32,6 +32,7 @@ executable blog
                      hedis,
                      cheapskate,
                      blaze-builder,
+                     blaze-markup,
                      vector,
                      aeson,
                      random,
