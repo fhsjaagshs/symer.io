@@ -21,6 +21,7 @@ import qualified Data.Vector as Vector
 import           Data.List
 import           Data.Time.Format
 import           Data.Time.Clock
+import           Data.Maybe
 
 import           Blog.Database.PGExtensions()
 import           Database.PostgreSQL.Simple.ToField as PG.ToField
@@ -74,58 +75,40 @@ instance ToJSON Post where
       "author" .= toJSON author
     ]
     where
-      timestampToValue :: UTCTime -> Value
       timestampToValue = Aeson.String . T.decodeUtf8 . toByteString . utcTimeToBuilder
-      tagsToValue :: [Text] -> Value
       tagsToValue = Aeson.Array . Vector.fromList . map Aeson.String
     
 --------------------------------------------------------------------------------
 instance Composable Post where
-  -- Unauthenticated
-  render (Post pid title body ts tags _ author) Nothing = do
-    a ! href (stringValue $ "/posts/" ++ show pid) $ do
-      h1 ! class_ "post-title" ! A.id (stringValue $ show pid) $ toHtml title
-    h4 ! class_ "post-subtitle" $ toHtml $ formatSubtitle ts $ userDisplayName author
-    mapM_ taglink tags
-    div ! class_ "post-content" $ toHtml $ markdown def body
-  -- Authenticated, draft
-  render (Post pid title body ts tags True author) (Just user) = do
-    a ! href (stringValue $ "/posts/" ++ show pid) $ do
-      h1 ! class_ "post-title post-draft" ! A.id (stringValue $ show pid) $ toHtml title
-    h4 ! class_ "post-subtitle post-draft" $ toHtml $ formatSubtitle ts $ userDisplayName author
-    mapM_ taglink tags
-    when (author == user) $ do
-      a ! class_ "post-edit-button post-draft" ! href (stringValue $ "/posts/" ++ show pid ++ "/edit") ! rel "nofollow" $ "edit"
-    div ! class_ "post-content post-draft" $ toHtml $ markdown def body
-  -- Authenticated, published
-  render (Post pid title body ts tags False author) (Just user) = do
-    a ! href (stringValue $ "/posts/" ++ show pid) $ do
-      h1 ! class_ "post-title" ! A.id (stringValue $ show pid) $ toHtml title
-    h4 ! class_ "post-subtitle" $ toHtml $ formatSubtitle ts $ userDisplayName author
-    mapM_ taglink tags
-    when (author == user) $ do
-      a ! class_ "post-edit-button" ! href (stringValue $ "/posts/" ++ show pid ++ "/edit") ! rel "nofollow" $ "edit"
-    div ! class_ "post-content" $ toHtml $ markdown def body
-    
-taglink :: Text -> Html
-taglink t = a ! class_ "taglink" ! href (textValue $ mconcat ["/posts/by/tag/", t]) $ do
-  h4 ! class_ "post-subtitle" $ toHtml t
-
-formatDate :: FormatTime t => t -> Text
-formatDate = T.pack . formatTime defaultTimeLocale "%-m • %-e • %-y | %l:%M %p %Z" 
-
-formatSubtitle :: FormatTime t => t -> Text -> Text
-formatSubtitle t authorName = mconcat [formatDate t, " | ", authorName]
-
-truncated :: Int -> Html -> Html
-truncated len html = case truncateHtml len html of
-  Just trunc -> trunc
-  Nothing -> html
+  render = renderPost False
   
 instance Composable [Post] where
   render [] _ = return ()
-  render [x] user = truncated 500 $ render x user
+  render [x] user = renderPost True x user
   render (x:xs) user = do
-    truncated 500 $ render x user
+    renderPost True x user
     hr ! class_ "separator"
     render xs user
+    
+renderPost :: Bool -> Post -> Maybe User -> Html
+renderPost truncateBody (Post pid title body ts tags _ author) mAuthUser = do
+  a ! href (stringValue $ "/posts/" ++ show pid) $ do
+    h1 ! class_ "post-title" ! A.id (stringValue $ show pid) $ toHtml title
+  h4 ! class_ "post-subtitle" $ toHtml $ formatSubtitle ts $ userDisplayName author
+  mapM_ taglink tags
+  when (isJust mAuthUser) $ when (author == (fromJust mAuthUser)) $ do
+    a ! class_ "post-edit-button" ! href editURL ! rel "nofollow" $ "edit"
+  div ! class_ "post-content" $ renderBody truncateBody
+  where
+    editURL = stringValue $ mconcat ["/posts/", show pid, "/edit"]
+    renderBody True = truncated 500 $ toHtml $ markdown def body
+    renderBody False = toHtml $ markdown def body
+    formatSubtitle t authorName = mconcat [formatDate t, " | ", authorName]
+    formatDate = T.pack . formatTime defaultTimeLocale "%-m • %-e • %-y | %l:%M %p %Z"
+    taglink t = a ! class_ "taglink" ! href (textValue $ mconcat ["/posts/by/tag/", t]) $ do
+      h4 ! class_ "post-subtitle" $ toHtml t
+        
+truncated :: Int -> Html -> Html
+truncated len h = case truncateHtml len h of
+  Just trunc -> trunc
+  Nothing -> h
