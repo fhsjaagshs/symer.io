@@ -3,16 +3,19 @@
 module Blog.Post
 (
   Post(..),
-  postDescription
+  postDescription,
+  renderPost,
+  renderPosts
 )
 where
-  
-import Blog.Composable
+
 import Blog.User
+import Blog.MarkdownUtil
 
 import Control.Monad
 
 import           Cheapskate
+import           Cheapskate.Html
 import           Data.Aeson as Aeson
 
 import           Data.Text (Text)
@@ -23,7 +26,6 @@ import           Data.List
 import           Data.Time.Format
 import           Data.Time.Clock
 import           Data.Maybe
-import qualified Data.Foldable as F
 
 import           Blog.Database.PGExtensions()
 import           Database.PostgreSQL.Simple.ToField as PG.ToField
@@ -33,7 +35,6 @@ import           Database.PostgreSQL.Simple.Time as PG.Time
 
 import           Text.Blaze.Html5 as H hiding (style,param,map,option,body,title)
 import           Text.Blaze.Html5.Attributes as A hiding (title)
-import           Text.Blaze.Truncate
 import           Blaze.ByteString.Builder (toByteString,fromByteString)
 import           Prelude as P hiding (div)
 
@@ -81,39 +82,18 @@ instance ToJSON Post where
       tagsToValue = Aeson.Array . Vector.fromList . map Aeson.String
     
 --------------------------------------------------------------------------------
-instance Composable Post where
-  render = renderPost False
-  
-instance Composable [Post] where
-  render [] _ = return ()
-  render [x] user = renderPost True x user
-  render (x:xs) user = do
-    renderPost True x user
-    hr ! class_ "separator"
-    render xs user
 
--- TODO: Write an attoparsec parser that removes tags 
--- it should keep text inside: p, pre, code, and div
 postDescription :: Post -> Text
-postDescription = T.take 150 . stripMarkdown . postBody
+postDescription = T.take 150 . stripMarkdown . markdown def . postBody
 
-stripMarkdown :: Text -> Text
-stripMarkdown md = F.fold $ fmap blockToText blocks
-  where
-    (Doc _ blocks) = markdown def md
-    inlinesToText = F.fold . fmap inlineToText
-    blockToText (Para inlines) = inlinesToText inlines
-    blockToText _ = ""
-    inlineToText (Str txt) = txt
-    inlineToText (Code txt) = txt
-    inlineToText (Emph inlines) = inlinesToText inlines
-    inlineToText (Strong inlines) = inlineToText $ Emph inlines
-    inlineToText (Link inlines _ _) = inlineToText $ Emph inlines
-    inlineToText SoftBreak = inlineToText LineBreak
-    inlineToText LineBreak = " "
-    inlineToText Space = " "
-    inlineToText _ = ""
-
+renderPosts :: [Post] -> Maybe User -> Html
+renderPosts [] _ = return ()
+renderPosts [x] user = renderPost True x user
+renderPosts (x:xs) user = do
+  renderPost True x user
+  hr ! class_ "separator"
+  renderPosts xs user
+  
 renderPost :: Bool -> Post -> Maybe User -> Html
 renderPost truncateBody (Post pid title body ts tags _ author) mAuthUser = do
   a ! href (stringValue $ "/posts/" ++ show pid) $ do
@@ -125,14 +105,11 @@ renderPost truncateBody (Post pid title body ts tags _ author) mAuthUser = do
   div ! class_ "post-content" $ renderBody truncateBody
   where
     editURL = stringValue $ mconcat ["/posts/", show pid, "/edit"]
-    renderBody True = truncated 500 $ toHtml $ markdown def body
+    renderBody True = do
+      renderDoc . truncateMarkdown 500 . markdown def $ body
+      a ! class_ "read-more" ! href (stringValue $ "/posts/" ++ show pid) $ "Read More..."
     renderBody False = toHtml $ markdown def body
     formatSubtitle t authorName = mconcat [formatDate t, " | ", authorName]
     formatDate = T.pack . formatTime defaultTimeLocale "%-m • %-e • %-y | %l:%M %p %Z"
     taglink t = a ! class_ "taglink" ! href (textValue $ mconcat ["/posts/by/tag/", t]) $ do
       h4 ! class_ "post-subtitle" $ toHtml t
-        
-truncated :: Int -> Html -> Html
-truncated len h = case truncateHtml len h of
-  Just trunc -> trunc
-  Nothing -> h

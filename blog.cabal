@@ -15,6 +15,7 @@ executable blog
   hs-source-dirs:    src
   ghc-options:       -threaded -Wall -fwarn-tabs -O2
   build-depends:     base,
+                     containers,
                      http-types,
                      warp,
                      warp-tls,
@@ -25,7 +26,6 @@ executable blog
                      text,
                      bytestring,
                      blaze-html,
-                     blaze-html-truncate,
                      transformers,
                      time,
                      postgresql-simple,

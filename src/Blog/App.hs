@@ -17,7 +17,6 @@ import Blog.Database.Util
 import Blog.Caching
 import Blog.HTMLUtil
 import Blog.Assets
-import Blog.Composable
 import Blog.Comment
 import Blog.User
 import Blog.Post as Post
@@ -25,55 +24,49 @@ import Blog.Auth
 import Blog.MIME
 import Blog.Env
 
-import           Control.Monad.Reader
-import           Control.Concurrent.STM
-import           Control.Applicative
-import           Data.Maybe
-
-import           Web.Scotty.Trans as Scotty
-import           Network.HTTP.Types.Status
-import           Network.Wai (responseLBS, requestHeaderHost, rawPathInfo, rawQueryString)
-import           Network.Wai.Handler.Warp (defaultSettings, setPort, setBeforeMainLoop, runSettings)
-import           Network.Wai.Handler.WarpTLS (certFile,defaultTlsSettings,keyFile,runTLS)
-import           Network.Wai.Middleware.Gzip
+import Control.Monad.Reader
+import Control.Concurrent.STM
+import Control.Applicative
+import Data.Maybe
+       
+import Web.Scotty.Trans as Scotty
+import Network.HTTP.Types.Status
+import Network.Wai (responseLBS,requestHeaderHost,rawPathInfo,rawQueryString)
+import Network.Wai.Handler.Warp (defaultSettings,setPort,setBeforeMainLoop,runSettings)
+import Network.Wai.Handler.WarpTLS (certFile,defaultTlsSettings,keyFile,runTLS)
+import Network.Wai.Middleware.Gzip
 
 import qualified Database.Redis as Redis
 import qualified Database.PostgreSQL.Simple as PG
 
 import qualified Crypto.BCrypt as BCrypt
 
+import Data.List as L
 import qualified Data.ByteString.Char8 as B
 import qualified Data.ByteString.Lazy.Char8 as BL
-import Data.List as L
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
 import qualified Data.Text.Lazy as TL
+import Data.String
 
-import           Data.Aeson (encode)
-import           Text.Blaze.Html5 as H hiding (style, param, map)
-import           Text.Blaze.Html5.Attributes as A
-import           Text.Blaze.Html.Renderer.Text as R
-import           Prelude as P hiding (head, div)
-
-import           System.Exit
-import           System.Posix
-import           System.Environment
-import           System.Directory
+import Data.Aeson (encode)
+import Text.Blaze.Html5 as H hiding (style, param, map)
+import Text.Blaze.Html5.Attributes as A
+import Text.Blaze.Html.Renderer.Text as R
+import Prelude as P hiding (head, div)
+       
+import System.Exit
+import System.Posix
+import System.Environment
+import System.Directory
 
 -- TODO (future):
--- redo comments' appearance
 -- Comment-optional posts
 -- Page numbers at bottom (would require extra db hit)
 -- Site footer (copyright etc)
 -- Save MD5 sum in redis
--- Make sure comments are rendered safely
 -- Links in comments *** nofollow them
 -- search
--- truncate post body when more than one post is visible.
-
--- TODO (optimization)
--- Compression for assets
--- fix render-blocking CSS
 
 -- Miscellaneous Ideas:
 -- 1. 'Top 5' tags map in side bar?
@@ -137,7 +130,9 @@ startRedirect = do
       respond $ responseLBS status301 (mkHeaders req) ""
   where
     warpSettings = setBeforeMainLoop (resignPrivileges "daemon") $ setPort 80 defaultSettings
-    mkHeaders r = [("Location", mconcat ["https://", fromJust $ requestHeaderHost r, rawPathInfo r, rawQueryString r])]
+    mkHeaders r = [("Location", url r)]
+    host = fromJust . requestHeaderHost
+    url r = mconcat ["https://", host r, rawPathInfo r, rawQueryString r]
 
 --------------------------------------------------------------------------------
 app :: ScottyT TL.Text WebM ()
@@ -153,7 +148,7 @@ app = do
         renderMeta "description" description
         renderMeta "keywords" (TL.fromStrict $ T.intercalate ", " keywords)
       renderBody (Just blogTitle) (Just blogSubtitle) maybeUser $ do
-        render (take postsPerPage posts) maybeUser
+        renderPosts (take postsPerPage posts) maybeUser
         renderPageControls mPageNum (length posts > postsPerPage)
         
   get "/drafts" $ do
@@ -163,7 +158,7 @@ app = do
     Scotty.html . R.renderHtml . docTypeHtml $ do
       renderHiddenHead' $ appendedBlogTitle "Drafts"
       renderBody (Just "Drafts") Nothing maybeUser $ do
-        render (take postsPerPage posts) maybeUser
+        renderPosts (take postsPerPage posts) maybeUser
         renderPageControls mPageNum (length posts > postsPerPage)
         
   -- create a post
@@ -191,7 +186,7 @@ app = do
             renderMeta "keywords" . TL.fromStrict . T.intercalate ", " . flip (++) keywords $ tags
             renderMeta "description" $ TL.fromStrict $ postDescription pst
           renderBody (Just blogTitle) (Just blogSubtitle) maybeUser $ do
-            render pst maybeUser
+            renderPost False pst maybeUser
             renderScript "/assets/js/common.js"
             renderScript "/assets/js/post.js"
             
@@ -205,7 +200,7 @@ app = do
         renderMeta "description" description
         renderMeta "keywords" . TL.fromStrict . T.intercalate ", " $ keywords
       renderBody (Just $ mconcat ["Posts tagged '", TL.fromStrict tag, "'"]) Nothing maybeUser $ do
-        render (take postsPerPage posts) maybeUser
+        renderPosts (take postsPerPage posts) maybeUser
         renderPageControls mPageNum (length posts > postsPerPage)
 
   -- edit a post
@@ -273,7 +268,7 @@ app = do
                               (TL.toStrict <$> lookup "body" ps)
                               (map TL.toStrict . TL.splitOn "," <$> lookup "tags" ps)
                               (map TL.toStrict . TL.splitOn "," <$> lookup "deleted_tags" ps)
-                              (elem (fromMaybe "True" . lookup "draft" $ ps) ["t", "true", "True", "y", "yes"])
+                              (maybe True truthy (lookup "draft" ps))
         case mPostID of
           Nothing -> status $ Status 400 "Missing required parameters"
           Just pid -> addHeader "Location" $ TL.pack $ "/posts/" ++ (show pid)
@@ -328,9 +323,28 @@ app = do
   get (regex "/favicon.*") $ redirect "/assets/images/philly_skyline.svg"
 
   notFound $ Scotty.text "Not Found."
-           
+
+truthy :: (Eq a, IsString a) => a -> Bool
+truthy "t" = True
+truthy "y" = True
+truthy "true" = True
+truthy "True" = True
+truthy _ = False
+
 keywords :: [T.Text]
-keywords = ["computer science", "functional programming", "fp", "politics", "haskell", "ruby", "web development", "art", "blogs", "computers", "startups", "tutorial", "rails"]
+keywords = ["computer science",
+            "functional programming",
+            "fp",
+            "politics",
+            "haskell",
+            "ruby",
+            "web development",
+            "art",
+            "blogs",
+            "computers",
+            "startups",
+            "tutorial",
+            "rails"]
 
 description :: TL.Text
 description = "Rants and raves about functional programming, politics, and everything in between."
