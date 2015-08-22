@@ -109,15 +109,20 @@ a < img {
 }
 
 code {
-  border: 1px solid #C9C6C6;
-  background-color: #F2EDED;
   font-family: monospace;
   padding-left: 5px;
   padding-right: 5px;
 }
 
-pre code {
-  width: 100%;
+:not(pre) > code {
+  border: 1px solid #C9C6C6;
+  background: #F2EDED;
+}
+
+pre {
+  overflow-x: auto;
+  border: 1px solid #C9C6C6;
+  background: #F2EDED;
 }
 
 .post-edit-button {
@@ -153,7 +158,6 @@ a.blogbutton {
   background-color: #9A9A9A;
   
   margin: 6px;
-/*  margin: 10px;*/
   color: #F9F9F9;
   text-decoration: none;
   -webkit-touch-callout: none;

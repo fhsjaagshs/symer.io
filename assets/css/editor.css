@@ -12,7 +12,7 @@
   outline:none;
 }
 
-#preview { 
+#preview {
   width: 100%;
   text-align: left;
 }
@@ -42,9 +42,19 @@
   background-color: #B15D42;
 }
 
-#save-button.blogbutton:hover { color: #fff;background-color: #8A8A8A; }
-#preview-button.blogbutton:hover { color: #fff;background-color: #8A8A8A; }
-#delete-button.blogbutton:hover { color: #fff;background-color: #8A8A8A; }
+#save-button.blogbutton:hover {
+  color: #fff;
+  background-color: #8A8A8A;
+}
+
+#preview-button.blogbutton:hover {
+  color: #fff;
+  background-color: #8A8A8A;
+}
+#delete-button.blogbutton:hover {
+  color: #fff;
+  background-color: #8A8A8A;
+}
 
 #checkbox-container {
   display: block;

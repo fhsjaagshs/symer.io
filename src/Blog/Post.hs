@@ -30,6 +30,7 @@ import           Database.PostgreSQL.Simple.Time as PG.Time
 
 import           Text.Blaze.Html5 as H hiding (style,param,map,option,body,title)
 import           Text.Blaze.Html5.Attributes as A hiding (title)
+import           Text.Blaze.Truncate
 import           Blaze.ByteString.Builder (toByteString,fromByteString)
 import           Prelude as P hiding (div)
 
@@ -116,11 +117,15 @@ formatDate = T.pack . formatTime defaultTimeLocale "%-m • %-e • %-y | %l:%M 
 formatSubtitle :: FormatTime t => t -> Text -> Text
 formatSubtitle t authorName = mconcat [formatDate t, " | ", authorName]
 
+truncated :: Int -> Html -> Html
+truncated len html = case truncateHtml len html of
+  Just trunc -> trunc
+  Nothing -> html
+  
 instance Composable [Post] where
   render [] _ = return ()
-  render [x] user = render x user
+  render [x] user = truncated 500 $ render x user
   render (x:xs) user = do
-    render x user
-    unless (null xs) $ do
-      hr ! class_ "separator"
-      render xs user
+    truncated 500 $ render x user
+    hr ! class_ "separator"
+    render xs user

@@ -25,6 +25,7 @@ executable blog
                      text,
                      bytestring,
                      blaze-html,
+                     blaze-html-truncate,
                      transformers,
                      time,
                      postgresql-simple,
