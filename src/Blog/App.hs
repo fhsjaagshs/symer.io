@@ -181,7 +181,7 @@ app = do
     mpost <- param "id" >>= getPost
     case mpost of
       Nothing -> redirect "/notfound"
-      Just pst@(Post _ ttl bdy _ tags draft author) -> do
+      Just pst@(Post _ ttl _ _ tags draft author) -> do
         maybeUser <- getUser
         
         when (draft && (maybe True ((/=) author) maybeUser)) (redirect "/notfound")
@@ -189,11 +189,11 @@ app = do
         Scotty.html . R.renderHtml . docTypeHtml $ do
           renderHead (appendedBlogTitle $ TL.fromStrict ttl) $ do
             renderMeta "keywords" . TL.fromStrict . T.intercalate ", " . flip (++) keywords $ tags
-            renderMeta "description" . TL.take 150 . TL.fromStrict $ bdy
+            renderMeta "description" $ TL.fromStrict $ postDescription pst
           renderBody (Just blogTitle) (Just blogSubtitle) maybeUser $ do
             render pst maybeUser
-            script ! src "/assets/js/common.js" $ ""
-            script ! src "/assets/js/post.js" $ ""
+            renderScript "/assets/js/common.js"
+            renderScript "/assets/js/post.js"
             
   get "/posts/by/tag/:tag" $ do
     tag <- param "tag"

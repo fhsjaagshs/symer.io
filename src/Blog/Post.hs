@@ -2,7 +2,8 @@
 
 module Blog.Post
 (
-  Post(..)
+  Post(..),
+  postDescription
 )
 where
   
@@ -22,6 +23,7 @@ import           Data.List
 import           Data.Time.Format
 import           Data.Time.Clock
 import           Data.Maybe
+import qualified Data.Foldable as F
 
 import           Blog.Database.PGExtensions()
 import           Database.PostgreSQL.Simple.ToField as PG.ToField
@@ -89,7 +91,29 @@ instance Composable [Post] where
     renderPost True x user
     hr ! class_ "separator"
     render xs user
-    
+
+-- TODO: Write an attoparsec parser that removes tags 
+-- it should keep text inside: p, pre, code, and div
+postDescription :: Post -> Text
+postDescription = T.take 150 . stripMarkdown . postBody
+
+stripMarkdown :: Text -> Text
+stripMarkdown md = F.fold $ fmap blockToText blocks
+  where
+    (Doc _ blocks) = markdown def md
+    inlinesToText = F.fold . fmap inlineToText
+    blockToText (Para inlines) = inlinesToText inlines
+    blockToText _ = ""
+    inlineToText (Str txt) = txt
+    inlineToText (Code txt) = txt
+    inlineToText (Emph inlines) = inlinesToText inlines
+    inlineToText (Strong inlines) = inlineToText $ Emph inlines
+    inlineToText (Link inlines _ _) = inlineToText $ Emph inlines
+    inlineToText SoftBreak = inlineToText LineBreak
+    inlineToText LineBreak = " "
+    inlineToText Space = " "
+    inlineToText _ = ""
+
 renderPost :: Bool -> Post -> Maybe User -> Html
 renderPost truncateBody (Post pid title body ts tags _ author) mAuthUser = do
   a ! href (stringValue $ "/posts/" ++ show pid) $ do

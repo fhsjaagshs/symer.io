@@ -67,6 +67,12 @@ input.comment-field {
   color: #4A4A4A;
 }
 
+textarea.comment-textarea,
+input.comment-field {
+  -webkit-appearance: none;
+  border-radius: 0;
+}
+
 .top-fields {
   display:block;
 }
