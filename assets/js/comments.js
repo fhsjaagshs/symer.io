@@ -15,6 +15,7 @@ var CommentTextarea = function CommentTextarea(aPlaceholder) {
   this.el.__ref = this;
 }
 
+/* TODO: replace id parameter with a comment parameter */
 var Editor = function Editor(hidden, id) {
   this.nameField = new CommentField('Name');
   this.emailField = new CommentField('Email (not displayed)');
@@ -40,11 +41,9 @@ var Editor = function Editor(hidden, id) {
     }
 
     e.reset();
-    console.log(e.id);
     sendHTTP('POST', '/posts/' + postId + '/comments', params, function(http) {
+      console.log(http);
       if (http.status == 200) {
-        console.log(e.id);
-        console.log('-');
         params.id = +http.responseText;
         var c = Comment.fromJSON(params);
         if (e.id == -1) {

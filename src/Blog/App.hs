@@ -62,6 +62,7 @@ import System.Directory
 
 -- TODO (future):
 -- Comment-optional posts
+-- Editor key commands (cmd-i, cmd-b, etc)
 -- Page numbers at bottom (would require extra db hit)
 -- Site footer (copyright etc)
 -- Save MD5 sum in redis
@@ -188,7 +189,7 @@ app = do
           renderBody (Just blogTitle) (Just blogSubtitle) maybeUser $ do
             renderPost False pst maybeUser
             renderScript "/assets/js/common.js"
-            renderScript "/assets/js/post.js"
+            renderScript "/assets/js/comments.js"
             
   get "/posts/by/tag/:tag" $ do
     tag <- param "tag"

@@ -31,7 +31,7 @@ daemonizeKill timeout pidFile = do
         wait timeout pid
                      
 daemonizeStatus :: FilePath -> IO ()
-daemonizeStatus pidFile = pidExists pidFile >>= f where
+daemonizeStatus pidFile = fileExist pidFile >>= f where
   f False = putStrLn "stopped"
   f True = do
     mpid <- pidRead pidFile
@@ -100,25 +100,19 @@ redirectIO outpath errpath = do
 {- Internal -}
 
 wait :: Int -> CPid -> IO ()
-wait secs pid = do
-  islive <- pidLive pid
-  when islive $ do
-    if secs > 0
-      then do
-        usleep 1000000
-        wait (secs-1) pid
-      else do
-        putStrLn $ "sending sigKill to process " ++ (show pid)
-        signalProcess sigKILL pid
+wait secs pid = (when <$> pidLive pid) >>= \w -> w f
+  where f | secs > 0 = do
+            usleep 1000000
+            wait (secs-1) pid
+          | otherwise = do
+            putStrLn $ "force killing PID " ++ (show pid)
+            signalProcess sigKILL pid
 
 pidWrite :: FilePath -> IO ()
 pidWrite pidPath = getProcessID >>= writeFile pidPath . show
 
-pidExists :: FilePath -> IO Bool
-pidExists = fileExist
-
 pidRead :: FilePath -> IO (Maybe CPid)
-pidRead pidFile = pidExists pidFile >>= f where
+pidRead pidFile = fileExist pidFile >>= f where
   f True  = fmap (Just . read) . readFile $ pidFile
   f False = return Nothing
 

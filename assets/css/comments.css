@@ -17,6 +17,16 @@
   left: 0px;
 }
 
+/*.comment:before {
+  content:'';
+  width: 50px;
+  height: 1px;
+  background: gray;
+  position: absolute;
+  left: 0px;
+  top: -1px;
+}*/
+
 .comment-name {
   margin-top: 0px;
 }
