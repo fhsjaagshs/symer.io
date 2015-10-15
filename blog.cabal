@@ -13,7 +13,9 @@ data-dir:            assets
 executable blog
   main-is:           Main.hs
   hs-source-dirs:    src
-  ghc-options:       -threaded -Wall -fwarn-tabs -O2
+  build-tools:       hsc2hs
+  other-modules:     Blog.Terminal
+  ghc-options:       -threaded -Wall -fwarn-tabs -fno-warn-unused-do-bind -O2
   build-depends:     base,
                      containers,
                      http-types,
@@ -45,7 +47,6 @@ executable blog
                      attoparsec,
                      data-default,
                      optparse-applicative,
-                     terminal-size,
                      unix,
                      stm,
                      directory,
