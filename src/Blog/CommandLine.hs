@@ -48,8 +48,8 @@ parseCommand = sp <|> parseStart
       <$> (flag False True $ short 'd')
       <*> (option auto $ opt "port" 'p' "PORT" (Just 3000) "The port to run blog on.")
       <*> (strOption $ opt "dbpasswd" 'l' "PASSWORD" (Just "") "The password used to connect to Postgres.")
-      <*> (strOption $ opt "keyfile" 'k' "FILEPATH" (Just "server.key") "The SSL .key file used for SSL.")
       <*> (strOption $ opt "crtfile" 'c' "FILEPATH" (Just "server.crt") "The SSL .crt file used for SSL.")
+      <*> (strOption $ opt "keyfile" 'k' "FILEPATH" (Just "server.key") "The SSL .key file used for SSL.")
       <*> (optional $ strOption $ opt "stdout" 'o' "FILEPATH" Nothing "Redirect STDOUT to a file.")
       <*> (optional $ strOption $ opt "stderr" 'e' "FILEPATH" Nothing "Redirect STDERR to a file.")
     parseStop     = pure $ StopCommand

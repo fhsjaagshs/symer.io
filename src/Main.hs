@@ -25,6 +25,8 @@ main = do
         startRedirectProcess
         initState dbpass >>= startApp port crtfile keyfile
     (StartCommand False port dbpass crtfile keyfile outp errp) -> do
+      print crtfile
+      print keyfile
       when (isJust outp) $ redirectIO outp errp
       startRedirectProcess
       (initState dbpass >>= startApp port crtfile keyfile)

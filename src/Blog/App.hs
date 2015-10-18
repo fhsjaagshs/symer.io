@@ -65,6 +65,13 @@ import System.Directory
 -- Links in comments *** nofollow them
 -- search
 
+-- TODO SSL:
+{-
+investigate:
+add_header Strict-Transport-Security "max-age=31536000; includeSubdomains";
+
+-}
+
 -- Miscellaneous Ideas:
 -- 1. 'Top 5' tags map in side bar?
 
@@ -105,14 +112,14 @@ initState dbpass = do
   runMigrations pg
   return $ AppState redis pg
 
--- The problem daemonizing comes from Warp
 startApp :: Int -> FilePath -> FilePath -> AppState -> IO ()
 startApp port cert key state = do
   putStrLn "starting https"
   sync <- newTVarIO state
   let runActionToIO m = runReaderT (runWebM m) sync
-  scottyAppT runActionToIO app >>= liftIO . runTLS tlsSettings warpSettings
+  scottyAppT runActionToIO app >>= liftIO . run
   where
+    run = runTLS tlsSettings warpSettings
     tlsSettings = defaultTlsSettings { keyFile = key, certFile = cert }
     warpSettings = setBeforeMainLoop (resignPrivileges "daemon") $ setPort port defaultSettings
   
