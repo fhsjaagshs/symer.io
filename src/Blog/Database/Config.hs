@@ -34,7 +34,7 @@ postgresConfigs pass "production"  = [("user", "symerdotio"),
                                       ("host", "db.symer.io"),
                                       ("port", "5432"),
                                       ("dbname", "blog"),
-                                      ("sslmode", "require")]
+                                      ("sslmode", "verify-full")]
 postgresConfigs _ _ = []
 
 postgresConnStr :: String -> String
