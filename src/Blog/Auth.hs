@@ -41,10 +41,20 @@ accessToken = f <$> Scotty.header "Cookie"
 getUser :: (ScottyError e) => ActionT e WebM (Maybe User)
 getUser = do
   redis <- webM $ gets stateRedis
-  mtoken <- accessToken
-  case mtoken of
-    Nothing -> return Nothing
-    Just token -> liftIO $ do
+  f <$> accessToken
+  -- mtoken <- accessToken
+  -- case mtoken of
+  --   Nothing -> return Nothing
+  --   Just token -> liftIO $ do
+  --     R.runRedis redis $ do
+  --       R.expire (B.pack token) (3600*24)
+  --       t <- R.get $ B.pack token
+  --       case t of
+  --         Right (Just j) -> return $ A.decodeStrict j
+  --         _ -> return Nothing
+  where
+    f = maybe Nothing g
+    g token = liftIO $ do
       R.runRedis redis $ do
         R.expire (B.pack token) (3600*24)
         t <- R.get $ B.pack token
