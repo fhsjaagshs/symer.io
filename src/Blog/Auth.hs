@@ -1,5 +1,4 @@
 {-# LANGUAGE OverloadedStrings #-}
-{-# OPTIONS_GHC -fno-warn-unused-do-bind #-}
 
 module Blog.Auth
 (
@@ -15,22 +14,21 @@ import Blog.State
 import Blog.Cookie
 import Blog.User
 
+import Data.Default
+import System.Random
+
+import qualified Data.ByteString.Char8 as B
+import qualified Data.ByteString.Lazy.Char8 as BL
 import qualified Data.Text.Lazy as TL
 import qualified Data.Text.Lazy.Encoding as TL
+import qualified Data.HashMap.Strict as H
 
 import Control.Monad (void)
 import Control.Monad.IO.Class (liftIO)
-
 import Web.Scotty.Trans as Scotty
 
-import Data.Default
-import qualified Data.HashMap.Strict as H
-import qualified Data.ByteString.Char8 as B
-import qualified Data.ByteString.Lazy.Char8 as BL
-import           Data.Aeson as A
+import qualified Data.Aeson as A
 import qualified Database.Redis as R
-
-import System.Random
 
 accessToken :: (ScottyError e) => ActionT e WebM (Maybe String)
 accessToken = f <$> Scotty.header "Cookie"
@@ -39,53 +37,38 @@ accessToken = f <$> Scotty.header "Cookie"
     g = maybe Nothing (H.lookup "token" . cookiePairs)
     
 getUser :: (ScottyError e) => ActionT e WebM (Maybe User)
-getUser = do
-  redis <- webM $ gets stateRedis
-  f <$> accessToken
-  -- mtoken <- accessToken
-  -- case mtoken of
-  --   Nothing -> return Nothing
-  --   Just token -> liftIO $ do
-  --     R.runRedis redis $ do
-  --       R.expire (B.pack token) (3600*24)
-  --       t <- R.get $ B.pack token
-  --       case t of
-  --         Right (Just j) -> return $ A.decodeStrict j
-  --         _ -> return Nothing
+getUser = accessToken >>= f
   where
-    f = maybe Nothing g
-    g token = liftIO $ do
-      R.runRedis redis $ do
+    f = maybe (return Nothing) g
+    g token = do
+      redis <- webM $ gets stateRedis
+      liftIO $ R.runRedis redis $ do
         R.expire (B.pack token) (3600*24)
-        t <- R.get $ B.pack token
-        case t of
-          Right (Just j) -> return $ A.decodeStrict j
-          _ -> return Nothing
+        (R.get $ B.pack token) >>= return . e
+    e (Right (Just j)) = A.decodeStrict j
+    e _ = Nothing
 
 setUser :: (ScottyError e) => User -> ActionT e WebM ()
 setUser user = do
   token <- (take 15 . randomRs ('a','z')) <$> (liftIO $ newStdGen)
   redis <- webM $ gets stateRedis
   saveUser redis token user
-  setTokenCookie token
+  setToken token
   where
-    cookie token = def { cookiePairs = (H.singleton "token" token) }
+    cookie t = def { cookiePairs = (H.singleton "token" t), cookieHttpOnly = True }
     saveUser redis token = liftIO . R.runRedis redis . R.set (B.pack token) . BL.toStrict . A.encode
-    setTokenCookie = mapM_ (addHeader "Set-Cookie" . TL.pack) . serializeCookie . cookie
+    setToken = mapM_ (addHeader "Set-Cookie" . TL.pack) . serializeCookie . cookie
     
 deleteAuth :: (ScottyError e) => ActionT e WebM ()
-deleteAuth = do
-  redis <- webM $ gets stateRedis
-  mtoken <- accessToken
-  case mtoken of
-    Just token -> liftIO $ void $ R.runRedis redis $ R.del [(B.pack token)]
-    _ -> return ()
+deleteAuth = accessToken >>= f
+  where
+    f (Just token) = void $ do
+      r <- webM $ gets stateRedis
+      liftIO . R.runRedis r . R.del $ [(B.pack token)]
+    f _ = return ()
 
 authenticate :: (ScottyError e) => ActionT e WebM (Maybe User)
-authenticate = do
-  maybeUser <- getUser
-  case maybeUser of
-    (Just user) -> return $ Just user
-    _ -> do
-      return Nothing
-      redirect "/login?error_message=Login%20required%2E"
+authenticate = getUser >>= f
+  where
+    f (Just user) = return $ Just user
+    f _ = redirect "/login?err=Login%20required%2E"

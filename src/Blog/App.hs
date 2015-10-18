@@ -26,7 +26,6 @@ import Blog.Env
 
 import Control.Monad.Reader
 import Control.Concurrent.STM
-import Control.Applicative
 import Data.Maybe
        
 import Web.Scotty.Trans as Scotty
@@ -41,7 +40,6 @@ import qualified Database.PostgreSQL.Simple as PG
 
 import qualified Crypto.BCrypt as BCrypt
 
-import Data.List as L
 import qualified Data.ByteString.Char8 as B
 import qualified Data.ByteString.Lazy.Char8 as BL
 import qualified Data.Text as T
@@ -53,14 +51,12 @@ import Data.Aeson (encode)
 import Text.Blaze.Html5 as H hiding (style, param, map)
 import Text.Blaze.Html5.Attributes as A
 import Text.Blaze.Html.Renderer.Text as R
-import Prelude as P hiding (head, div)
        
 import System.Exit
 import System.Posix
-import System.Environment
 import System.Directory
 
--- TODO (future):
+-- TODO:
 -- Comment-optional posts
 -- Editor key commands (cmd-i, cmd-b, etc)
 -- Page numbers at bottom (would require extra db hit)
@@ -75,15 +71,13 @@ import System.Directory
 startRedirectProcess :: IO ()
 startRedirectProcess = do
   privileged <- isPrivileged
-  when privileged $ do
+  when privileged $ void $ do
     putStrLn "spawning redirection process"
-    pname <- getProgName
-    pid <- withProgName (pname ++ "-redirectssl") $ do
-      forkProcess $ do
-        void $ installHandler sigTERM (Catch childHandler) Nothing
-        startRedirect
-    void $ installHandler sigTERM (Catch $ parentHandler pid) Nothing
-    void $ installHandler sigINT (Catch $ parentHandler pid) Nothing
+    pid <- forkProcess $ do
+      installHandler sigTERM (Catch childHandler) Nothing
+      startRedirect
+    installHandler sigTERM (Catch $ parentHandler pid) Nothing
+    installHandler sigINT (Catch $ parentHandler pid) Nothing
     where
       childHandler = do
         putStrLn "killed redirection process"
@@ -100,7 +94,7 @@ resignPrivileges user = do
     getUserEntryForName user >>= setUserID . userID
 
 isPrivileged :: IO Bool
-isPrivileged = getEffectiveUserID >>= return . ((==) 0)
+isPrivileged = ((==) 0) <$> getEffectiveUserID
 
 initState :: String -> IO AppState
 initState dbpass = do
@@ -221,7 +215,7 @@ app = do
   get "/login" $ do
     maybeUser <- getUser
     when (isJust maybeUser) (redirect "/")
-    maybeErrorMessage <- lookup "error_message" <$> params
+    maybeErrorMessage <- lookup "err" <$> params
     Scotty.html . R.renderHtml . docTypeHtml $ do
       renderHiddenHead' $ appendedBlogTitle "Login"
       renderBody (Just "Login") maybeErrorMessage Nothing $ do
@@ -245,16 +239,15 @@ app = do
   post "/login" $ do
     mUser <- param "username" >>= getUserWithUsername
     case mUser of
-      Nothing -> redirect "/login?error_message=Username%20does%20not%20exist%2E"
+      Nothing -> redirect "/login?err=Username%20does%20not%20exist%2E"
       (Just user@(User _ _ _ (Just phash))) -> do
         pPassword <- T.encodeUtf8 <$> param "password"
         if BCrypt.validatePassword (T.encodeUtf8 phash) pPassword
           then do
             setUser user
-            pRedirectPath <- lookup "redirect" <$> params
-            redirect $ fromMaybe "/" pRedirectPath
-          else redirect "/login?error_message=Invalid%20password%2E"
-      _ -> redirect  "/login?error_message=Invalid%20User%2E"
+            params >>= redirect . fromMaybe "/" . lookup "redirect"
+          else redirect "/login?err=Invalid%20password%2E"
+      _ -> redirect "/login?err=Invalid%20user%2E"
 
   -- creates/updates a BlogPost in the database
   post "/posts" $ do
@@ -275,7 +268,6 @@ app = do
           Just pid -> addHeader "Location" $ TL.pack $ "/posts/" ++ (show pid)
 
   -- deletes a BlogPost from the database
-  -- returns JSON
   Scotty.delete "/posts/:id" $ do
     authUser <- authenticate
     res <- param "id" >>= (flip deletePost $ fromJust authUser)
