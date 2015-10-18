@@ -18,6 +18,7 @@ executable blog
   ghc-options:       -threaded -Wall -fwarn-tabs -fno-warn-unused-do-bind -O2
   build-depends:     base,
                      containers,
+                     unordered-containers,
                      http-types,
                      warp,
                      warp-tls,

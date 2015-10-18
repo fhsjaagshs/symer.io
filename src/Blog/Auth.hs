@@ -23,6 +23,8 @@ import Control.Monad.IO.Class (liftIO)
 
 import Web.Scotty.Trans as Scotty
 
+import Data.Default
+import qualified Data.HashMap.Strict as H
 import qualified Data.ByteString.Char8 as B
 import qualified Data.ByteString.Lazy.Char8 as BL
 import           Data.Aeson as A
@@ -31,14 +33,11 @@ import qualified Database.Redis as R
 import System.Random
 
 accessToken :: (ScottyError e) => ActionT e WebM (Maybe String)
-accessToken = do
-  mv <- Scotty.header "Cookie"
-  case mv of
-    Just v -> case parseCookie . BL.toStrict . TL.encodeUtf8 $ v of
-      Just parsed -> return . lookup "token" . cookiePairs $ parsed
-      _ -> return Nothing
-    _ -> return Nothing
-
+accessToken = f <$> Scotty.header "Cookie"
+  where
+    f = maybe Nothing (g . parseCookie . BL.toStrict . TL.encodeUtf8)
+    g = maybe Nothing (H.lookup "token" . cookiePairs)
+    
 getUser :: (ScottyError e) => ActionT e WebM (Maybe User)
 getUser = do
   redis <- webM $ gets stateRedis
@@ -60,7 +59,7 @@ setUser user = do
   saveUser redis token user
   setTokenCookie token
   where
-    cookie token = Cookie [("token",token)] Nothing Nothing Nothing False False
+    cookie token = def { cookiePairs = (H.singleton "token" token) }
     saveUser redis token = liftIO . R.runRedis redis . R.set (B.pack token) . BL.toStrict . A.encode
     setTokenCookie = mapM_ (addHeader "Set-Cookie" . TL.pack) . serializeCookie . cookie
     

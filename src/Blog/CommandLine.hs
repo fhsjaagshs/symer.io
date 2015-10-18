@@ -30,23 +30,20 @@ getCommand :: IO Cmd
 getCommand = getArgs >>= getCommandArgs
 
 getCommandArgs :: [String] -> IO Cmd
-getCommandArgs [] = getCommandArgs ["start"]
 getCommandArgs args = do
-  mts <- getTermSize
-  handleParseResult $ execParserPure (pprefs $ width mts) parser args
+  w <- maybe 80 snd <$> getTermSize
+  handleParseResult $ execParserPure (pprefs w) parser args
   where
     pprefs = ParserPrefs "" False False True
-    width (Just (w, _)) = w
-    width _ = 80
     parser = info (helper <*> parseCommand) (fullDesc <> progDesc "Nathaniel Symer's blog." <> header "blog.symer.io")
     
 parseCommand :: Parser Cmd
 parseCommand = sp <|> parseStart
   where
-    sp = subparser ((mkcmd "start" "Start the blog" parseStart) <>
-                    (mkcmd "stop" "Stop the blog" parseStop) <>
-                    (mkcmd "status" "Determine if the blog is running" parseStatus) <>
-                    (mkcmd "redirect-http" "Redirect HTTP to HTTPs" parseRedirect))
+    sp = subparser $ (mkcmd "start" "Start the blog" parseStart) <>
+                     (mkcmd "stop" "Stop the blog" parseStop) <>
+                     (mkcmd "status" "Determine if the blog is running" parseStatus) <>
+                     (mkcmd "redirect-http" "Redirect HTTP to HTTPs" parseRedirect)
     parseStart = StartCommand
       <$> (flag False True $ short 'd')
       <*> (option auto $ opt "port" 'p' "PORT" (Just 3000) "The port to run blog on.")
