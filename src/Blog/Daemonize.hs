@@ -2,12 +2,11 @@
 module Blog.Daemonize
 (
   daemonize,
-  daemonize',
-  detachProcess,
-  detachProcess',
   daemonizeStatus,
   daemonizeKill,
-  redirectIO
+  redirectStdout,
+  redirectStderr,
+  redirectStdin
 )
 where
   
@@ -17,6 +16,8 @@ import Control.Monad hiding (forever)
 import System.IO
 import System.Exit
 import System.Posix
+
+-- TODO: factor out case statements
 
 daemonizeKill :: Int -> FilePath -> IO ()
 daemonizeKill timeout pidFile = do
@@ -29,7 +30,7 @@ daemonizeKill timeout pidFile = do
       when islive $ do
         signalProcess sigTERM pid
         wait timeout pid
-                     
+
 daemonizeStatus :: FilePath -> IO ()
 daemonizeStatus pidFile = fileExist pidFile >>= f where
   f False = putStrLn "stopped"
@@ -41,63 +42,60 @@ daemonizeStatus pidFile = fileExist pidFile >>= f where
         res <- pidLive pid
         if res
           then putStrLn "running"
-          else putStrLn "stopped, pidfile remaining"   
-          
-daemonize :: FilePath -> Maybe FilePath -> Maybe FilePath -> IO () -> IO ()
-daemonize pidFile outpath errpath program = do
-  detachProcess pidFile outpath errpath program
-  exitImmediately ExitSuccess
-  
-daemonize' :: FilePath -> IO () -> IO ()
-daemonize' pf p = daemonize pf Nothing Nothing p
-  
-detachProcess :: FilePath -> Maybe FilePath -> Maybe FilePath -> IO () -> IO ()
-detachProcess pidFile outpath errpath program = do
-  void $ forkProcess $ do
+          else putStrLn "stopped, pidfile remaining"
+
+daemonize :: FilePath -> IO () -> IO ()
+daemonize pidFile program = do
+  forkProcess $ do
     createSession
     forkProcess $ do
       pidWrite pidFile
-      redirectIO outpath errpath
+      redirectStdout $ Just "/dev/null"
+      redirectStderr $ Just "/dev/null"
+      redirectStdin $ Just "/dev/null"
+      closeFd stdInput -- close STDIN
       installHandler sigHUP Ignore Nothing
       program
     exitImmediately ExitSuccess
-    
-detachProcess' :: FilePath -> IO () -> IO ()
-detachProcess' pf p = detachProcess pf Nothing Nothing p
+  exitImmediately ExitSuccess
 
-redirectIO :: Maybe String -> Maybe String -> IO ()
-redirectIO outpath errpath = do
-  dnull <- openFd "/dev/null" ReadWrite Nothing defaultFileFlags
-  closeFd stdInput >> dupTo dnull stdInput
-  case outpath of
-    Nothing -> closeFd stdOutput >> dupTo dnull stdOutput >> return ()
-    Just out -> do
-      fd <- safeOpenFd out
-      dupTo fd stdOutput
-      closeFd fd
-  case errpath of
-    Nothing -> closeFd stdError >> dupTo dnull stdError >> return ()
-    Just err -> do
-      fd <- safeOpenFd err
-      dupTo fd stdError
-      closeFd fd
-  closeFd dnull
-  
-  -- buffering is bad, mmmmkay?
-  -- it's probably fine with terminals, but NOT fine with files
-  hSetBuffering stdin  NoBuffering
+-- README: buffering is bad, mmmmkay?
+-- These functions will disable buffering
+-- it's probably fine with terminals, but NOT fine with files
+
+redirectStdout :: Maybe FilePath -> IO ()
+redirectStdout Nothing = return ()
+redirectStdout (Just path) = do
+  swapFd stdOutput path
   hSetBuffering stdout NoBuffering
+
+redirectStderr :: Maybe FilePath -> IO ()
+redirectStderr Nothing = return ()
+redirectStderr (Just path) = do
+  swapFd stdError path
   hSetBuffering stderr NoBuffering
-  
-  where
-    safeOpenFd p = do
-      exists <- fileExist p
-      when (not exists) $ writeFile p ""
-      fd <- openFd p ReadWrite Nothing defaultFileFlags
-      setFdOption fd AppendOnWrite True
-      return fd
-  
+
+redirectStdin :: Maybe FilePath -> IO ()
+redirectStdin Nothing = return ()
+redirectStdin (Just path) = do
+  swapFd stdInput path
+  hSetBuffering stdin NoBuffering
+
 {- Internal -}
+
+safeOpenFd :: FilePath -> IO Fd
+safeOpenFd p = do
+  exists <- fileExist p
+  when (not exists) $ writeFile p ""
+  fd <- openFd p ReadWrite Nothing defaultFileFlags
+  setFdOption fd AppendOnWrite True
+  return fd
+
+swapFd :: Fd -> FilePath -> IO ()
+swapFd old path = do
+  new <- safeOpenFd path
+  dupTo new old
+  closeFd new
 
 wait :: Int -> CPid -> IO ()
 wait secs pid = (when <$> pidLive pid) >>= \w -> w f

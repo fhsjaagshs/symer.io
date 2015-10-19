@@ -5,7 +5,6 @@ module Blog.App
 (
   initState,
   startApp,
-  startRedirect,
   startRedirectProcess,
   app
 )
@@ -56,7 +55,7 @@ import System.Exit
 import System.Posix
 import System.Directory
 
--- TODO:
+-- TODO (features):
 -- Comment-optional posts
 -- Editor key commands (cmd-i, cmd-b, etc)
 -- Page numbers at bottom (would require extra db hit)
@@ -65,34 +64,37 @@ import System.Directory
 -- Links in comments *** nofollow them
 -- search
 
--- TODO SSL:
 {-
-investigate:
-add_header Strict-Transport-Security "max-age=31536000; includeSubdomains";
-
+TODO (internals)
+* investigate:
+  add_header Strict-Transport-Security "max-age=31536000; includeSubdomains";
+* start blog without ssl
 -}
 
 -- Miscellaneous Ideas:
 -- 1. 'Top 5' tags map in side bar?
 
 startRedirectProcess :: IO ()
-startRedirectProcess = do
-  privileged <- isPrivileged
-  when privileged $ void $ do
-    putStrLn "spawning redirection process"
-    pid <- forkProcess $ do
-      installHandler sigTERM (Catch childHandler) Nothing
-      startRedirect
-    installHandler sigTERM (Catch $ parentHandler pid) Nothing
-    installHandler sigINT (Catch $ parentHandler pid) Nothing
-    where
-      childHandler = do
-        putStrLn "killed redirection process"
-        exitImmediately ExitSuccess
-      parentHandler pid = do
-        putStrLn "killing redirection process"
-        signalProcess sigTERM pid
-        exitImmediately ExitSuccess
+startRedirectProcess = void $ do
+  putStrLn "starting http -> https redirection process"
+  pid <- forkProcess $ do
+    installHandler sigTERM (Catch childHandler) Nothing
+    runSettings warpSettings $ \req respond -> do
+      respond $ responseLBS status301 (mkHeaders req) ""
+  installHandler sigTERM (Catch $ parentHandler pid) Nothing
+  installHandler sigINT (Catch $ parentHandler pid) Nothing
+  where
+    warpSettings = setBeforeMainLoop (resignPrivileges "daemon") $ setPort 80 defaultSettings
+    mkHeaders r = [("Location", url r)]
+    host = fromJust . requestHeaderHost
+    url r = mconcat ["https://", host r, rawPathInfo r, rawQueryString r]
+    childHandler = do
+      putStrLn "killed redirection process"
+      exitImmediately ExitSuccess
+    parentHandler pid = do
+      putStrLn "killing redirection process"
+      signalProcess sigTERM pid
+      exitImmediately ExitSuccess
 
 resignPrivileges :: String -> IO ()
 resignPrivileges user = do
@@ -103,10 +105,10 @@ resignPrivileges user = do
 isPrivileged :: IO Bool
 isPrivileged = ((==) 0) <$> getEffectiveUserID
 
-initState :: String -> IO AppState
-initState dbpass = do
+initState :: String -> FilePath -> FilePath -> FilePath -> IO AppState
+initState dbpass crt key rootcrt = do
   putStrLn "establishing database connections"
-  pg <- PG.connectPostgreSQL $ B.pack $ postgresConnStr dbpass
+  pg <- PG.connectPostgreSQL $ B.pack $ postgresConnStr dbpass crt key rootcrt
   redis <- Redis.connect Redis.defaultConnectInfo
   putStrLn "running database migrations"
   runMigrations pg
@@ -114,6 +116,8 @@ initState dbpass = do
 
 startApp :: Int -> FilePath -> FilePath -> AppState -> IO ()
 startApp port cert key state = do
+  privileged <- isPrivileged
+  when privileged startRedirectProcess
   putStrLn "starting https"
   sync <- newTVarIO state
   let runActionToIO m = runReaderT (runWebM m) sync
@@ -122,19 +126,6 @@ startApp port cert key state = do
     run = runTLS tlsSettings warpSettings
     tlsSettings = defaultTlsSettings { keyFile = key, certFile = cert }
     warpSettings = setBeforeMainLoop (resignPrivileges "daemon") $ setPort port defaultSettings
-  
-startRedirect :: IO ()
-startRedirect = do
-  privileged <- isPrivileged
-  when privileged $ do
-    putStrLn "redirecting unencrypted traffic"
-    runSettings warpSettings $ \req respond -> do
-      respond $ responseLBS status301 (mkHeaders req) ""
-  where
-    warpSettings = setBeforeMainLoop (resignPrivileges "daemon") $ setPort 80 defaultSettings
-    mkHeaders r = [("Location", url r)]
-    host = fromJust . requestHeaderHost
-    url r = mconcat ["https://", host r, rawPathInfo r, rawQueryString r]
 
 --------------------------------------------------------------------------------
 app :: ScottyT TL.Text WebM ()
