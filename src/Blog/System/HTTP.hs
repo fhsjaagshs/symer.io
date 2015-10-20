@@ -17,7 +17,7 @@ import Control.Concurrent.STM
 import Web.Scotty.Trans as Scotty
 
 import Network.Wai (responseLBS,requestHeaderHost,rawPathInfo,rawQueryString,Application)
-import Network.Wai.Handler.Warp (defaultSettings,setPort,setBeforeMainLoop,runSettings)
+import Network.Wai.Handler.Warp (defaultSettings,setPort,setBeforeMainLoop,runSettings,Settings)
 import Network.Wai.Handler.WarpTLS (certFile,defaultTlsSettings,keyFile,runTLS)
 import Network.HTTP.Types.Status (status301)
 
@@ -34,9 +34,7 @@ TODO (internals)
 -- port -> port to run the HTTPS server on
 -- state -> the application state
 startHTTP :: (ScottyError e) => ScottyT e WebM () -> Int -> AppState -> IO ()
-startHTTP app port state = mkScottyAppT app state >>= runSettings warpSettings
-  where
-    warpSettings = setBeforeMainLoop (resignPrivileges "daemon") $ setPort port defaultSettings
+startHTTP app port state = mkScottyAppT app state >>= runSettings (mkWarpSettings port)
 
 -- app -> your Scotty app
 -- preredirect -> called before the HTTP redirection process is spawned
@@ -51,11 +49,13 @@ startHTTPS app preredirect onkill cert key port state = do
   when privileged $ startRedirectProcess preredirect onkill
   mkScottyAppT app state >>= run
   where
-    run = runTLS tlsSettings warpSettings
+    run = runTLS tlsSettings $ mkWarpSettings port
     tlsSettings = defaultTlsSettings { keyFile = key, certFile = cert }
-    warpSettings = setBeforeMainLoop (resignPrivileges "daemon") $ setPort port defaultSettings
     
 {- Internal -}
+  
+mkWarpSettings :: Int -> Settings
+mkWarpSettings port = setBeforeMainLoop (resignPrivileges "daemon") $ setPort port defaultSettings
     
 mkScottyAppT :: (ScottyError e) => ScottyT e WebM () -> AppState -> IO Application
 mkScottyAppT app state = do
