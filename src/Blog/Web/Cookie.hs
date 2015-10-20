@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings, FlexibleInstances #-}
+{-# LANGUAGE OverloadedStrings #-}
 
 module Blog.Web.Cookie 
 (
@@ -7,16 +7,15 @@ module Blog.Web.Cookie
 )
 where
 
-import qualified Data.ByteString.Char8 as B
-
+import Control.Applicative
+import Data.Default
+import Data.Char
+import Data.Time.Format
+import Data.Time.Clock (UTCTime)
 import Data.HashMap.Strict (HashMap)
 import qualified Data.HashMap.Strict as H
-
-import           Data.Attoparsec.ByteString.Char8 as A
-
-import           Data.Time.Format
-import           Data.Time.Clock (UTCTime)
-import           Data.Default
+import qualified Data.ByteString.Char8 as B
+import Data.Attoparsec.ByteString.Char8 as A
 
 data Cookie = Cookie {
   cookiePairs :: HashMap String String,
@@ -34,11 +33,9 @@ instance Default Cookie where
 parseCookieDate :: String -> Maybe UTCTime
 parseCookieDate = parseTimeM True defaultTimeLocale "%a, %d %b %Y %H:%M:%S GMT"
 
--- TODO: fix this bitch (removing the feed func will cause an incomplete input error)
 parseCookie :: B.ByteString -> Maybe Cookie
-parseCookie = maybeResult . flip feed "" . parse cookieParser
+parseCookie = fmap applyLex . maybeResult . endInput . parse pairs
   where
-    cookieParser = (loop def) <$> pairs
     -- lexer
     loop c [] = c
     loop c (("secure",_):xs) = loop (c { cookieSecure = True }) xs
@@ -48,21 +45,17 @@ parseCookie = maybeResult . flip feed "" . parse cookieParser
     loop c (("expires",v):xs) = loop (c { cookieExpires = (parseCookieDate v) }) xs
     loop c ((k,v):xs) = loop (c { cookiePairs = (H.insert k v $ cookiePairs c) }) xs
     -- grammar
-    pairs = many' entry
-    entry = choice [pair, httpOnly, secure]
-    httpOnly = skipSpace >> stringCI "httponly" *> pure ("httponly", "")
-    secure = skipSpace >> stringCI "secure" *> pure ("secure", "")
+    pairs = (:) <$> pair <*> (many $ ";" *> skipSpace *> pair)
     pair = do
-      skipSpace
-      k <- A.takeWhile takeFunc
-      skipSpace
-      char '='
-      skipSpace
-      v <- A.takeWhile takeFunc
-      option ';' $ char ';'
-      return (B.unpack k, B.unpack v)
-    -- helpers
+      k <- token
+      v <- option "" $ "=" *> token -- TODO: quoted string
+      return (map toLower $ B.unpack k, B.unpack v)
+    token = takeWhile1 takeFunc
+    -- predicates
     takeFunc ' ' = False
     takeFunc '=' = False
     takeFunc ';' = False
     takeFunc _   = True
+    -- helpers
+    applyLex = loop def
+    endInput = flip feed ""
