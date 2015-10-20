@@ -1,6 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-module Blog.Auth
+module Blog.Web.Auth
 (
   getUser,
   setUser,
@@ -11,10 +11,9 @@ module Blog.Auth
 where
   
 import Blog.State
-import Blog.Cookie
 import Blog.User
+import Blog.Web.Cookie
 
-import Data.Default
 import System.Random
 
 import qualified Data.ByteString.Char8 as B
@@ -50,14 +49,14 @@ getUser = accessToken >>= f
 
 setUser :: (ScottyError e) => User -> ActionT e WebM ()
 setUser user = do
-  token <- (take 15 . randomRs ('a','z')) <$> (liftIO $ newStdGen)
   redis <- webM $ gets stateRedis
-  saveUser redis token user
+  token <- liftIO $ mkToken
+  liftIO $ saveUser redis token user
   setToken token
   where
-    cookie t = def { cookiePairs = (H.singleton "token" t), cookieHttpOnly = True }
-    saveUser redis token = liftIO . R.runRedis redis . R.set (B.pack token) . BL.toStrict . A.encode
-    setToken = mapM_ (addHeader "Set-Cookie" . TL.pack) . serializeCookie . cookie
+    mkToken = (take 15 . randomRs ('a','z')) <$> newStdGen
+    saveUser redis token = R.runRedis redis . R.set (B.pack token) . BL.toStrict . A.encode
+    setToken token = addHeader "Set-Cookie" $ mconcat ["token=", TL.pack token, "; HttpOnly"]
     
 deleteAuth :: (ScottyError e) => ActionT e WebM ()
 deleteAuth = accessToken >>= f

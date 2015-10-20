@@ -1,11 +1,9 @@
 {-# LANGUAGE OverloadedStrings, FlexibleInstances #-}
-{-# OPTIONS_GHC -fno-warn-unused-do-bind #-}
 
-module Blog.Cookie 
+module Blog.Web.Cookie 
 (
   Cookie(..),
-  parseCookie,
-  serializeCookie
+  parseCookie
 )
 where
 
@@ -20,9 +18,6 @@ import           Data.Time.Format
 import           Data.Time.Clock (UTCTime)
 import           Data.Default
 
--------------------------------------------------------------------------------
--- | Types
-  
 data Cookie = Cookie {
   cookiePairs :: HashMap String String,
   cookiePath :: Maybe String,
@@ -35,39 +30,14 @@ data Cookie = Cookie {
 instance Default Cookie where
   def = Cookie H.empty Nothing Nothing Nothing False False
 
--------------------------------------------------------------------------------
--- | Date Formatting
-
--- RFC 1123 date format
-cookieDateFormat :: String
-cookieDateFormat = "%a, %d %b %Y %H:%M:%S GMT"
-
+-- RFC 1123 date parser
 parseCookieDate :: String -> Maybe UTCTime
-parseCookieDate = parseTimeM True defaultTimeLocale cookieDateFormat
-
--- UNUSED
--- formatCookieDate :: UTCTime -> String
--- formatCookieDate = formatTime defaultTimeLocale cookieDateFormat
-
--------------------------------------------------------------------------------
--- | Cookie Parsing
-
--- Build list of Set-Cookie headers
--- TODO: should this set the Secure & HttpOnly flags
---       ^^^^^ do that
-serializeCookie :: Cookie -> [String]
-serializeCookie = f [] . H.toList . cookiePairs
-  where
-    f :: [String] -> [(String, String)] -> [String]
-    f accum [] = accum
-    f accum ((k,v):xs) = f ((k ++ "=" ++ v):accum) xs
+parseCookieDate = parseTimeM True defaultTimeLocale "%a, %d %b %Y %H:%M:%S GMT"
 
 parseCookie :: B.ByteString -> Maybe Cookie
 parseCookie = maybeResult . flip feed "" . parse cookieParser
-
-cookieParser :: Parser Cookie
-cookieParser = (loop def) <$> pairs
   where
+    cookieParser = (loop def) <$> pairs
     -- lexer
     loop c [] = c
     loop c (("secure",_):xs) = loop (c { cookieSecure = True }) xs
@@ -75,7 +45,7 @@ cookieParser = (loop def) <$> pairs
     loop c (("path",v):xs) = loop (c { cookiePath = (Just v) }) xs
     loop c (("domain",v):xs) = loop (c { cookieDomain = (Just v) }) xs
     loop c (("expires",v):xs) = loop (c { cookieExpires = (parseCookieDate v) }) xs
-    loop c ((k,v):xs) = loop (c { cookiePairs = (H.insert k v $ cookiePairs c) })  xs
+    loop c ((k,v):xs) = loop (c { cookiePairs = (H.insert k v $ cookiePairs c) }) xs
     -- grammar
     pairs = many' entry
     entry = choice [pair, httpOnly, secure]

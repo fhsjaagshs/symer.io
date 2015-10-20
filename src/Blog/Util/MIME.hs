@@ -1,4 +1,4 @@
-module Blog.MIME
+module Blog.Util.MIME
 (
   getMimeAtPath,
   splitList

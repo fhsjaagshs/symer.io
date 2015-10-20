@@ -1,4 +1,4 @@
-module Blog.Env
+module Blog.Util.Env
 (
   appEnv,
   appEnvIO,
@@ -18,7 +18,7 @@ import Control.Monad.IO.Class
   
 appEnvIO :: IO String
 appEnvIO = fromMaybe "development" <$> lookupEnv "ENV"
-  
+
 appEnv :: (ScottyError e, MonadIO m) => ActionT e m String
 appEnv = liftIO $ appEnvIO
 

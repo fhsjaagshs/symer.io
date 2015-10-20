@@ -1,7 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
-{-# OPTIONS_GHC -fno-warn-unused-do-bind #-}
 
-module Blog.Caching
+module Blog.Web.Caching
 (
   setCacheControl,
   cachedBody,
@@ -10,7 +9,7 @@ module Blog.Caching
 where
 
 import Blog.State
-import Blog.Env
+import Blog.Util.Env
 
 import Control.Monad
 import Control.Monad.IO.Class

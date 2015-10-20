@@ -1,4 +1,4 @@
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE OverloadedStrings, GeneralizedNewtypeDeriving #-}
 
 module Blog.State
 (
@@ -7,14 +7,20 @@ module Blog.State
   webM,
   gets,
   puts,
-  modify
+  modify,
+  initState
 ) where
+  
+import Blog.Database.Config
   
 import           Control.Concurrent.STM
 import           Control.Monad.Reader 
 
 import qualified Database.Redis as Redis
 import qualified Database.PostgreSQL.Simple as PG
+import Database.PostgreSQL.Simple.Migration as PG.Migration
+
+import qualified Data.ByteString.Char8 as B
 
 data AppState = AppState { 
   stateRedis :: Redis.Connection,
@@ -39,3 +45,19 @@ puts v = ask >>= liftIO . atomically . flip writeTVar v
 
 modify :: (AppState -> AppState) -> WebM ()
 modify f = ask >>= liftIO . atomically . flip modifyTVar' f
+
+initState :: String -> FilePath -> IO AppState
+initState dbpass rootcrt = do
+  putStrLn "establishing database connections"
+  pg <- PG.connectPostgreSQL $ B.pack $ postgresConnStr dbpass rootcrt
+  redis <- Redis.connect Redis.defaultConnectInfo
+  putStrLn "running database migrations"
+  runMigrations pg
+  return $ AppState redis pg
+  where
+    runMigrations pg = PG.withTransaction pg $ do
+      PG.execute_ pg "SET client_min_messages=WARNING;"
+      runMigration $ MigrationContext MigrationInitialization True pg
+      PG.execute_ pg "SET client_min_messages=NOTICE;"
+      forM_ migrations $ \(f, p) -> do
+        runMigration $ MigrationContext (MigrationFile f p) True pg

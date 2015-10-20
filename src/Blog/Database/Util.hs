@@ -3,7 +3,6 @@
 
 module Blog.Database.Util
 (
-  runMigrations,
   upsertPost,
   insertComment,
   getPostsByTag,
@@ -22,7 +21,6 @@ import Blog.User
 import Blog.Comment
 import Blog.Post
 
-import Control.Monad
 import Control.Monad.IO.Class
 
 import Data.Maybe
@@ -34,7 +32,6 @@ import Data.Text (Text)
 import Blog.Database.PGExtensions()
 
 import Database.PostgreSQL.Simple as PG
-import Database.PostgreSQL.Simple.Migration as PG.Migration
 import Database.PostgreSQL.Simple.Types as PG.Types
 
 import           Blaze.ByteString.Builder (toByteString)
@@ -54,15 +51,6 @@ This will require migrating production:
 5. Manually update prod accordingly
 
 -}
-
-runMigrations :: PG.Connection -> IO ()
-runMigrations pg = do
-  execute_ pg "SET client_min_messages=WARNING;"
-  withTransaction pg $ runMigration $ MigrationContext MigrationInitialization True pg
-  execute_ pg "SET client_min_messages=NOTICE;"
-  withTransaction pg $ do
-    forM_ migrations $ \(f, p) -> do
-      runMigration $ MigrationContext (MigrationFile f p) True pg
 
 -- TODO: only update if user is correct
 upsertPost :: (ScottyError e) => User -> Maybe Integer -> Maybe Text -> Maybe Text -> Maybe [Text] -> Maybe [Text] -> Bool -> ActionT e WebM (Maybe Integer)

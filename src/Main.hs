@@ -4,9 +4,12 @@ module Main
 )
 where
 
-import Blog.App
+import Blog.App -- contains @app@ function used in startApp
 import Blog.CommandLine
-import Blog.Daemonize
+import Blog.State
+import Blog.System.Daemon
+import Blog.System.IO
+import Blog.System.HTTP
 
 -- Setup:
 -- ensure your executable is setuid & owned by root:
@@ -16,11 +19,22 @@ import Blog.Daemonize
 main :: IO ()
 main = getCommand >>= f
   where
-    f c@(StartCommand True _ _ _ _ _ _ _ _ _) = do
+    f c@(StartCommand True _ _ _ _ _ _ _) = do
       daemonize "/tmp/blog.pid" $ f $ c { startCmdDaemonize = False }
-    f (StartCommand False port crt key pgpass pgcrt pgkey pgroot outp errp) = do
+    f (StartCommand False port crt key pgpass pgrootca outp errp) = do
       redirectStdout outp
       redirectStderr errp
-      initState pgpass pgcrt pgkey pgroot >>= startApp port crt key
-    f StopCommand = daemonizeKill 4 "/tmp/blog.pid"
-    f StatusCommand = daemonizeStatus "/tmp/blog.pid"
+      initState pgpass pgrootca >>= startApp True crt key port
+    f StopCommand = daemonKill 4 "/tmp/blog.pid"
+    f StatusCommand = do
+      running <- daemonRunning "/tmp/blog.pid"
+      if running
+        then putStrLn "running"
+        else putStrLn "stopped"
+    
+startApp :: Bool -> FilePath -> FilePath -> (Int -> AppState -> IO ())
+startApp False _   _   = startHTTP app
+startApp True  crt key = startHTTPS app preredirect onkill crt key
+  where
+    preredirect = putStrLn "starting HTTP -> HTTPS process"
+    onkill = putStrLn "killing HTTP -> HTTPS process"

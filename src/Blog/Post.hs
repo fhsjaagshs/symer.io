@@ -10,7 +10,7 @@ module Blog.Post
 where
 
 import Blog.User
-import Blog.MarkdownUtil
+import Blog.Util.Markdown
 
 import Control.Monad
 

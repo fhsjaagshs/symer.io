@@ -1,6 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-module Blog.HTMLUtil
+module Blog.Util.HTML
 (
   blogTitle,
   blogSubtitle,

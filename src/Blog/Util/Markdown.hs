@@ -1,6 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-module Blog.MarkdownUtil
+module Blog.Util.Markdown
 (
   stripMarkdown,
   truncateMarkdown

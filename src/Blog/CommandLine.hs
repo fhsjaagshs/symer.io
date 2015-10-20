@@ -6,12 +6,13 @@ module Blog.CommandLine
 )
 where
 
-import Blog.Terminal
+import Blog.System.Terminal
 
 import Control.Applicative
 import Options.Applicative
 import System.Environment (getArgs)
 
+-- TODO: Local root certificate config
 data Cmd
   = StartCommand {
     startCmdDaemonize :: Bool,
@@ -19,8 +20,6 @@ data Cmd
     startCmdHTTPSSLCert :: FilePath,
     startCmdHTTPSSLKey :: FilePath,
     startCmdDatabasePassword :: String,
-    startCmdPGSSLCrt :: FilePath,
-    startCmdPGSSLKey :: FilePath,
     startCmdPGSSLRootCrt :: FilePath,
     startCmdOutputPath :: Maybe FilePath,
     startCmdErrorPath :: Maybe FilePath
@@ -51,9 +50,7 @@ parseCommand = sp <|> parseStart
       <*> (strOption $ opt "https-crt" 'c' "FILEPATH" (Just "server.crt") ".crt file used for SSL")
       <*> (strOption $ opt "https-key" 'k' "FILEPATH" (Just "server.key") ".key file used for SSL")
       <*> (strOption $ opt "pg-passwd" 'l' "PASSWORD" (Just "") "password used to connect to Postgres.")
-      <*> (strOption $ opt "pg-crt" 'x' "FILEPATH" (Just "server.crt") "certificate used for SSL-secured Postgres connections, relative to PG data directory.")
-      <*> (strOption $ opt "pg-key" 'y' "FILEPATH" (Just "server.key") "private key used for SSL-secured Postgres connections, relative to PG data directory.")
-      <*> (strOption $ opt "pg-ca-crt" 'z' "FILEPATH" (Just "root.crt") "root CA certificate in pg-crt's chain of trust")
+      <*> (strOption $ opt "pg-ca-crt" 'r' "FILEPATH" (Just "root.crt") "root CA certificate in the SSL chain of trust used by Postgres")
       <*> (optional $ strOption $ opt "stdout" 'o' "FILEPATH" Nothing "which file to redirect STDOUT to")
       <*> (optional $ strOption $ opt "stderr" 'e' "FILEPATH" Nothing "which file to redirect STDERR to")
     parseStop     = pure $ StopCommand

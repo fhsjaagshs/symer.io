@@ -1,11 +1,11 @@
-module Blog.Assets
+module Blog.Web.Assets
 (
   js,
   css
 )
 where
   
-import Blog.Env
+import Blog.Util.Env
   
 import qualified Text.CSS.Parse as CSS (parseNestedBlocks)
 import qualified Text.CSS.Render as CSS (renderNestedBlocks)
