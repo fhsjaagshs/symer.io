@@ -46,10 +46,10 @@ puts v = ask >>= liftIO . atomically . flip writeTVar v
 modify :: (AppState -> AppState) -> WebM ()
 modify f = ask >>= liftIO . atomically . flip modifyTVar' f
 
-initState :: String -> FilePath -> FilePath -> FilePath -> IO AppState
-initState dbpass rootcrt dbcrt dbkey = do
+initState :: FilePath -> FilePath -> FilePath -> IO AppState
+initState rootcrt dbcrt dbkey = do
   putStrLn "establishing database connections"
-  pg <- PG.connectPostgreSQL $ B.pack $ postgresConnStr dbpass rootcrt dbcrt dbkey
+  pg <- PG.connectPostgreSQL $ B.pack $ postgresConnStr rootcrt dbcrt dbkey
   redis <- Redis.connect Redis.defaultConnectInfo
   putStrLn "running database migrations"
   runMigrations pg

@@ -19,12 +19,12 @@ import Blog.System.HTTP
 main :: IO ()
 main = getCommand >>= f
   where
-    f c@(StartCommand True _ _ _ _ _ _ _ _ _) = do
+    f c@(StartCommand True _ _ _ _ _ _ _ _) = do
       daemonize "/tmp/blog.pid" $ f $ c { startCmdDaemonize = False }
-    f (StartCommand False port crt key pgpass pgrootca pgcrt pgkey outp errp) = do
+    f (StartCommand False port crt key pgrootca pgcrt pgkey outp errp) = do
       redirectStdout outp
       redirectStderr errp
-      initState pgpass pgrootca pgcrt pgkey >>= startApp True crt key port
+      initState pgrootca pgcrt pgkey >>= startApp True crt key port
     f StopCommand = daemonKill 4 "/tmp/blog.pid"
     f StatusCommand = do
       running <- daemonRunning "/tmp/blog.pid"

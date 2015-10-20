@@ -23,29 +23,28 @@ migrations = [
   ("drafts.sql", "./migrations/drafts.sql"),
   ("comments.sql", "./migrations/comments.sql")]
 
-postgresConfigs :: String -> FilePath -> FilePath -> FilePath -> String -> [(String, String)]
-postgresConfigs _    _      _     _    "development" = [("user", "nathaniel"),
-                                                        ("password", ""),
-                                                        ("host", "localhost"),
-                                                        ("port", "5432"),
-                                                        ("dbname", "blog")]
-postgresConfigs pass rootcrt ccrt ckey "production" = [("user", "symerdotio"),
-                                                       ("password", pass),
-                                                       ("host", "db.symer.io"),
-                                                       ("port", "5432"),
-                                                       ("dbname", "blog"),
-                                                       ("sslmode", "verify-ca"), -- TODO configure verify-full
-                                                       ("sslrootcert", rootcrt),
-                                                       ("sslcert", ccrt),
-                                                       ("sslkey", ckey)]
-postgresConfigs _ _ _ _ _ = []
+postgresConfigs :: FilePath -> FilePath -> FilePath -> String -> [(String, String)]
+postgresConfigs _      _     _    "development" = [("user", "nathaniel"),
+                                                   ("password", ""),
+                                                   ("host", "localhost"),
+                                                   ("port", "5432"),
+                                                   ("dbname", "blog")]
+postgresConfigs rootcrt ccrt ckey "production" = [("user", "symerdotio"),
+                                                  ("host", "db.symer.io"),
+                                                  ("port", "5432"),
+                                                  ("dbname", "blog"),
+                                                  ("sslmode", "verify-ca"), -- TODO configure verify-full
+                                                  ("sslrootcert", rootcrt),
+                                                  ("sslcert", ccrt),
+                                                  ("sslkey", ckey)]
+postgresConfigs _ _ _ _ = []
 
-postgresConnStr :: String -> FilePath -> FilePath -> FilePath -> String
-postgresConnStr pass rootcrt ccrt ckey = intercalate " " $ map joinPair configs
+postgresConnStr :: FilePath -> FilePath -> FilePath -> String
+postgresConnStr rootcrt ccrt ckey = intercalate " " $ map joinPair configs
   where
     joinPair :: (String, String) -> String
     joinPair (k, v) = k ++ "='" ++ v ++ "'"
-    configs = postgresConfigs pass rootcrt ccrt ckey env
+    configs = postgresConfigs rootcrt ccrt ckey env
     env = fromMaybe "development" $ unsafePerformIO $ lookupEnv "ENV"
 
 postsPerPage :: Int
