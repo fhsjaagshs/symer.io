@@ -59,7 +59,7 @@ parseCookie = maybeResult . flip feed "" . parse cookieParser
       char '='
       skipSpace
       v <- A.takeWhile takeFunc
-      char ';'
+      option ';' $ char ';'
       return (B.unpack k, B.unpack v)
     -- helpers
     takeFunc ' ' = False
