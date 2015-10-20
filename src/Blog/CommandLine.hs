@@ -12,7 +12,6 @@ import Control.Applicative
 import Options.Applicative
 import System.Environment (getArgs)
 
--- TODO: Local root certificate config
 data Cmd
   = StartCommand {
     startCmdDaemonize :: Bool,

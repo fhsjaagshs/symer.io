@@ -34,6 +34,7 @@ instance Default Cookie where
 parseCookieDate :: String -> Maybe UTCTime
 parseCookieDate = parseTimeM True defaultTimeLocale "%a, %d %b %Y %H:%M:%S GMT"
 
+-- TODO: fix this bitch (removing the feed func will cause an incomplete input error)
 parseCookie :: B.ByteString -> Maybe Cookie
 parseCookie = maybeResult . flip feed "" . parse cookieParser
   where
@@ -49,14 +50,19 @@ parseCookie = maybeResult . flip feed "" . parse cookieParser
     -- grammar
     pairs = many' entry
     entry = choice [pair, httpOnly, secure]
-    httpOnly = stringCI "httponly" >> return ("httponly", "")
-    secure = stringCI "secure" >> return ("secure", "")
+    httpOnly = skipSpace >> stringCI "httponly" *> pure ("httponly", "")
+    secure = skipSpace >> stringCI "secure" *> pure ("secure", "")
     pair = do
       skipSpace
-      k <- A.takeWhile (not . isSpace)
+      k <- A.takeWhile takeFunc
       skipSpace
       char '='
       skipSpace
-      v <- A.takeWhile (not . isSpace)
+      v <- A.takeWhile takeFunc
       char ';'
       return (B.unpack k, B.unpack v)
+    -- helpers
+    takeFunc ' ' = False
+    takeFunc '=' = False
+    takeFunc ';' = False
+    takeFunc _   = True
