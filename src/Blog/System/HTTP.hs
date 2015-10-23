@@ -11,7 +11,6 @@ import Blog.System.IO
 
 import Data.Maybe
 import Control.Monad
-import Control.Monad.IO.Class
 import Control.Monad.Reader (runReaderT)
 import Control.Concurrent.STM
 
@@ -25,8 +24,6 @@ import Network.Wai.Middleware.Gzip
 
 import System.Exit
 import System.Posix
-
-import Debug.Trace
   
 {-
 TODO (internals)
