@@ -91,7 +91,6 @@ renderPosts [] _ = return ()
 renderPosts [x] user = renderPost True x user
 renderPosts (x:xs) user = do
   renderPost True x user
-  hr ! class_ "separator"
   renderPosts xs user
   
 renderPost :: Bool -> Post -> Maybe User -> Html

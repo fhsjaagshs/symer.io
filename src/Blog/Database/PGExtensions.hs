@@ -58,5 +58,18 @@ arrayParser' accum = do
       v <- A.takeWhile takeable
       arrayParser' (v:accum)
   where
-    skipable v = v == ',' || v == '\"'
-    takeable v = v /= ',' && v /= '\"' && v /= '}'
+    skipable ','  = True
+    skipable '\"' = True
+    skipable _    = False
+    takeable ','  = False
+    takeable '\"' = False
+    takeable '}'  = False
+    takeable _    = True
+    
+    
+    
+    
+    
+    
+    
+    

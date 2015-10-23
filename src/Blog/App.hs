@@ -40,7 +40,6 @@ import qualified Data.Text.Lazy as TL
 import Data.Aeson (encode)
 import Text.Blaze.Html5 as H hiding (style, param, map)
 import Text.Blaze.Html5.Attributes as A
-import Text.Blaze.Html.Renderer.Text as R
 
 import System.Directory
 
@@ -63,11 +62,14 @@ app = do
     maybeUser <- getUser
     mPageNum <- fmap (read . TL.unpack) . lookup "page" <$> params
     posts <- getPosts mPageNum
-    Scotty.html . R.renderHtml . docTypeHtml $ do
+    beginHtml $ do
       renderHead blogTitle $ do
         renderMeta "description" description
         renderKeywords keywords
-      renderBody (Just blogTitle) (Just blogSubtitle) maybeUser $ do
+      renderBody $ do
+        renderTitle blogTitle
+        renderSubtitle blogSubtitle
+        when (isJust maybeUser) renderAdminControls
         renderPosts (take postsPerPage posts) maybeUser
         renderPageControls mPageNum (length posts > postsPerPage)
         
@@ -75,20 +77,22 @@ app = do
     maybeUser <- authenticate
     mPageNum <- fmap (read . TL.unpack) . lookup "page" <$> params
     posts <- getDrafts (fromJust maybeUser) mPageNum
-    Scotty.html . R.renderHtml . docTypeHtml $ do
+    beginHtml $ do
       renderHiddenHead' $ appendedBlogTitle "Drafts"
-      renderBody (Just "Drafts") Nothing maybeUser $ do
+      renderBody $ do
+        renderTitle "Drafts"
+        when (isJust maybeUser) renderAdminControls
         renderPosts (take postsPerPage posts) maybeUser
         renderPageControls mPageNum (length posts > postsPerPage)
         
   -- create a post
   get "/posts/new" $ do
     authenticate
-    Scotty.html . R.renderHtml . docTypeHtml $ do
+    beginHtml $ do
       renderHiddenHead (appendedBlogTitle "New Post") $ do
         renderStylesheet "/assets/css/editor.css"
         renderStylesheet "/assets/css/wordlist.css"
-      renderBody Nothing Nothing Nothing $ do
+      renderBody $ do
         renderPostEditor Nothing
 
   -- view a specific post
@@ -100,11 +104,14 @@ app = do
         maybeUser <- getUser
         when (draft && (maybe True ((/=) author) maybeUser)) (redirect "/notfound")
 
-        Scotty.html . R.renderHtml . docTypeHtml $ do
+        beginHtml $ do
           renderHead (appendedBlogTitle $ TL.fromStrict ttl) $ do
             renderKeywords $ tags ++ keywords
             renderMeta "description" $ TL.fromStrict $ postDescription pst
-          renderBody (Just blogTitle) (Just blogSubtitle) maybeUser $ do
+          renderBody $ do
+            renderTitle blogTitle
+            renderSubtitle blogSubtitle
+            when (isJust maybeUser) renderAdminControls
             renderPost False pst maybeUser
             renderScript "/assets/js/common.js"
             renderScript "/assets/js/comments.js"
@@ -114,11 +121,13 @@ app = do
     maybeUser <- getUser
     mPageNum <- (fmap (read . TL.unpack) . lookup "page") <$> params
     posts <- getPostsByTag tag mPageNum
-    Scotty.html . R.renderHtml . docTypeHtml $ do
+    beginHtml $ do
       renderHead (appendedBlogTitle $ TL.fromStrict tag) $ do
         renderMeta "description" description
         renderKeywords keywords
-      renderBody (Just $ mconcat ["Posts tagged '", TL.fromStrict tag, "'"]) Nothing maybeUser $ do
+      renderBody $ do
+        renderTitle $ mconcat ["Posts tagged '", TL.fromStrict tag, "'"]
+        when (isJust maybeUser) renderAdminControls
         renderPosts (take postsPerPage posts) maybeUser
         renderPageControls mPageNum (length posts > postsPerPage)
 
@@ -129,20 +138,22 @@ app = do
     res <- getPost identifier_
     case res of
       Nothing -> next
-      Just post_ -> Scotty.html . R.renderHtml . docTypeHtml $ do
+      Just post_ -> beginHtml $ do
         renderHiddenHead (appendedBlogTitle $ TL.fromStrict $ postTitle post_) $ do
           renderStylesheet "/assets/css/editor.css"
           renderStylesheet "/assets/css/wordlist.css"
-        renderBody Nothing Nothing Nothing $ do
+        renderBody $ do
           renderPostEditor $ Just post_
 
   get "/login" $ do
     maybeUser <- getUser
     when (isJust maybeUser) (redirect "/")
-    maybeErrorMessage <- lookup "err" <$> params
-    Scotty.html . R.renderHtml . docTypeHtml $ do
+    merrmsg <- lookup "err" <$> params
+    beginHtml $ do
       renderHiddenHead' $ appendedBlogTitle "Login"
-      renderBody (Just "Login") maybeErrorMessage Nothing $ do
+      renderBody $ do
+        renderTitle "Login"
+        when (isJust merrmsg) (renderSubtitle $ fromJust merrmsg)
         H.form ! A.id "loginform" ! action "/login" ! method "POST" $ do
           input ! type_ "hidden" ! A.name "source" ! value "form"
           renderInput "text" ! A.id "username" ! placeholder "Username" ! A.name "username"
@@ -260,6 +271,15 @@ keywords = ["computer science",
             "startups",
             "tutorial",
             "rails"]
+
+blogTitle :: TL.Text
+blogTitle = "Segmentation Fault (core dumped)"
+
+blogSubtitle :: TL.Text
+blogSubtitle = "a blog about code."
+
+appendedBlogTitle :: TL.Text -> TL.Text
+appendedBlogTitle s = mconcat [s, " | ", blogTitle]
 
 description :: TL.Text
 description = "Rants and raves about functional programming, politics, and everything in between."

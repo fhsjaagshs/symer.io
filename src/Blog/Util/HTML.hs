@@ -2,9 +2,11 @@
 
 module Blog.Util.HTML
 (
-  blogTitle,
-  blogSubtitle,
-  postsPerPage,
+  renderTitle,
+  renderSubtitle,
+  renderAdminControls,
+  beginHtml,
+
   renderHead,
   renderHead',
   renderHiddenHead,
@@ -18,46 +20,45 @@ module Blog.Util.HTML
   renderInput,
   renderButton,
   renderButton',                        
-  renderButton'',
-  appendedBlogTitle
+  renderButton''
 )
 where
 
-import           Blog.User
-import           Blog.Post as Post
-import           Blog.Database.Config (postsPerPage)
+import           Blog.Post
 
 import           Control.Monad
 import           Data.Maybe
 
+import           Data.Text.Lazy (Text)
 import qualified Data.Text.Lazy as TL
 
+import           Text.Blaze.Html.Renderer.Text as R
 import           Text.Blaze.Html5 as H hiding (style, param, map)
 import           Text.Blaze.Html5.Attributes as A
 import           Prelude as P hiding (head, div, id)
 
-blogTitle :: TL.Text
-blogTitle = "Segmentation Fault (core dumped)"
+import qualified Web.Scotty.Trans as Scotty (html)
+import           Web.Scotty.Trans (ActionT, ScottyError)
 
-blogSubtitle :: TL.Text
-blogSubtitle = "a blog about code."
+--------------------------------------------------------------------------------
+--- | Scotty Helper
 
-appendedBlogTitle :: TL.Text -> TL.Text
-appendedBlogTitle s = mconcat [s, " | ", blogTitle]
+beginHtml :: (ScottyError e, Monad m) => Html -> ActionT e m ()
+beginHtml = Scotty.html . R.renderHtml . docTypeHtml
 
 --------------------------------------------------------------------------------
 --- | DRY Rendering
 
-renderMeta :: TL.Text -> TL.Text -> Html
+renderMeta :: Text -> Text -> Html
 renderMeta k v = meta ! name (lazyTextValue k) ! content (lazyTextValue v)
 
-renderStylesheet :: TL.Text -> Html
+renderStylesheet :: Text -> Html
 renderStylesheet x = link ! href (lazyTextValue x) ! rel "stylesheet" ! type_ "text/css"
 
-renderScript :: TL.Text -> Html
+renderScript :: Text -> Html
 renderScript scriptSrc = script ! src (lazyTextValue scriptSrc) $ ""
 
-renderHead :: TL.Text -> Html -> Html
+renderHead :: Text -> Html -> Html
 renderHead pageTitle htmlAction = H.head $ do
   H.title $ toHtml pageTitle
   renderMeta "revisit-after" "2 days"
@@ -66,29 +67,35 @@ renderHead pageTitle htmlAction = H.head $ do
   renderStylesheet "/assets/css/blog.css"
   htmlAction
   
-renderHead' :: TL.Text -> Html
+renderHead' :: Text -> Html
 renderHead' pageTitle = renderHead pageTitle (return ())
 
-renderHiddenHead :: TL.Text -> Html -> Html
+renderHiddenHead :: Text -> Html -> Html
 renderHiddenHead pageTitle htmlAction = renderHead pageTitle $ do
   renderMeta "robots" "noindex, nofollow"
   htmlAction
     
-renderHiddenHead' :: TL.Text -> Html
-renderHiddenHead' pageTitle = renderHiddenHead pageTitle (return ())
+renderHiddenHead' :: Text -> Html
+renderHiddenHead' = flip renderHiddenHead (return ())
 
-renderBody :: Maybe TL.Text -> Maybe TL.Text -> Maybe User -> Html -> Html
-renderBody maybeTitle maybeSubtitle maybeUser bodyHtml = H.body ! style "text-align: center;" $ do
-  a ! href "/" $ do
-    img ! src "/assets/images/philly_skyline.svg" ! width "300" ! height "200"
-  
-  when (isJust maybeTitle) (h2 ! class_ "title" ! id "blog-title" $ toHtml $ fromJust maybeTitle)
-  when (isJust maybeSubtitle) (h3 ! id "blog-subtitle" $ toHtml $ fromJust maybeSubtitle)
-  when (isJust maybeUser) $ do
-    (renderButton' "Log Out" "/logout")
-    (renderButton' "New Post" "/posts/new")
-    (renderButton' "Drafts" "/drafts")
-  div ! id "content" $ bodyHtml
+renderTitle :: Text -> Html
+renderTitle = (h2 ! class_ "title" ! id "blog-title") . toHtml
+
+renderSubtitle :: Text -> Html
+renderSubtitle = (h3 ! id "blog-subtitle") . toHtml
+
+renderAdminControls :: Html
+renderAdminControls = do
+  (renderButton' "Log Out" "/logout")
+  (renderButton' "New Post" "/posts/new")
+  (renderButton' "Drafts" "/drafts")
+
+renderBody :: Html -> Html
+renderBody bodyHtml = do
+  H.body ! style "text-align: center;" $ do
+    a ! href "/" $ do
+      img ! src "/assets/images/philly_skyline.svg" ! width "300" ! height "200"
+    div ! id "content" $ bodyHtml
 
 renderPostEditor :: Maybe Post -> Html
 renderPostEditor maybePost = do
@@ -126,11 +133,11 @@ renderInput kind = input
                    ! customAttribute "spellcheck" "false"
                    ! type_ (stringValue kind)
                    
-renderCheckbox :: TL.Text -> Bool -> Html
+renderCheckbox :: Text -> Bool -> Html
 renderCheckbox boxId False = input ! type_ "checkbox" ! id (lazyTextValue boxId)
 renderCheckbox boxId True = (renderCheckbox boxId False) ! A.checked ""
 
-renderButton :: TL.Text -> TL.Text -> TL.Text -> Html
+renderButton :: Text -> Text -> Text -> Html
 renderButton btnTitle btnId btnHref = a
                                       ! class_ "blogbutton"
                                       ! rel "nofollow"
@@ -138,14 +145,14 @@ renderButton btnTitle btnId btnHref = a
                                       ! href (lazyTextValue btnHref)
                                       $ toHtml btnTitle
 
-renderButton' :: TL.Text -> TL.Text -> Html
+renderButton' :: Text -> Text -> Html
 renderButton' btnTitle btnHref = a
                                  ! class_ "blogbutton"
                                  ! rel "nofollow"
                                  ! href (lazyTextValue btnHref)
                                  $ toHtml btnTitle
                                  
-renderButton'' :: TL.Text -> TL.Text -> Html
+renderButton'' :: Text -> Text -> Html
 renderButton'' btnTitle btnId = a
                                 ! class_ "blogbutton"
                                 ! rel "nofollow"
