@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE OverloadedStrings, TupleSections #-}
 
 module Blog.Web.Cookie 
 (
@@ -33,29 +33,22 @@ instance Default Cookie where
 parseCookieDate :: String -> Maybe UTCTime
 parseCookieDate = parseTimeM True defaultTimeLocale "%a, %d %b %Y %H:%M:%S GMT"
 
+-- @flip feed ""@ is required because @pairs@ can
+-- take an indefinite amount of input
 parseCookie :: B.ByteString -> Maybe Cookie
-parseCookie = fmap applyLex . maybeResult . endInput . parse pairs
+parseCookie = fmap (lx def) . maybeResult . flip feed "" . parse pairs
   where
     -- lexer
-    loop c [] = c
-    loop c (("secure",_):xs) = loop (c { cookieSecure = True }) xs
-    loop c (("httponly",_):xs) = loop (c { cookieHttpOnly = True }) xs
-    loop c (("path",v):xs) = loop (c { cookiePath = (Just v) }) xs
-    loop c (("domain",v):xs) = loop (c { cookieDomain = (Just v) }) xs
-    loop c (("expires",v):xs) = loop (c { cookieExpires = (parseCookieDate v) }) xs
-    loop c ((k,v):xs) = loop (c { cookiePairs = (H.insert k v $ cookiePairs c) }) xs
+    lx c [] = c
+    lx c (("secure",_):xs) = lx (c { cookieSecure = True }) xs
+    lx c (("httponly",_):xs) = lx (c { cookieHttpOnly = True }) xs
+    lx c (("path",v):xs) = lx (c { cookiePath = Just v }) xs
+    lx c (("domain",v):xs) = lx (c { cookieDomain = Just v }) xs
+    lx c (("expires",v):xs) = lx (c { cookieExpires = parseCookieDate v }) xs
+    lx c ((k,v):xs) = lx (c { cookiePairs = H.insert k v $ cookiePairs c }) xs
     -- grammar
-    pairs = (:) <$> pair <*> (many $ ";" *> skipSpace *> pair)
-    pair = do
-      k <- token
-      v <- option "" $ "=" *> token -- TODO: quoted string
-      return (map toLower $ B.unpack k, B.unpack v)
-    token = takeWhile1 takeFunc
-    -- predicates
-    takeFunc ' ' = False
-    takeFunc '=' = False
-    takeFunc ';' = False
-    takeFunc _   = True
-    -- helpers
-    applyLex = loop def
-    endInput = flip feed ""
+    pairs = (:) <$> pair <*> (many' $ ";" *> skipSpace *> pair)
+    pair = (,) <$> attr <*> val
+    attr = map toLower <$> many' letter_ascii
+    val = option "" $ "=" *> q *> many' letter_ascii <* q
+    q = "\"" <|> "'" <|> pure "" -- RFC 6265 states that cookies' values can be quoted

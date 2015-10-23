@@ -26,17 +26,16 @@ import Control.Monad.IO.Class
        
 import Web.Scotty.Trans as Scotty
 import Network.Wai
-import Network.HTTP.Types.Status
-import Network.Wai.Middleware.Gzip
+import Network.HTTP.Types.Status (Status(..))
 
 import qualified Crypto.BCrypt as BCrypt
 
+import Data.String
 import qualified Data.ByteString.Char8 as B
 import qualified Data.ByteString.Lazy.Char8 as BL
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
 import qualified Data.Text.Lazy as TL
-import Data.String
 
 import Data.Aeson (encode)
 import Text.Blaze.Html5 as H hiding (style, param, map)
@@ -60,8 +59,6 @@ import System.Directory
 --------------------------------------------------------------------------------
 app :: ScottyT TL.Text WebM ()
 app = do
-  middleware $ gzip def
-  
   get "/" $ do
     maybeUser <- getUser
     mPageNum <- fmap (read . TL.unpack) . lookup "page" <$> params
@@ -69,7 +66,7 @@ app = do
     Scotty.html . R.renderHtml . docTypeHtml $ do
       renderHead blogTitle $ do
         renderMeta "description" description
-        renderMeta "keywords" (TL.fromStrict $ T.intercalate ", " keywords)
+        renderKeywords keywords
       renderBody (Just blogTitle) (Just blogSubtitle) maybeUser $ do
         renderPosts (take postsPerPage posts) maybeUser
         renderPageControls mPageNum (length posts > postsPerPage)
@@ -101,12 +98,11 @@ app = do
       Nothing -> redirect "/notfound"
       Just pst@(Post _ ttl _ _ tags draft author) -> do
         maybeUser <- getUser
-        
         when (draft && (maybe True ((/=) author) maybeUser)) (redirect "/notfound")
 
         Scotty.html . R.renderHtml . docTypeHtml $ do
           renderHead (appendedBlogTitle $ TL.fromStrict ttl) $ do
-            renderMeta "keywords" . TL.fromStrict . T.intercalate ", " . flip (++) keywords $ tags
+            renderKeywords $ tags ++ keywords
             renderMeta "description" $ TL.fromStrict $ postDescription pst
           renderBody (Just blogTitle) (Just blogSubtitle) maybeUser $ do
             renderPost False pst maybeUser
@@ -121,7 +117,7 @@ app = do
     Scotty.html . R.renderHtml . docTypeHtml $ do
       renderHead (appendedBlogTitle $ TL.fromStrict tag) $ do
         renderMeta "description" description
-        renderMeta "keywords" . TL.fromStrict . T.intercalate ", " $ keywords
+        renderKeywords keywords
       renderBody (Just $ mconcat ["Posts tagged '", TL.fromStrict tag, "'"]) Nothing maybeUser $ do
         renderPosts (take postsPerPage posts) maybeUser
         renderPageControls mPageNum (length posts > postsPerPage)
@@ -152,15 +148,7 @@ app = do
           renderInput "text" ! A.id "username" ! placeholder "Username" ! A.name "username"
           renderInput "password" ! A.id "password" ! placeholder "Password" ! A.name "password"
         renderButton'' "Login" "submit"
-        script $ toHtml $ unlines [
-          "var passwd = document.getElementById('password');",
-          "var uname = document.getElementById('username');",
-          "var form = document.getElementById('loginform');",
-          "var submit = document.getElementById('submit');",
-          "uname.onkeydown = function(e) {if(e.keyCode==13)passwd.focus();}",
-          "passwd.onkeydown = function(e) {if(e.keyCode==13)submit.click();}",
-          "submit.onclick = function() {form.submit();}"
-          ]
+        renderScript "/assets/js/login.js"
 
   get "/logout" $ deleteAuth >> redirect "/"
   
@@ -190,7 +178,7 @@ app = do
                               (TL.toStrict <$> lookup "body" ps)
                               (map TL.toStrict . TL.splitOn "," <$> lookup "tags" ps)
                               (map TL.toStrict . TL.splitOn "," <$> lookup "deleted_tags" ps)
-                              (maybe True truthy (lookup "draft" ps))
+                              (maybe True truthy $ lookup "draft" ps)
         case mPostID of
           Nothing -> status $ Status 400 "Missing required parameters"
           Just pid -> addHeader "Location" $ TL.pack $ "/posts/" ++ (show pid)
@@ -222,20 +210,20 @@ app = do
     production setCacheControl
     path <- rawPathInfo <$> request
     setHeader "Content-Type" "application/json"
-    let act = param "id" >>= getCommentsForPost >>= return . encode . nestComments
-    cachedBody path act
+    let mkjson = fmap (encode . nestComments) . getCommentsForPost
+    cachedBody path $ param "id" >>= mkjson
     
   get (regex "/(assets/.*)") $ do
     production setCacheControl
     relPath <- param "1"
     let mimetype = getMimeAtPath relPath
     let f = cachedBody (B.pack relPath)
-    let eact err = (Scotty.status . Status 500 . B.pack $ err) >> return ""
+    let eact err = (status . Status 500 . B.pack $ err) >> return ""
     setHeader "Content-Type" $ TL.pack mimetype
 
     exists <- liftIO $ doesFileExist relPath
     if not exists
-      then Scotty.status . Status 404 . B.pack $ "File " ++ relPath ++ " does not exist."
+      then status . Status 404 . B.pack $ "File " ++ relPath ++ " does not exist."
       else case mimetype of
         "application/javascript" -> f $ (liftIO $ js relPath) >>= either eact return
         "text/css" -> f $ (liftIO $ css relPath) >>= either eact return
@@ -243,7 +231,13 @@ app = do
 
   get (regex "/favicon.*") $ redirect "/assets/images/philly_skyline.svg"
 
+  -- TODO: defaultHandler
+
+  -- TODO: write better not found handler
   notFound $ Scotty.text "Not Found."
+
+renderKeywords :: [T.Text] -> Html
+renderKeywords = renderMeta "keywords" . TL.fromStrict . T.intercalate ", "
 
 truthy :: (Eq a, IsString a) => a -> Bool
 truthy "t" = True

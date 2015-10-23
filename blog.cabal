@@ -51,5 +51,5 @@ executable blog
                      unix,
                      stm,
                      directory,
-                     mtl
-                     
+                     mtl,
+                     tls

@@ -36,27 +36,26 @@ accessToken = f <$> Scotty.header "Cookie"
     g = maybe Nothing (H.lookup "token" . cookiePairs)
     
 getUser :: (ScottyError e) => ActionT e WebM (Maybe User)
-getUser = accessToken >>= f
+getUser = accessToken >>= maybe (return Nothing) (f . B.pack)
   where
-    f = maybe (return Nothing) g
-    g token = do
+    f token = do
       redis <- webM $ gets stateRedis
       liftIO $ R.runRedis redis $ do
-        R.expire (B.pack token) (3600*24)
-        (R.get $ B.pack token) >>= return . e
-    e (Right (Just j)) = A.decodeStrict j
-    e _ = Nothing
+        R.expire token 86400 -- 24 hours
+        g <$> R.get token
+    g (Right (Just j)) = A.decodeStrict j
+    g _ = Nothing
 
 setUser :: (ScottyError e) => User -> ActionT e WebM ()
-setUser user = do
+setUser user = void $ do
   redis <- webM $ gets stateRedis
   token <- liftIO $ mkToken
   liftIO $ saveUser redis token user
-  setToken token
+  setToken token -- FIXME: this screws up pre warp-3.1.4
   where
     mkToken = (take 15 . randomRs ('a','z')) <$> newStdGen
     saveUser redis token = R.runRedis redis . R.set (B.pack token) . BL.toStrict . A.encode
-    setToken token = addHeader "Set-Cookie" $ mconcat ["token=", TL.pack token, "; HttpOnly"]
+    setToken token = Scotty.addHeader "Set-Cookie" $ mconcat ["token=", TL.pack token, "; HttpOnly; Secure"]
     
 deleteAuth :: (ScottyError e) => ActionT e WebM ()
 deleteAuth = accessToken >>= f

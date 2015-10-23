@@ -11,7 +11,8 @@ import Blog.System.IO
 
 import Data.Maybe
 import Control.Monad
-import Control.Monad.Reader
+import Control.Monad.IO.Class
+import Control.Monad.Reader (runReaderT)
 import Control.Concurrent.STM
 
 import Web.Scotty.Trans as Scotty
@@ -20,9 +21,12 @@ import Network.Wai (responseLBS,requestHeaderHost,rawPathInfo,rawQueryString,App
 import Network.Wai.Handler.Warp (defaultSettings,setPort,setBeforeMainLoop,runSettings,Settings)
 import Network.Wai.Handler.WarpTLS (certFile,defaultTlsSettings,keyFile,runTLS)
 import Network.HTTP.Types.Status (status301)
+import Network.Wai.Middleware.Gzip
 
 import System.Exit
 import System.Posix
+
+import Debug.Trace
   
 {-
 TODO (internals)
@@ -57,11 +61,17 @@ startHTTPS app preredirect onkill cert key port state = do
 mkWarpSettings :: Int -> Settings
 mkWarpSettings port = setBeforeMainLoop (resignPrivileges "daemon") $ setPort port defaultSettings
     
+-- Adds middleware to a scotty app
+applyMiddleware :: (ScottyError e) => ScottyT e WebM () -> ScottyT e WebM ()
+applyMiddleware app = do
+  middleware $ gzip def
+  app
+    
 mkScottyAppT :: (ScottyError e) => ScottyT e WebM () -> AppState -> IO Application
 mkScottyAppT app state = do
   sync <- newTVarIO state
   let runActionToIO m = runReaderT (runWebM m) sync
-  scottyAppT runActionToIO app
+  scottyAppT runActionToIO $ applyMiddleware app
     
 resignPrivileges :: String -> IO ()
 resignPrivileges user = do
