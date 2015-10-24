@@ -63,7 +63,8 @@ truncateMarkdown len (Doc o bs) = Doc o $ loop len (F.toList bs) S.empty
     lenBlock (HtmlBlock htmlText) = T.length htmlText
     lenBlock HRule = 0
 
-    -- FIXME: doesn't match all cases
+    -- FIXME: doesn't match all cases (missing @loop _ (_:_) _@)
+    --        This may be a GHC bug.
     loop :: Int -> [Block] -> Seq Block -> Seq Block
     loop _    []     accum = accum
     loop 0    _      accum = accum

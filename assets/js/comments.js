@@ -42,7 +42,6 @@ var Editor = function Editor(hidden, id) {
 
     e.reset();
     sendHTTP('POST', '/posts/' + postId + '/comments', params, function(http) {
-      console.log(http);
       if (http.status == 200) {
         params.id = +http.responseText;
         var c = Comment.fromJSON(params);

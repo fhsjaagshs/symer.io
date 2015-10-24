@@ -70,7 +70,7 @@ app = do
         renderTitle blogTitle
         renderSubtitle blogSubtitle
         when (isJust maybeUser) renderAdminControls
-        renderPosts (take postsPerPage posts) maybeUser
+        mapM_ (renderPost True maybeUser) (take postsPerPage posts)
         renderPageControls mPageNum (length posts > postsPerPage)
         
   get "/drafts" $ do
@@ -78,18 +78,20 @@ app = do
     mPageNum <- fmap (read . TL.unpack) . lookup "page" <$> params
     posts <- getDrafts (fromJust maybeUser) mPageNum
     beginHtml $ do
-      renderHiddenHead' $ appendedBlogTitle "Drafts"
+      renderHead (appendedBlogTitle "Drafts") $ do
+        renderMeta "robots" "noindex, nofollow"
       renderBody $ do
         renderTitle "Drafts"
         when (isJust maybeUser) renderAdminControls
-        renderPosts (take postsPerPage posts) maybeUser
+        mapM_ (renderPost True maybeUser) (take postsPerPage posts)
         renderPageControls mPageNum (length posts > postsPerPage)
         
   -- create a post
   get "/posts/new" $ do
     authenticate
     beginHtml $ do
-      renderHiddenHead (appendedBlogTitle "New Post") $ do
+      renderHead (appendedBlogTitle "New Post") $ do
+        renderMeta "robots" "noindex, nofollow"
         renderStylesheet "/assets/css/editor.css"
         renderStylesheet "/assets/css/wordlist.css"
       renderBody $ do
@@ -112,7 +114,7 @@ app = do
             renderTitle blogTitle
             renderSubtitle blogSubtitle
             when (isJust maybeUser) renderAdminControls
-            renderPost False pst maybeUser
+            renderPost False maybeUser pst
             renderScript "/assets/js/common.js"
             renderScript "/assets/js/comments.js"
             
@@ -128,7 +130,7 @@ app = do
       renderBody $ do
         renderTitle $ mconcat ["Posts tagged '", TL.fromStrict tag, "'"]
         when (isJust maybeUser) renderAdminControls
-        renderPosts (take postsPerPage posts) maybeUser
+        mapM_ (renderPost True maybeUser) (take postsPerPage posts)
         renderPageControls mPageNum (length posts > postsPerPage)
 
   -- edit a post
@@ -139,7 +141,8 @@ app = do
     case res of
       Nothing -> next
       Just post_ -> beginHtml $ do
-        renderHiddenHead (appendedBlogTitle $ TL.fromStrict $ postTitle post_) $ do
+        renderHead (appendedBlogTitle $ TL.fromStrict $ postTitle post_) $ do
+          renderMeta "robots" "noindex, nofollow"
           renderStylesheet "/assets/css/editor.css"
           renderStylesheet "/assets/css/wordlist.css"
         renderBody $ do
@@ -150,7 +153,8 @@ app = do
     when (isJust maybeUser) (redirect "/")
     merrmsg <- lookup "err" <$> params
     beginHtml $ do
-      renderHiddenHead' $ appendedBlogTitle "Login"
+      renderHead (appendedBlogTitle "Login") $ do
+        renderMeta "robots" "noindex, nofollow"
       renderBody $ do
         renderTitle "Login"
         when (isJust merrmsg) (renderSubtitle $ fromJust merrmsg)
@@ -158,7 +162,7 @@ app = do
           input ! type_ "hidden" ! A.name "source" ! value "form"
           renderInput "text" ! A.id "username" ! placeholder "Username" ! A.name "username"
           renderInput "password" ! A.id "password" ! placeholder "Password" ! A.name "password"
-        renderButton'' "Login" "submit"
+        renderButton "Login" "submit" Nothing
         renderScript "/assets/js/login.js"
 
   get "/logout" $ deleteAuth >> redirect "/"
@@ -167,7 +171,7 @@ app = do
     mUser <- param "username" >>= getUserWithUsername
     case mUser of
       Nothing -> redirect "/login?err=Username%20does%20not%20exist%2E"
-      (Just user@(User _ _ _ (Just phash))) -> do
+      Just user@(User _ _ _ (Just phash)) -> do
         pPassword <- T.encodeUtf8 <$> param "password"
         if BCrypt.validatePassword (T.encodeUtf8 phash) pPassword
           then do
@@ -181,18 +185,18 @@ app = do
     auth <- authenticate
     case auth of
       Nothing -> status $ Status 401 "Missing authentication"
-      (Just authUser) -> do
+      Just authUser -> do
         ps <- params
-        mPostID <- upsertPost authUser
-                              (read . TL.unpack <$> lookup "id" ps)
-                              (TL.toStrict <$> lookup "title" ps)
-                              (TL.toStrict <$> lookup "body" ps)
-                              (map TL.toStrict . TL.splitOn "," <$> lookup "tags" ps)
-                              (map TL.toStrict . TL.splitOn "," <$> lookup "deleted_tags" ps)
-                              (maybe True truthy $ lookup "draft" ps)
+        let pid = read . TL.unpack <$> lookup "id" ps
+            ptitle   = TL.toStrict <$> lookup "title" ps
+            pbody    = TL.toStrict <$> lookup "body" ps
+            ptags    = map TL.toStrict . TL.splitOn "," <$> lookup "tags" ps
+            pdeltags = map TL.toStrict . TL.splitOn "," <$> lookup "deleted_tags" ps
+            pisdraft = maybe True truthy $ lookup "draft" ps
+        mPostID <- upsertPost authUser pid ptitle pbody ptags pdeltags pisdraft
         case mPostID of
           Nothing -> status $ Status 400 "Missing required parameters"
-          Just pid -> addHeader "Location" $ TL.pack $ "/posts/" ++ (show pid)
+          Just postId -> addHeader "Location" $ TL.pack $ "/posts/" ++ (show postId)
 
   -- deletes a BlogPost from the database
   delete "/posts/:id" $ do
@@ -213,10 +217,8 @@ app = do
       Just commentId -> do
         addHeader "Location" $ TL.pack $ "/posts/" ++ (show postId)
         Scotty.text . TL.pack . show $ commentId
-      Nothing -> do
-        Scotty.status $ Status 500 "Failed to insert comment."
-        Scotty.text "Failed to insert comment."
-        
+      Nothing -> Scotty.status $ Status 500 "Failed to insert comment."
+
   get "/posts/:id/comments.json" $ do
     production setCacheControl
     path <- rawPathInfo <$> request
@@ -244,8 +246,14 @@ app = do
 
   -- TODO: defaultHandler
 
-  -- TODO: write better not found handler
-  notFound $ Scotty.text "Not Found."
+  -- TODO: add picture of fudge
+  notFound $ do
+    beginHtml $ do
+      renderHead (appendedBlogTitle "Not Found") $ do
+        renderMeta "robots" "noindex, nofollow"
+      renderBody $ do
+        renderTitle "Oh fudge!"
+        renderSubtitle "The page you're looking for does not exist."
 
 renderKeywords :: [T.Text] -> Html
 renderKeywords = renderMeta "keywords" . TL.fromStrict . T.intercalate ", "

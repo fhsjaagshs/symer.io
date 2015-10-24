@@ -90,15 +90,15 @@ getDrafts user mPageNum = webMQuery sql (userUID user, pageNum*(fromIntegral pos
     sql = "SELECT b.identifier,b.title,b.bodytext,b.timestamp,b.tags,b.is_draft,u FROM blogposts b, users u WHERE is_draft='t'::bool AND b.author_id=? AND u.id=b.author_id ORDER BY identifier DESC OFFSET ? LIMIT ?"
 
 getPost :: (ScottyError e) => Integer -> ActionT e WebM (Maybe Post)
-getPost identifier_ = listToMaybe <$> webMQuery sql [identifier_]
+getPost pid = listToMaybe <$> webMQuery sql [pid]
   where sql = "SELECT b.identifier,b.title,b.bodytext,b.timestamp,b.tags,b.is_draft,u FROM blogposts b, users u WHERE u.id=b.author_id AND identifier=? LIMIT 1"
 
 deletePost :: (ScottyError e) => Integer -> User -> ActionT e WebM (Maybe Integer)
-deletePost identifier_ (User uid_ _ _ _) = processResult $ webMQuery sql (identifier_, uid_)
+deletePost pid (User uid _ _ _) = processResult $ webMQuery sql (pid, uid)
   where sql = "DELETE FROM blogposts WHERE identifier=? AND author_id=? RETURNING identifier"
 
 getCommentsForPost :: (ScottyError e) => Integer -> ActionT e WebM [Comment]
-getCommentsForPost identifier_ = webMQuery "SELECT * FROM comments WHERE postId=?" [identifier_]
+getCommentsForPost pid = webMQuery "SELECT * FROM comments WHERE postId=?" [pid]
 
 insertComment :: (ScottyError e) => Maybe Integer -> Integer -> Text -> Text -> Text -> ActionT e WebM (Maybe Integer)
 insertComment (Just parentId) pid email displayName body = processResult $ webMQuery "INSERT INTO comments (parentId,postId,email,displayName,body) VALUES (?,?,?,?,?) RETURNING id" (parentId, pid, email, displayName, body)

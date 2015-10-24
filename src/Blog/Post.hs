@@ -4,8 +4,7 @@ module Blog.Post
 (
   Post(..),
   postDescription,
-  renderPost,
-  renderPosts
+  renderPost
 )
 where
 
@@ -86,29 +85,22 @@ instance ToJSON Post where
 postDescription :: Post -> Text
 postDescription = T.take 150 . stripMarkdown . markdown def . postBody
 
-renderPosts :: [Post] -> Maybe User -> Html
-renderPosts [] _ = return ()
-renderPosts [x] user = renderPost True x user
-renderPosts (x:xs) user = do
-  renderPost True x user
-  renderPosts xs user
-  
-renderPost :: Bool -> Post -> Maybe User -> Html
-renderPost truncateBody (Post pid title body ts tags _ author) mAuthUser = do
+renderPost :: Bool -> Maybe User -> Post -> Html
+renderPost truncateBody user (Post pid title body ts tags _ author) = do
   a ! href (stringValue $ "/posts/" ++ show pid) $ do
     h1 ! class_ "post-title" ! A.id (stringValue $ show pid) $ toHtml title
   h4 ! class_ "post-subtitle" $ toHtml $ formatSubtitle ts $ userDisplayName author
   mapM_ taglink tags
-  when (isJust mAuthUser) $ when (author == (fromJust mAuthUser)) $ do
+  when (isJust user) $ when (author == (fromJust user)) $ do
     a ! class_ "post-edit-button" ! href editURL ! rel "nofollow" $ "edit"
   div ! class_ "post-content" $ renderBody truncateBody
   where
     editURL = stringValue $ mconcat ["/posts/", show pid, "/edit"]
     renderBody True = do
       renderDoc . truncateMarkdown 500 . markdown def $ body
-      a ! class_ "read-more" ! href (stringValue $ "/posts/" ++ show pid) $ "Read More..."
+      a ! class_ "read-more" ! href (stringValue $ "/posts/" ++ show pid) $ "read more..."
     renderBody False = toHtml $ markdown def body
     formatSubtitle t authorName = mconcat [formatDate t, " | ", authorName]
     formatDate = T.pack . formatTime defaultTimeLocale "%-m • %-e • %-y | %l:%M %p %Z"
-    taglink t = a ! class_ "taglink" ! href (textValue $ mconcat ["/posts/by/tag/", t]) $ do
+    taglink t = a ! class_ "taglink" ! href (textValue $ T.append "/posts/by/tag/" t) $ do
       h4 ! class_ "post-subtitle" $ toHtml t

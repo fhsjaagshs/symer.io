@@ -2,25 +2,20 @@
 
 module Blog.Util.HTML
 (
+  beginHtml,
+  renderMeta,
+  renderStylesheet,
+  renderScript,
+  renderHead,
+  renderBody,
+  renderButton,
+  renderCheckbox,
+  renderInput,
   renderTitle,
   renderSubtitle,
   renderAdminControls,
-  beginHtml,
-
-  renderHead,
-  renderHead',
-  renderHiddenHead,
-  renderHiddenHead',
-  renderStylesheet,
-  renderMeta,
-  renderScript,
-  renderBody,
-  renderPostEditor,
   renderPageControls,
-  renderInput,
-  renderButton,
-  renderButton',                        
-  renderButton''
+  renderPostEditor
 )
 where
 
@@ -47,7 +42,7 @@ beginHtml :: (ScottyError e, Monad m) => Html -> ActionT e m ()
 beginHtml = Scotty.html . R.renderHtml . docTypeHtml
 
 --------------------------------------------------------------------------------
---- | DRY Rendering
+--- | HTML primitives
 
 renderMeta :: Text -> Text -> Html
 renderMeta k v = meta ! name (lazyTextValue k) ! content (lazyTextValue v)
@@ -66,17 +61,48 @@ renderHead pageTitle htmlAction = H.head $ do
   meta ! httpEquiv "Content-Type" ! content "text/html; charset=UTF-8"
   renderStylesheet "/assets/css/blog.css"
   htmlAction
-  
-renderHead' :: Text -> Html
-renderHead' pageTitle = renderHead pageTitle (return ())
 
-renderHiddenHead :: Text -> Html -> Html
-renderHiddenHead pageTitle htmlAction = renderHead pageTitle $ do
-  renderMeta "robots" "noindex, nofollow"
-  htmlAction
-    
-renderHiddenHead' :: Text -> Html
-renderHiddenHead' = flip renderHiddenHead (return ())
+renderBody :: Html -> Html
+renderBody bodyHtml = do
+  H.body ! style "text-align: center;" $ do
+    a ! href "/" $ do
+      img ! src "/assets/images/philly_skyline.svg" ! width "300" ! height "200"
+    div ! id "content" $ bodyHtml
+
+--------------------------------------------------------------------------------
+--- | Controls
+
+renderInput :: String -> Html
+renderInput kind = input
+                   ! class_ "blogtextfield"
+                   ! customAttribute "autocorrect" "off"
+                   ! customAttribute "autocapitalize" "off"
+                   ! customAttribute "spellcheck" "false"
+                   ! type_ (stringValue kind)
+                   
+renderCheckbox :: Text -> Text -> Bool -> Html
+renderCheckbox boxId txt isChecked = do
+  H.label ! customAttribute "for" "public-checkbox" $ do
+    if isChecked
+      then checkbox ! A.checked ""
+      else checkbox
+    toHtml txt
+  where
+    checkbox = input ! type_ "checkbox" ! id (lazyTextValue boxId)
+
+renderButton :: Text -> Text -> Maybe Text -> Html
+renderButton btnTitle btnId btnHref = a
+                                      ! class_ "blogbutton"
+                                      ! rel "nofollow"
+                                      ! id (lazyTextValue btnId)
+                                      ! f btnHref
+                                      $ toHtml btnTitle
+  where
+    f (Just anHref) = href (lazyTextValue anHref)
+    f Nothing = mempty
+                                      
+--------------------------------------------------------------------------------
+--- | Composite HTML DRY
 
 renderTitle :: Text -> Html
 renderTitle = (h2 ! class_ "title" ! id "blog-title") . toHtml
@@ -86,75 +112,40 @@ renderSubtitle = (h3 ! id "blog-subtitle") . toHtml
 
 renderAdminControls :: Html
 renderAdminControls = do
-  (renderButton' "Log Out" "/logout")
-  (renderButton' "New Post" "/posts/new")
-  (renderButton' "Drafts" "/drafts")
-
-renderBody :: Html -> Html
-renderBody bodyHtml = do
-  H.body ! style "text-align: center;" $ do
-    a ! href "/" $ do
-      img ! src "/assets/images/philly_skyline.svg" ! width "300" ! height "200"
-    div ! id "content" $ bodyHtml
+  renderButton "Log Out" "" $ Just "/logout"
+  renderButton "New Post" "" $ Just "/posts/new"
+  renderButton "Drafts" "" $ Just "/drafts"
+  
+renderPageControls :: Maybe Integer -> Bool -> Html
+renderPageControls mPageNum hasNext = do
+  when (pageNum > 0)  $ renderButton "Newer" "prevbutton" $ mkHref $ pageNum-1
+  when hasNext        $ renderButton "Older" "nextbutton" $ mkHref $ pageNum+1
+  where pageNum = fromMaybe 0 mPageNum
+        mkHref = Just . TL.pack . (++) "/?page=" . show
 
 renderPostEditor :: Maybe Post -> Html
-renderPostEditor maybePost = do
-  input ! type_ "text" ! id "title-field" ! placeholder "Post title" ! value (textValue $ maybe "" postTitle maybePost)
+renderPostEditor post = do
+  input ! type_ "text" ! id "title-field" ! placeholder "Post title" ! value (textValue ptitle)
 
   div ! id "preview" $ ""
-  textarea ! id "editor" ! customAttribute "post-id" (stringValue $ show $ maybe (-1) postID maybePost) $ H.text $ maybe "" postBody maybePost
-  textarea ! id "tags" ! class_ "wordlist" $ toHtml . TL.intercalate ", " . map TL.fromStrict . maybe [] postTags $ maybePost
+  textarea ! id "editor" ! customAttribute "post-id" (stringValue $ show pid) $ H.text pbody
+  textarea ! id "tags" ! class_ "wordlist" $ toHtml . TL.intercalate ", " . map TL.fromStrict $ tags
   
   div ! id "checkbox-container" $ do
-    renderCheckbox "public-checkbox" (not $ maybe True postIsDraft maybePost)
-    H.label ! customAttribute "for" "public-checkbox" $ "Public"
-    
-  renderButton'' "Delete" "delete-button"
-  renderButton'' "Preview" "preview-button"
-  renderButton'' "Save" "save-button"
+    renderCheckbox "public-checkbox" "Public" $ not isDraft
+
+  renderButton "Delete" "delete-button" Nothing
+  renderButton "Preview" "preview-button" Nothing
+  renderButton "Save" "save-button" Nothing
   
   renderScript "/assets/js/jquery-2.1.3.min.js"
   renderScript "/assets/js/marked.min.js"
   renderScript "/assets/js/wordlist.js"
   renderScript "/assets/js/common.js"
   renderScript "/assets/js/editor.js"
-
-renderPageControls :: Maybe Integer -> Bool -> Html
-renderPageControls mPageNum hasNext = do
-  when (pageNum > 0)  $ renderButton "Newer" "prevbutton" (TL.pack $ "/?page=" ++ (show $ pageNum-1))
-  when hasNext        $ renderButton "Older" "nextbutton" (TL.pack $ "/?page=" ++ (show $ pageNum+1))
-  where pageNum = fromMaybe 0 mPageNum
-  
-renderInput :: String -> Html
-renderInput kind = input
-                   ! class_ "blogtextfield"
-                   ! customAttribute "autocorrect" "off"
-                   ! customAttribute "autocapitalize" "off"
-                   ! customAttribute "spellcheck" "false"
-                   ! type_ (stringValue kind)
-                   
-renderCheckbox :: Text -> Bool -> Html
-renderCheckbox boxId False = input ! type_ "checkbox" ! id (lazyTextValue boxId)
-renderCheckbox boxId True = (renderCheckbox boxId False) ! A.checked ""
-
-renderButton :: Text -> Text -> Text -> Html
-renderButton btnTitle btnId btnHref = a
-                                      ! class_ "blogbutton"
-                                      ! rel "nofollow"
-                                      ! id (lazyTextValue btnId)
-                                      ! href (lazyTextValue btnHref)
-                                      $ toHtml btnTitle
-
-renderButton' :: Text -> Text -> Html
-renderButton' btnTitle btnHref = a
-                                 ! class_ "blogbutton"
-                                 ! rel "nofollow"
-                                 ! href (lazyTextValue btnHref)
-                                 $ toHtml btnTitle
-                                 
-renderButton'' :: Text -> Text -> Html
-renderButton'' btnTitle btnId = a
-                                ! class_ "blogbutton"
-                                ! rel "nofollow"
-                                ! id (lazyTextValue btnId)
-                                $ toHtml btnTitle
+  where
+    ptitle = maybe "" postTitle post
+    pbody = maybe "" postBody post
+    pid = maybe (-1) postID post
+    tags = maybe [] postTags post
+    isDraft = maybe True postIsDraft post
