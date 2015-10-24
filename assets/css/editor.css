@@ -61,7 +61,7 @@
   margin-bottom: 20px;
 }
 
-input[type=checkbox]#public-checkbox + label {
+label {
   font-size: 20px;
   vertical-align: middle;
   font-family: sans-serif;
