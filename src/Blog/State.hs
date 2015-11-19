@@ -23,7 +23,7 @@ import Database.PostgreSQL.Simple.Migration as PG.Migration
 
 import qualified Data.ByteString.Char8 as B
 
-data AppState = AppState { 
+data AppState = AppState {
   statePostgres :: PG.Connection,
   stateCache :: FileCache
 }

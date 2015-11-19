@@ -47,8 +47,8 @@ startHTTP app port state = mkScottyAppT app state >>= runSettings (mkWarpSetting
 -- state -> the application state
 startHTTPS :: (ScottyError e) => ScottyT e WebM () -> IO () -> IO () -> FilePath -> FilePath -> Int -> AppState -> IO ()
 startHTTPS app preredirect onkill cert key port state = do
-  privileged <- isPrivileged
-  when privileged $ startRedirectProcess preredirect onkill
+  -- privileged <- isPrivileged
+  -- when privileged $ startRedirectProcess preredirect onkill
   mkScottyAppT app state >>= run
   where
     run = runTLS tlsSettings $ mkWarpSettings port state
