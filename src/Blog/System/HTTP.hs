@@ -2,7 +2,8 @@
 module Blog.System.HTTP
 (
   startHTTPS,
-  startHTTP
+  startHTTP,
+  startHTTPSForcer
 )
 where
 
@@ -45,14 +46,20 @@ startHTTP app port state = mkScottyAppT app state >>= runSettings (mkWarpSetting
 -- key -> SSL private key file path
 -- port -> port to run the HTTPS server on
 -- state -> the application state
-startHTTPS :: (ScottyError e) => ScottyT e WebM () -> IO () -> IO () -> FilePath -> FilePath -> Int -> AppState -> IO ()
-startHTTPS app preredirect onkill cert key port state = do
-  -- privileged <- isPrivileged
-  -- when privileged $ startRedirectProcess preredirect onkill
+startHTTPS :: (ScottyError e) => ScottyT e WebM () -> FilePath -> FilePath -> Int -> AppState -> IO ()
+startHTTPS app cert key port state = do
   mkScottyAppT app state >>= run
   where
     run = runTLS tlsSettings $ mkWarpSettings port state
     tlsSettings = defaultTlsSettings { keyFile = key, certFile = cert }
+    
+startHTTPSForcer :: IO ()
+startHTTPSForcer = do
+  privileged <- isPrivileged
+  when privileged $ startRedirectProcess preredirect onkill
+  where
+    preredirect = putStrLn "starting HTTP -> HTTPS process"
+    onkill = putStrLn "killing HTTP -> HTTPS process"
     
 {- Internal -}
   

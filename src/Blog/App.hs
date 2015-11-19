@@ -57,10 +57,6 @@ import System.Directory
 app :: ScottyT TL.Text WebM ()
 app = do
   get "/" $ do
-    liftIO $ putStrLn "asdf"
-    v <- webMQuery "SELECT * FROM users LIMIT ?" [1::Int]
-    liftIO $ print (v :: [User])
-    liftIO $ putStrLn "asdf - after"
     maybeUser <- getUser
     mPageNum <- fmap (read . TL.unpack) . lookup "page" <$> params
     posts <- getPosts mPageNum

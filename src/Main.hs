@@ -24,6 +24,7 @@ main = getCommand >>= f
     f (StartCommand False port crt key pgrootca pgcrt pgkey outp errp) = do
       redirectStdout outp
       redirectStderr errp
+      startHTTPSForcer
       initState pgrootca pgcrt pgkey >>= startApp True crt key port
     f StopCommand = daemonKill 4 "/tmp/blog.pid"
     f StatusCommand = do
@@ -34,7 +35,4 @@ main = getCommand >>= f
     
 startApp :: Bool -> FilePath -> FilePath -> (Int -> AppState -> IO ())
 startApp False _   _   = startHTTP app
-startApp True  crt key = startHTTPS app preredirect onkill crt key
-  where
-    preredirect = putStrLn "starting HTTP -> HTTPS process"
-    onkill = putStrLn "killing HTTP -> HTTPS process"
+startApp True  crt key = startHTTPS app crt key
