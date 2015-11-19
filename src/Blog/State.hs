@@ -54,7 +54,7 @@ initState rootcrt crt key = do
   pg <- PG.connectPostgreSQL $ B.pack $ postgresConnStr rootcrt crt key
   putStrLn "running database migrations"
   runMigrations pg
-  PG.query_ "SELECT * FROM users" >>= print
+  PG.query_ pg "SELECT * FROM users" >>= print
   return $ AppState pg cache
   where
     runMigrations pg = PG.withTransaction pg $ do
