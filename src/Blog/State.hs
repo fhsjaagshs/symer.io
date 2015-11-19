@@ -17,14 +17,12 @@ import Blog.System.FileCache
 import           Control.Concurrent.STM
 import           Control.Monad.Reader 
 
-import qualified Database.Redis as Redis
 import qualified Database.PostgreSQL.Simple as PG
 import Database.PostgreSQL.Simple.Migration as PG.Migration
 
 import qualified Data.ByteString.Char8 as B
 
 data AppState = AppState { 
-  stateRedis :: Redis.Connection,
   statePostgres :: PG.Connection,
   stateCache :: FileCache
 }
@@ -54,10 +52,9 @@ initState rootcrt dbcrt dbkey = do
   cache <- mkFileCache "assets/"
   putStrLn "establishing database connections"
   pg <- PG.connectPostgreSQL $ B.pack $ postgresConnStr rootcrt dbcrt dbkey
-  redis <- Redis.connect Redis.defaultConnectInfo
   putStrLn "running database migrations"
   runMigrations pg
-  return $ AppState redis pg cache
+  return $ AppState pg cache
   where
     runMigrations pg = PG.withTransaction pg $ do
       PG.execute_ pg "SET client_min_messages=WARNING;"

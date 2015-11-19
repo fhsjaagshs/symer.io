@@ -47,7 +47,6 @@ import System.Directory
 -- Editor key commands (cmd-i, cmd-b, etc)
 -- Page numbers at bottom (would require extra db hit)
 -- Site footer (copyright etc)
--- Save MD5 sum in redis
 -- Links in comments *** nofollow them
 -- search
 

@@ -33,7 +33,6 @@ executable blog
                      time,
                      postgresql-simple,
                      postgresql-simple-migration,
-                     hedis,
                      cheapskate,
                      blaze-builder,
                      blaze-markup,
