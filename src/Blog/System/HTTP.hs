@@ -6,9 +6,12 @@ module Blog.System.HTTP
 )
 where
 
+import Blog.User
 import Blog.State
 import Blog.System.IO
 import Blog.System.FileCache
+
+import qualified Database.PostgreSQL.Simple as PG
 
 import Data.Maybe
 import Control.Monad
@@ -57,11 +60,16 @@ startHTTPS app preredirect onkill cert key port state = do
 {- Internal -}
   
 mkWarpSettings :: Int -> AppState -> Settings
-mkWarpSettings port state = setBeforeMainLoop (resignPrivileges "daemon") 
+mkWarpSettings port state = setBeforeMainLoop before
                             $ setInstallShutdownHandler shutdown
                             $ setPort port
                             defaultSettings
   where
+    before = do
+      let pg = statePostgres state
+      ((PG.query_ pg "SELECT * FROM users") :: IO [User]) >>= print
+      resignPrivileges "daemon"
+      ((PG.query_ pg "SELECT * FROM users") :: IO [User]) >>= print
     shutdown act = do
       act
       teardownFileCache $ stateCache state
