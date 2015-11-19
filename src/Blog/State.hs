@@ -47,13 +47,14 @@ modify :: (AppState -> AppState) -> WebM ()
 modify f = ask >>= liftIO . atomically . flip modifyTVar' f
 
 initState :: FilePath -> FilePath -> FilePath -> IO AppState
-initState rootcrt dbcrt dbkey = do
+initState rootcrt crt key = do
   putStrLn "initializing cache"
   cache <- mkFileCache "assets/"
   putStrLn "establishing database connections"
-  pg <- PG.connectPostgreSQL $ B.pack $ postgresConnStr rootcrt dbcrt dbkey
+  pg <- PG.connectPostgreSQL $ B.pack $ postgresConnStr rootcrt crt key
   putStrLn "running database migrations"
   runMigrations pg
+  query_ "SELECT * FROM users" >>= print
   return $ AppState pg cache
   where
     runMigrations pg = PG.withTransaction pg $ do
