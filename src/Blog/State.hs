@@ -12,6 +12,7 @@ module Blog.State
 ) where
   
 import Blog.Database.Config
+import Blog.User
 import Blog.System.FileCache
   
 import           Control.Concurrent.STM
@@ -54,7 +55,7 @@ initState rootcrt crt key = do
   pg <- PG.connectPostgreSQL $ B.pack $ postgresConnStr rootcrt crt key
   putStrLn "running database migrations"
   runMigrations pg
-  PG.query_ pg "SELECT * FROM users" >>= print
+  ((PG.query_ pg "SELECT * FROM users") :: IO [User]) >>= print
   return $ AppState pg cache
   where
     runMigrations pg = PG.withTransaction pg $ do
