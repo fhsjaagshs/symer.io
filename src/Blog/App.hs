@@ -224,13 +224,13 @@ app = do
     path <- rawPathInfo <$> request
     setHeader "Content-Type" "application/json"
     let mkjson = fmap (encode . nestComments) . getCommentsForPost
-    cachedBody False path $ param "id" >>= mkjson
+    cachedBody 360 path $ param "id" >>= mkjson
     
   get (regex "/(assets/.*)") $ do
     production setCacheControl
     relPath <- param "1"
     let mimetype = getMimeAtPath relPath
-    let f = cachedBody True (B.pack relPath)
+    let f = cachedBody 0 (B.pack relPath)
     let eact err = (status . Status 500 . B.pack $ err) >> return ""
     setHeader "Content-Type" $ TL.pack mimetype
 

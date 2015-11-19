@@ -26,9 +26,9 @@ import Crypto.Hash.MD5 as MD5 (hashlazy)
 setCacheControl :: (Monad m, ScottyError e) => ActionT e m ()
 setCacheControl = Scotty.setHeader "Cache-Control" "public, max-age=3600, s-max-age=3600, no-cache, must-revalidate, proxy-revalidate, no-transform" -- 1 hour
 
--- TODO: if isFile is False, set a timeout
-cachedBody :: (ScottyError e) => Bool -> B.ByteString -> ActionT e WebM BL.ByteString -> ActionT e WebM ()
-cachedBody isFile key valueFunc = do
+-- timeout -> The timeout if key is not a file path
+cachedBody :: (ScottyError e) => Int -> B.ByteString -> ActionT e WebM BL.ByteString -> ActionT e WebM ()
+cachedBody timeout key valueFunc = do
   nonProduction $ valueFunc >>= Scotty.raw
   production $ do
     cache <- webM $ gets stateCache
@@ -38,7 +38,7 @@ cachedBody isFile key valueFunc = do
     f cache Nothing       = do
       v <- valueFunc
       rawBodyCached v
-      liftIO $ fcinsert cache key (BL.toStrict v)
+      liftIO $ fcinsert cache timeout key (BL.toStrict v)
     rawBodyCached str = do
       Scotty.setHeader "Vary" "Accept-Encoding"
       Scotty.header "If-None-Match" >>= g . maybe False (== hashSum)

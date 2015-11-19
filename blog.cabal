@@ -54,4 +54,6 @@ executable blog
                      mtl,
                      tls,
                      fsnotify,
-                     hashtables
+                     hashtables,
+                     directory,
+                     filepath
