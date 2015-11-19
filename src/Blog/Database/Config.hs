@@ -1,5 +1,9 @@
 {-# LANGUAGE OverloadedStrings #-}
 
+-- to connect using psql (on blog.symer.io):
+-- cd /deploy/ssl/
+-- sudo psql "sslmode=verify-ca host=db.symer.io dbname=blog port=5432 sslrootcert=root.crt sslcert=server.crt sslkey=server.key user=symerdotio"
+
 module Blog.Database.Config
 (
   postgresConnStr,

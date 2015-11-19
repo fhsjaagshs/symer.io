@@ -57,7 +57,8 @@ import System.Directory
 app :: ScottyT TL.Text WebM ()
 app = do
   get "/" $ do
-    maybeUser <- getUser
+    let maybeUser = Nothing
+    -- maybeUser <- getUser
     mPageNum <- fmap (read . TL.unpack) . lookup "page" <$> params
     posts <- getPosts mPageNum
     beginHtml $ do
