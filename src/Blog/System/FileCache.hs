@@ -38,7 +38,7 @@ mkFileCache basePath@('/':_) = do
   where
     startWatching fc@(FileCache bp _ m) = watchDir m bp p (f fc)
     p = const True
-    f fc@(FileCache bp _ _) (Added pth _) = B.readFile pth >>= fcinsert fc 0 (B.pack $ pth \\ bp)
+    f fc@(FileCache bp _ _) (Added pth _) = return ()
     f fc@(FileCache bp _ _) (Modified pth _) = B.readFile pth >>= fcinsert fc 0 (B.pack $ pth \\ bp)
     f fc@(FileCache bp _ _) (Removed pth _) = fcdelete fc (B.drop (length bp) (B.pack pth))
 mkFileCache relpath = mkAbsPath relpath >>= mkFileCache

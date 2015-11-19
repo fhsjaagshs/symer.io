@@ -29,6 +29,8 @@ import Web.Scotty.Trans as Scotty
 import qualified Data.Aeson as A
 import qualified Database.Redis as R
 
+-- TODO: port to using Postgres for storing authentication information
+
 accessToken :: (ScottyError e) => ActionT e WebM (Maybe String)
 accessToken = f <$> Scotty.header "Cookie"
   where
