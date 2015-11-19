@@ -6,12 +6,9 @@ module Blog.System.HTTP
 )
 where
 
-import Blog.User
 import Blog.State
 import Blog.System.IO
 import Blog.System.FileCache
-
-import qualified Database.PostgreSQL.Simple as PG
 
 import Data.Maybe
 import Control.Monad
@@ -65,11 +62,7 @@ mkWarpSettings port state = setBeforeMainLoop before
                             $ setPort port
                             defaultSettings
   where
-    before = do
-      let pg = statePostgres state
-      ((PG.query_ pg "SELECT * FROM users") :: IO [User]) >>= print
-      resignPrivileges "daemon"
-      ((PG.query_ pg "SELECT * FROM users") :: IO [User]) >>= print
+    before = resignPrivileges "daemon"
     shutdown act = do
       act
       teardownFileCache $ stateCache state
