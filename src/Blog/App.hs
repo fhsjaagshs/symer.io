@@ -224,7 +224,7 @@ app = do
     path <- rawPathInfo <$> request
     setHeader "Content-Type" "application/json"
     let mkjson = fmap (encode . nestComments) . getCommentsForPost
-    cachedBody 360 path $ param "id" >>= mkjson
+    cachedBody 60 path $ param "id" >>= mkjson
     
   get (regex "/(assets/.*)") $ do
     production setCacheControl
