@@ -12,6 +12,7 @@ module Blog.State
 ) where
   
 import Blog.Database.Config
+import Blog.System.FileCache
   
 import           Control.Concurrent.STM
 import           Control.Monad.Reader 
@@ -24,7 +25,8 @@ import qualified Data.ByteString.Char8 as B
 
 data AppState = AppState { 
   stateRedis :: Redis.Connection,
-  statePostgres :: PG.Connection
+  statePostgres :: PG.Connection,
+  stateCache :: FileCache
 }
 
 newtype WebM a = WebM { runWebM :: ReaderT (TVar AppState) IO a }
@@ -48,12 +50,14 @@ modify f = ask >>= liftIO . atomically . flip modifyTVar' f
 
 initState :: FilePath -> FilePath -> FilePath -> IO AppState
 initState rootcrt dbcrt dbkey = do
+  putStrLn "initializing cache"
+  cache <- mkFileCache "assets/"
   putStrLn "establishing database connections"
   pg <- PG.connectPostgreSQL $ B.pack $ postgresConnStr rootcrt dbcrt dbkey
   redis <- Redis.connect Redis.defaultConnectInfo
   putStrLn "running database migrations"
   runMigrations pg
-  return $ AppState redis pg
+  return $ AppState redis pg cache
   where
     runMigrations pg = PG.withTransaction pg $ do
       PG.execute_ pg "SET client_min_messages=WARNING;"

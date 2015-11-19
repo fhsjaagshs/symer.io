@@ -52,4 +52,6 @@ executable blog
                      stm,
                      directory,
                      mtl,
-                     tls
+                     tls,
+                     fsnotify,
+                     hashtables

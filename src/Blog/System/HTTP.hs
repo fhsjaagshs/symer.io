@@ -8,6 +8,7 @@ where
 
 import Blog.State
 import Blog.System.IO
+import Blog.System.FileCache
 
 import Data.Maybe
 import Control.Monad
@@ -17,7 +18,7 @@ import Control.Concurrent.STM
 import Web.Scotty.Trans as Scotty
 
 import Network.Wai (responseLBS,requestHeaderHost,rawPathInfo,rawQueryString,Application)
-import Network.Wai.Handler.Warp (defaultSettings,setPort,setBeforeMainLoop,runSettings,Settings)
+import Network.Wai.Handler.Warp (defaultSettings,setPort,setBeforeMainLoop,setInstallShutdownHandler,runSettings,Settings)
 import Network.Wai.Handler.WarpTLS (certFile,defaultTlsSettings,keyFile,runTLS)
 import Network.HTTP.Types.Status (status301)
 import Network.Wai.Middleware.Gzip
@@ -35,7 +36,7 @@ TODO (internals)
 -- port -> port to run the HTTPS server on
 -- state -> the application state
 startHTTP :: (ScottyError e) => ScottyT e WebM () -> Int -> AppState -> IO ()
-startHTTP app port state = mkScottyAppT app state >>= runSettings (mkWarpSettings port)
+startHTTP app port state = mkScottyAppT app state >>= runSettings (mkWarpSettings port state)
 
 -- app -> your Scotty app
 -- preredirect -> called before the HTTP redirection process is spawned
@@ -50,13 +51,20 @@ startHTTPS app preredirect onkill cert key port state = do
   when privileged $ startRedirectProcess preredirect onkill
   mkScottyAppT app state >>= run
   where
-    run = runTLS tlsSettings $ mkWarpSettings port
+    run = runTLS tlsSettings $ mkWarpSettings port state
     tlsSettings = defaultTlsSettings { keyFile = key, certFile = cert }
     
 {- Internal -}
   
-mkWarpSettings :: Int -> Settings
-mkWarpSettings port = setBeforeMainLoop (resignPrivileges "daemon") $ setPort port defaultSettings
+mkWarpSettings :: Int -> AppState -> Settings
+mkWarpSettings port state = setBeforeMainLoop (resignPrivileges "daemon") 
+                            $ setInstallShutdownHandler shutdown
+                            $ setPort port
+                            defaultSettings
+  where
+    shutdown act = do
+      act
+      teardownFileCache $ stateCache state
     
 -- Adds middleware to a scotty app
 applyMiddleware :: (ScottyError e) => ScottyT e WebM () -> ScottyT e WebM ()
