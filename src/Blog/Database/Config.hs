@@ -21,7 +21,8 @@ migrations = [
   ("array_funcs.sql", "./migrations/array_funcs.sql"),
   ("authorship.sql", "./migrations/authorship.sql"),
   ("drafts.sql", "./migrations/drafts.sql"),
-  ("comments.sql", "./migrations/comments.sql")]
+  ("comments.sql", "./migrations/comments.sql"),
+  ("auth.sql", "./migrations/auth.sql")]
 
 postgresConfigs :: FilePath -> FilePath -> FilePath -> String -> [(String, String)]
 postgresConfigs _      _     _    "development" = [("user", "nathaniel"),

@@ -219,9 +219,10 @@ app = do
       Nothing -> Scotty.status $ Status 500 "Failed to insert comment."
 
   get "/posts/:id/comments.json" $ do
-    path <- rawPathInfo <$> request
     setHeader "Content-Type" "application/json"
     let mkjson = fmap (encode . nestComments) . getCommentsForPost
+    
+    path <- B.unpack . rawPathInfo <$> request
     cachedBody 60 path $ param "id" >>= mkjson
     
   get (regex "/assets/(.*)") $ param "1" >>= loadAsset
@@ -246,10 +247,9 @@ app = do
 
 loadAsset :: (ScottyError e) => FilePath -> ActionT e WebM ()
 loadAsset assetsPath = do
-  
   let relPath = "assets/" ++ assetsPath
   let mimetype = getMimeAtPath relPath
-  let f = cachedBody 0 (B.pack assetsPath)
+  let f = cachedBody' assetsPath
   let eact err = (status . Status 500 . B.pack $ err) >> return ""
   setHeader "Content-Type" $ TL.pack mimetype
 

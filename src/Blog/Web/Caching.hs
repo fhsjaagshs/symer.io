@@ -2,7 +2,8 @@
 
 module Blog.Web.Caching
 (
-  cachedBody
+  cachedBody,
+  cachedBody'
 )
 where
 
@@ -17,13 +18,16 @@ import Network.HTTP.Types.Status (Status(..))
 
 import qualified Data.ByteString.Base16 as B16
 import qualified Data.ByteString.Lazy.Char8 as BL
-import qualified Data.ByteString.Char8 as B
+-- import qualified Data.ByteString.Char8 as B
 import qualified Data.Text.Lazy.Encoding as TL
 
 import Crypto.Hash.MD5 as MD5 (hashlazy)
 
+cachedBody' :: (ScottyError e) => FilePath -> ActionT e WebM BL.ByteString -> ActionT e WebM ()
+cachedBody' = cachedBody 0
+
 -- timeout -> The timeout if key is not a file path
-cachedBody :: (ScottyError e) => Int -> B.ByteString -> ActionT e WebM BL.ByteString -> ActionT e WebM ()
+cachedBody :: (ScottyError e) => Int -> FilePath -> ActionT e WebM BL.ByteString -> ActionT e WebM ()
 cachedBody timeout key valueFunc = do
   nonProduction $ valueFunc >>= Scotty.raw
   production $ do

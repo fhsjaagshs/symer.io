@@ -26,7 +26,7 @@ type HashTable k v = HT.CuckooHashTable k v
 
 data FileCache = FileCache {
   fileCacheBasePath  :: FilePath,
-  fileCacheHashTable :: MVar (HashTable ByteString ByteString),
+  fileCacheHashTable :: MVar (HashTable FilePath ByteString),
   fileCacheFSMonitor :: WatchManager
 }
 
@@ -36,11 +36,10 @@ mkFileCache basePath@('/':_) = do
   startWatching fc
   return fc
   where
-    startWatching fc@(FileCache bp _ m) = watchDir m bp p (f fc)
-    p = const True
-    f fc@(FileCache bp _ _) (Added pth _) = return ()
-    f fc@(FileCache bp _ _) (Modified pth _) = B.readFile pth >>= fcinsert fc 0 (B.pack $ pth \\ bp)
-    f fc@(FileCache bp _ _) (Removed pth _) = fcdelete fc (B.drop (length bp) (B.pack pth))
+    startWatching fc@(FileCache bp _ m) = watchDir m bp (const True) (f fc)
+    f _                     (Added _ _)      = return ()
+    f fc@(FileCache bp _ _) (Modified pth _) = B.readFile pth >>= fcinsert fc 0 (pth \\ bp)
+    f fc@(FileCache bp _ _) (Removed pth _)  = fcdelete fc (pth \\ bp)
 mkFileCache relpath = mkAbsPath relpath >>= mkFileCache
   where mkAbsPath p = (</>) <$> getCurrentDirectory <*> pure p
         
@@ -48,17 +47,16 @@ mkFileCache relpath = mkAbsPath relpath >>= mkFileCache
 teardownFileCache :: FileCache -> IO ()
 teardownFileCache = stopManager . fileCacheFSMonitor
 
-fcinsert :: FileCache -> Int -> ByteString -> ByteString -> IO ()
+fcinsert :: FileCache -> Int -> FilePath -> ByteString -> IO ()
 fcinsert fc@(FileCache bp mht _) timeout k v = do
   withMVar mht $ \ht -> HT.insert ht k v
-  print (bp </> (B.unpack k))
-  exists <- fileExist (bp </> (B.unpack k))
-  when (not exists) $ void $ forkIO $ do
+  exists <- fileExist (bp </> k)
+  when (not exists && timeout > 0) $ void $ forkIO $ do
     threadDelay timeout
     fcdelete fc k
 
-fcdelete :: FileCache -> ByteString -> IO ()
+fcdelete :: FileCache -> FilePath -> IO ()
 fcdelete (FileCache _ mht _) k = withMVar mht $ \ht -> HT.delete ht k
 
-fclookup :: FileCache -> ByteString -> IO (Maybe ByteString)
+fclookup :: FileCache -> FilePath -> IO (Maybe ByteString)
 fclookup (FileCache _ mht _) k = withMVar mht $ \ht -> HT.lookup ht k

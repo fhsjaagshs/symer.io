@@ -10,7 +10,10 @@ module Blog.Database.Util
   getPost,
   deletePost,
   getCommentsForPost,
-  getUserWithUsername
+  getUserWithUsername,
+  
+  webMQuery,
+  webMQuery_
 )
 where
 
@@ -20,6 +23,7 @@ import Blog.User
 import Blog.Comment
 import Blog.Post
 
+import Control.Monad
 import Control.Monad.IO.Class
 
 import Data.Maybe
@@ -113,5 +117,10 @@ webMQuery q ps = do
   pg <- webM $ gets statePostgres
   liftIO $ query pg (Query . toByteString . Utf8.fromString $ q) ps
   
+webMQuery_ :: (ToRow q, ScottyError e) => String -> q -> ActionT e WebM ()
+webMQuery_ q ps = void $ do
+  pg <- webM $ gets statePostgres
+  liftIO $ execute pg (Query . toByteString . Utf8.fromString $ q) ps
+
 processResult :: ActionT e WebM [Only Integer] -> ActionT e WebM (Maybe Integer)
 processResult res = (listToMaybe . map fromOnly) <$> res
