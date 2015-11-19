@@ -2,7 +2,6 @@
 
 module Blog.Web.Caching
 (
-  setCacheControl,
   cachedBody
 )
 where
@@ -23,9 +22,6 @@ import qualified Data.Text.Lazy.Encoding as TL
 
 import Crypto.Hash.MD5 as MD5 (hashlazy)
 
-setCacheControl :: (Monad m, ScottyError e) => ActionT e m ()
-setCacheControl = Scotty.setHeader "Cache-Control" "public, max-age=3600, s-max-age=3600, no-cache, must-revalidate, proxy-revalidate, no-transform" -- 1 hour
-
 -- timeout -> The timeout if key is not a file path
 cachedBody :: (ScottyError e) => Int -> B.ByteString -> ActionT e WebM BL.ByteString -> ActionT e WebM ()
 cachedBody timeout key valueFunc = do
@@ -39,6 +35,7 @@ cachedBody timeout key valueFunc = do
       v <- valueFunc
       rawBodyCached v
       liftIO $ fcinsert cache timeout key (BL.toStrict v)
+      setCacheControl
     rawBodyCached str = do
       Scotty.setHeader "Vary" "Accept-Encoding"
       Scotty.header "If-None-Match" >>= g . maybe False (== hashSum)
@@ -48,4 +45,5 @@ cachedBody timeout key valueFunc = do
         hashSum = TL.decodeUtf8 . md5sum $ str
         g True = Scotty.status $ Status 304 ""
         g False = Scotty.setHeader "ETag" hashSum >> Scotty.raw str
+    setCacheControl = Scotty.setHeader "Cache-Control" "public, max-age=3600, s-max-age=3600, no-cache, must-revalidate, proxy-revalidate, no-transform" -- 1 hour
     

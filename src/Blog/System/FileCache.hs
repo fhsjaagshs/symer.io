@@ -21,7 +21,6 @@ import           Data.ByteString.Char8 (ByteString)
 
 import           Control.Monad
 import           Control.Concurrent
-import           Control.Concurrent.MVar
 
 type HashTable k v = HT.CuckooHashTable k v
 
@@ -52,6 +51,7 @@ teardownFileCache = stopManager . fileCacheFSMonitor
 fcinsert :: FileCache -> Int -> ByteString -> ByteString -> IO ()
 fcinsert fc@(FileCache bp mht _) timeout k v = do
   withMVar mht $ \ht -> HT.insert ht k v
+  print (bp </> (B.unpack k))
   exists <- fileExist (bp </> (B.unpack k))
   when (not exists) $ void $ forkIO $ do
     threadDelay timeout

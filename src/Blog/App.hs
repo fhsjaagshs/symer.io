@@ -14,7 +14,6 @@ import Blog.Database.Config
 import Blog.Database.Util
 import Blog.Util.HTML
 import Blog.Util.MIME
-import Blog.Util.Env
 import Blog.Web.Caching
 import Blog.Web.Assets
 import Blog.Web.Auth
@@ -220,31 +219,21 @@ app = do
       Nothing -> Scotty.status $ Status 500 "Failed to insert comment."
 
   get "/posts/:id/comments.json" $ do
-    production setCacheControl
     path <- rawPathInfo <$> request
     setHeader "Content-Type" "application/json"
     let mkjson = fmap (encode . nestComments) . getCommentsForPost
     cachedBody 60 path $ param "id" >>= mkjson
     
-  get (regex "/(assets/.*)") $ do
-    production setCacheControl
-    relPath <- param "1"
-    let mimetype = getMimeAtPath relPath
-    let f = cachedBody 0 (B.pack relPath)
-    let eact err = (status . Status 500 . B.pack $ err) >> return ""
-    setHeader "Content-Type" $ TL.pack mimetype
+  get (regex "/assets/(.*)") $ param "1" >>= loadAsset
+  get (regex "/favicon.*") $ loadAsset "images/philly_skyline.svg"
 
-    exists <- liftIO $ doesFileExist relPath
-    if not exists
-      then status . Status 404 . B.pack $ "File " ++ relPath ++ " does not exist."
-      else case mimetype of
-        "application/javascript" -> f $ (liftIO $ js relPath) >>= either eact return
-        "text/css" -> f $ (liftIO $ css relPath) >>= either eact return
-        _ -> f . liftIO . BL.readFile $ relPath
-
-  get (regex "/favicon.*") $ redirect "/assets/images/philly_skyline.svg"
-
-  -- TODO: defaultHandler
+  defaultHandler $ \err -> do
+    beginHtml $ do
+      renderHead (appendedBlogTitle "Internal Error") $ do
+        renderMeta "robots" "noindex, nofollow"
+      renderBody $ do
+        renderTitle "Something happened..."
+        renderSubtitle err
 
   -- TODO: add picture of fudge
   notFound $ do
@@ -254,6 +243,23 @@ app = do
       renderBody $ do
         renderTitle "Oh fudge!"
         renderSubtitle "The page you're looking for does not exist."
+
+loadAsset :: (ScottyError e) => FilePath -> ActionT e WebM ()
+loadAsset assetsPath = do
+  
+  let relPath = "assets/" ++ assetsPath
+  let mimetype = getMimeAtPath relPath
+  let f = cachedBody 0 (B.pack assetsPath)
+  let eact err = (status . Status 500 . B.pack $ err) >> return ""
+  setHeader "Content-Type" $ TL.pack mimetype
+
+  exists <- liftIO $ doesFileExist relPath
+  if not exists
+    then status . Status 404 . B.pack $ "File " ++ relPath ++ " does not exist."
+    else case mimetype of
+      "application/javascript" -> f $ (liftIO $ js relPath) >>= either eact return
+      "text/css" -> f $ (liftIO $ css relPath) >>= either eact return
+      _ -> f . liftIO . BL.readFile $ relPath
 
 renderKeywords :: [T.Text] -> Html
 renderKeywords = renderMeta "keywords" . TL.fromStrict . T.intercalate ", "
