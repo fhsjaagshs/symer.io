@@ -2,8 +2,7 @@
 module Blog.System.HTTP
 (
   startHTTPS,
-  startHTTP,
-  startHTTPSForcer
+  startHTTP
 )
 where
 
@@ -23,46 +22,36 @@ import Network.Wai.Handler.Warp (defaultSettings,setPort,setBeforeMainLoop,setIn
 import Network.Wai.Handler.WarpTLS (certFile,defaultTlsSettings,keyFile,runTLS)
 import Network.HTTP.Types.Status (status301)
 import Network.Wai.Middleware.Gzip
+import Network.Wai.Middleware.AddHeaders
 
 import System.Exit
 import System.Posix
-  
-{-
-TODO (internals)
-* investigate:
-  add_header Strict-Transport-Security "max-age=31536000; includeSubdomains";
--}
 
 -- app -> your Scotty app
 -- port -> port to run the HTTPS server on
 -- state -> the application state
-startHTTP :: (ScottyError e) => ScottyT e WebM () -> Int -> AppState -> IO ()
-startHTTP app port state = mkScottyAppT app state >>= runSettings (mkWarpSettings port state)
+startHTTP :: (ScottyError e) => ScottyT e WebM () -> IO AppState -> Int -> IO ()
+startHTTP app mkstate port = mkstate >>= runApp (applyMiddleware False app)
+  where
+    runApp a st = mkScottyAppT a st >>= runSettings (mkWarpSettings port st)
 
 -- app -> your Scotty app
--- preredirect -> called before the HTTP redirection process is spawned
--- onkill -> called before the HTTP redirection process is killed
+-- mkstate -> IO action to create your app's initial state (post-fork to avoid DB connection issues)
 -- cert -> SSL certificate file path
 -- key -> SSL private key file path
 -- port -> port to run the HTTPS server on
 -- state -> the application state
-startHTTPS :: (ScottyError e) => ScottyT e WebM () -> FilePath -> FilePath -> Int -> AppState -> IO ()
-startHTTPS app cert key port state = do
-  mkScottyAppT app state >>= run
-  where
-    run = runTLS tlsSettings $ mkWarpSettings port state
-    tlsSettings = defaultTlsSettings { keyFile = key, certFile = cert }
-    
-startHTTPSForcer :: IO ()
-startHTTPSForcer = do
+startHTTPS :: (ScottyError e) => ScottyT e WebM () -> IO AppState -> FilePath -> FilePath -> Int -> IO ()
+startHTTPS app mkstate cert key port = do
   privileged <- isPrivileged
-  when privileged $ startRedirectProcess preredirect onkill
+  when privileged startRedirectProcess
+  mkstate >>= runApp (applyMiddleware True app)
   where
-    preredirect = putStrLn "starting HTTP -> HTTPS process"
-    onkill = putStrLn "killing HTTP -> HTTPS process"
-    
+    mksettings = defaultTlsSettings { keyFile = key, certFile = cert }
+    runApp a st = mkScottyAppT a st >>= runTLS mksettings (mkWarpSettings port st)
+
 {- Internal -}
-  
+
 mkWarpSettings :: Int -> AppState -> Settings
 mkWarpSettings port state = setBeforeMainLoop before
                             $ setInstallShutdownHandler shutdown
@@ -71,20 +60,21 @@ mkWarpSettings port state = setBeforeMainLoop before
   where
     before = resignPrivileges "daemon"
     shutdown act = do
-      act
+      act 
       teardownFileCache $ stateCache state
     
 -- Adds middleware to a scotty app
-applyMiddleware :: (ScottyError e) => ScottyT e WebM () -> ScottyT e WebM ()
-applyMiddleware app = do
+applyMiddleware :: (ScottyError e) => Bool -> ScottyT e WebM () -> ScottyT e WebM ()
+applyMiddleware ssl app = do
   middleware $ gzip def
+  when ssl $ middleware $ addHeaders [("Strict-Transport-Security","max-age=31536000")]
   app
     
 mkScottyAppT :: (ScottyError e) => ScottyT e WebM () -> AppState -> IO Application
 mkScottyAppT app state = do
   sync <- newTVarIO state
   let runActionToIO m = runReaderT (runWebM m) sync
-  scottyAppT runActionToIO $ applyMiddleware app
+  scottyAppT runActionToIO app
     
 resignPrivileges :: String -> IO ()
 resignPrivileges user = do
@@ -95,9 +85,9 @@ resignPrivileges user = do
 isPrivileged :: IO Bool
 isPrivileged = ((==) 0) <$> getEffectiveUserID
 
-startRedirectProcess :: IO () -> IO () -> IO ()
-startRedirectProcess prefork prekill = void $ do
-  prefork
+startRedirectProcess :: IO ()
+startRedirectProcess = void $ do
+  putStrLn "starting HTTP -> HTTPS process"
   pid <- forkProcess $ do
     redirectStdout $ Just "/dev/null"
     redirectStderr $ Just "/dev/null"
@@ -114,6 +104,6 @@ startRedirectProcess prefork prekill = void $ do
     url r = mconcat ["https://", host r, rawPathInfo r, rawQueryString r]
     childHandler = exitImmediately ExitSuccess
     parentHandler pid = do
-      prekill
+      putStrLn "killing HTTP -> HTTPS process"
       signalProcess sigTERM pid
       exitImmediately ExitSuccess

@@ -21,18 +21,11 @@ main = getCommand >>= f
   where
     f c@(StartCommand True _ _ _ _ _ _ _ _) = do
       daemonize "/tmp/blog.pid" $ f $ c { startCmdDaemonize = False }
-    f (StartCommand False port crt key pgrootca pgcrt pgkey outp errp) = do
-      redirectStdout outp
-      redirectStderr errp
-      startHTTPSForcer
-      initState pgrootca pgcrt pgkey >>= startApp True crt key port
+    f (StartCommand False port crt key pgrootca pgcrt pgkey out err) = do
+      redirectStdout out
+      redirectStderr err
+      startHTTPS app (initState pgrootca pgcrt pgkey) crt key port
     f StopCommand = daemonKill 4 "/tmp/blog.pid"
-    f StatusCommand = do
-      running <- daemonRunning "/tmp/blog.pid"
-      if running
-        then putStrLn "running"
-        else putStrLn "stopped"
-    
-startApp :: Bool -> FilePath -> FilePath -> (Int -> AppState -> IO ())
-startApp False _   _   = startHTTP app
-startApp True  crt key = startHTTPS app crt key
+    f StatusCommand = daemonRunning "/tmp/blog.pid" >>= putStrLn . showStatus
+    showStatus True = "running"
+    showStatus False = "stopped"
