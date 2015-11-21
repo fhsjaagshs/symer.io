@@ -38,7 +38,6 @@ import qualified Data.Text.Lazy as TL
 import qualified Data.Text.Lazy.Encoding as TL
 import qualified Data.Text.Lazy.Builder as TL
 
-import Data.Aeson (encode)
 import Text.Blaze.Html5 as H hiding (style, param, map)
 import Text.Blaze.Html5.Attributes as A
 import qualified Text.CSS.Parse as CSS (parseNestedBlocks)
@@ -222,10 +221,7 @@ app = do
         addHeader "Location" $ mconcat ["/posts/", TL.pack $ show postId]
         Scotty.text . TL.pack . show $ commentId
 
-  get "/posts/:id/comments.json" $ do
-    postId <- param "id"
-    setHeader "Content-Type" "application/json"
-    getCommentsForPost postId >>= Scotty.raw . encode
+  get "/posts/:id/comments.json" $ param "id" >>= getCommentsForPost >>= Scotty.json
     
   get (regex "/assets/(.*)") $ param "1" >>= loadAsset
   get (regex "/favicon.*") $ loadAsset "images/philly_skyline.svg"
@@ -249,19 +245,20 @@ app = do
 
 loadAsset :: (ScottyError e) => FilePath -> ActionT e WebM ()
 loadAsset assetsPath = do
-  setHeader "Content-Type" $ TL.pack mimetype -- TODO: fixme
   cache <- webM $ gets stateCache
   exists <- liftIO $ doesFileExist relPath
   if not exists
     then doesntExist $ B.pack relPath
     else loadFromCache cache
   where
-    mimetype = getMimeAtPath relPath
+    mimetype = getMimeAtPath relPath -- TODO: get mimetype from file contents (or use OS)
     relPath = "assets/" ++ assetsPath
     doesntExist pth = status . Status 404 $ mconcat ["File ", pth, " does not exist."]
     loadFromCache cache = (liftIO $ FC.lookup cache assetsPath) >>= (f cache)
-    f _     (Just (Right cached)) = setBody $ BL.fromStrict cached
     f _     (Just (Left err)) = status . Status 500 . B.pack $ err
+    f _     (Just (Right cached)) = do
+      setHeader "Content-Type" $ TL.pack mimetype
+      setBody $ BL.fromStrict cached
     f cache Nothing = do
       liftIO $ FC.register' cache assetsPath (g mimetype)
       loadFromCache cache
