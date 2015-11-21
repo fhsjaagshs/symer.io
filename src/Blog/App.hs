@@ -7,16 +7,15 @@ module Blog.App
 where
 
 import Blog.State
-import Blog.Comment
 import Blog.User
 import Blog.Post as Post
 import Blog.Database.Config
 import Blog.Database.Util
 import Blog.Util.HTML
 import Blog.Util.MIME
-import Blog.Web.Caching
-import Blog.Web.Assets
+import Blog.Util.Env
 import Blog.Web.Auth
+import qualified Blog.System.FileCache as FC
 
 import Data.Maybe
        
@@ -24,21 +23,27 @@ import Control.Monad
 import Control.Monad.IO.Class
        
 import Web.Scotty.Trans as Scotty
-import Network.Wai
 import Network.HTTP.Types.Status (Status(..))
 
 import qualified Crypto.BCrypt as BCrypt
+import qualified Crypto.Hash.MD5 as MD5 (hashlazy)
 
 import Data.String
+import qualified Data.ByteString.Base16 as B16
 import qualified Data.ByteString.Char8 as B
 import qualified Data.ByteString.Lazy.Char8 as BL
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
 import qualified Data.Text.Lazy as TL
+import qualified Data.Text.Lazy.Encoding as TL
+import qualified Data.Text.Lazy.Builder as TL
 
 import Data.Aeson (encode)
 import Text.Blaze.Html5 as H hiding (style, param, map)
 import Text.Blaze.Html5.Attributes as A
+import qualified Text.CSS.Parse as CSS (parseNestedBlocks)
+import qualified Text.CSS.Render as CSS (renderNestedBlocks)
+import qualified Text.Jasmine as JS (minifym)
 
 import System.Directory
 
@@ -212,17 +217,15 @@ app = do
     parentId <- fmap (read . TL.unpack) . lookup "parent_id" <$> params
     mCommentId <- insertComment parentId postId email displayName bdy
     case mCommentId of
-      Just commentId -> do
-        addHeader "Location" $ TL.pack $ "/posts/" ++ (show postId)
-        Scotty.text . TL.pack . show $ commentId
       Nothing -> Scotty.status $ Status 500 "Failed to insert comment."
+      Just commentId -> do
+        addHeader "Location" $ mconcat ["/posts/", TL.pack $ show postId]
+        Scotty.text . TL.pack . show $ commentId
 
   get "/posts/:id/comments.json" $ do
+    postId <- param "id"
     setHeader "Content-Type" "application/json"
-    let mkjson = fmap (encode . nestComments) . getCommentsForPost
-    
-    path <- B.unpack . rawPathInfo <$> request
-    cachedBody 60 path $ param "id" >>= mkjson
+    getCommentsForPost postId >>= Scotty.raw . encode
     
   get (regex "/assets/(.*)") $ param "1" >>= loadAsset
   get (regex "/favicon.*") $ loadAsset "images/philly_skyline.svg"
@@ -246,19 +249,39 @@ app = do
 
 loadAsset :: (ScottyError e) => FilePath -> ActionT e WebM ()
 loadAsset assetsPath = do
-  let relPath = "assets/" ++ assetsPath
-  let mimetype = getMimeAtPath relPath
-  let f = cachedBody' assetsPath
-  let eact err = (status . Status 500 . B.pack $ err) >> return ""
-  setHeader "Content-Type" $ TL.pack mimetype
-
+  setHeader "Content-Type" $ TL.pack mimetype -- TODO: fixme
+  cache <- webM $ gets stateCache
   exists <- liftIO $ doesFileExist relPath
   if not exists
-    then status . Status 404 . B.pack $ "File " ++ relPath ++ " does not exist."
-    else case mimetype of
-      "application/javascript" -> f $ (liftIO $ js relPath) >>= either eact return
-      "text/css" -> f $ (liftIO $ css relPath) >>= either eact return
-      _ -> f . liftIO . BL.readFile $ relPath
+    then doesntExist $ B.pack relPath
+    else loadFromCache cache
+  where
+    mimetype = getMimeAtPath relPath
+    relPath = "assets/" ++ assetsPath
+    doesntExist pth = status . Status 404 $ mconcat ["File ", pth, " does not exist."]
+    loadFromCache cache = (liftIO $ FC.lookup cache assetsPath) >>= (f cache)
+    f _     (Just (Right cached)) = setBody $ BL.fromStrict cached
+    f _     (Just (Left err)) = status . Status 500 . B.pack $ err
+    f cache Nothing = do
+      liftIO $ FC.register' cache assetsPath (g mimetype)
+      loadFromCache cache
+    g "application/javascript" = fmap BL.toStrict . JS.minifym . BL.fromStrict
+    g "text/css" = fmap (BL.toStrict . TL.encodeUtf8 . TL.toLazyText . CSS.renderNestedBlocks) . CSS.parseNestedBlocks . T.decodeUtf8
+    g _ = Right
+
+setBody :: (ScottyError e) => BL.ByteString -> ActionT e WebM ()
+setBody str = do
+  nonProduction $ Scotty.raw str
+  production $ do
+    Scotty.setHeader "Cache-Control" ccontrol
+    Scotty.setHeader "Vary" "Accept-Encoding"
+    Scotty.header "If-None-Match" >>= g . maybe False (== hashSum)
+  where
+    ccontrol = "public,max-age=3600,s-max-age=3600,no-cache,must-revalidate,proxy-revalidate,no-transform" -- 1 hour
+    calcMD5sum = BL.fromStrict . B16.encode . MD5.hashlazy
+    hashSum = TL.decodeUtf8 . calcMD5sum $ str
+    g True = Scotty.status $ Status 304 ""
+    g False = Scotty.setHeader "ETag" hashSum >> Scotty.raw str
 
 renderKeywords :: [T.Text] -> Html
 renderKeywords = renderMeta "keywords" . TL.fromStrict . T.intercalate ", "

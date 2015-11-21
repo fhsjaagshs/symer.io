@@ -101,8 +101,9 @@ deletePost :: (ScottyError e) => Integer -> User -> ActionT e WebM (Maybe Intege
 deletePost pid (User uid _ _ _) = processResult $ webMQuery sql (pid, uid)
   where sql = "DELETE FROM blogposts WHERE identifier=? AND author_id=? RETURNING identifier"
 
+-- TODO: use postgresql-simple's fold function instead of loading all posts into memory
 getCommentsForPost :: (ScottyError e) => Integer -> ActionT e WebM [Comment]
-getCommentsForPost pid = webMQuery "SELECT * FROM comments WHERE postId=?" [pid]
+getCommentsForPost pid = nestComments <$> webMQuery "SELECT * FROM comments WHERE postId=?" [pid]
 
 insertComment :: (ScottyError e) => Maybe Integer -> Integer -> Text -> Text -> Text -> ActionT e WebM (Maybe Integer)
 insertComment (Just parentId) pid email displayName body = processResult $ webMQuery "INSERT INTO comments (parentId,postId,email,displayName,body) VALUES (?,?,?,?,?) RETURNING id" (parentId, pid, email, displayName, body)

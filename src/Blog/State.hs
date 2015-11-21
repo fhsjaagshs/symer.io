@@ -12,7 +12,6 @@ module Blog.State
 ) where
   
 import Blog.Database.Config
-import Blog.User
 import Blog.System.FileCache
   
 import           Control.Concurrent.STM
@@ -50,7 +49,7 @@ modify f = ask >>= liftIO . atomically . flip modifyTVar' f
 initState :: FilePath -> FilePath -> FilePath -> IO AppState
 initState rootcrt crt key = do
   putStrLn "initializing cache"
-  cache <- mkFileCache "assets/"
+  cache <- newFileCache "assets/"
   putStrLn "establishing database connections"
   pg <- PG.connectPostgreSQL $ B.pack $ postgresConnStr rootcrt crt key
   putStrLn "running database migrations"
