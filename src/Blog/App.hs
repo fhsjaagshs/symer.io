@@ -46,13 +46,16 @@ import qualified Text.Jasmine as JS (minifym)
 
 import System.Directory
 
--- TODO (features):
+-- TODO features:
 -- Comment-optional posts
 -- Editor key commands (cmd-i, cmd-b, etc)
 -- Page numbers at bottom (would require extra db hit)
 -- Site footer (copyright etc)
 -- Links in comments *** nofollow them
 -- search
+
+-- TODO internals:
+-- figure out compression better
 
 -- Miscellaneous Ideas:
 -- 1. 'Top 5' tags map in side bar?
@@ -268,17 +271,15 @@ loadAsset assetsPath = do
 
 setBody :: (ScottyError e) => BL.ByteString -> ActionT e WebM ()
 setBody str = do
-  nonProduction $ Scotty.raw str
-  production $ do
-    Scotty.setHeader "Cache-Control" ccontrol
-    Scotty.setHeader "Vary" "Accept-Encoding"
-    Scotty.header "If-None-Match" >>= g . maybe False (== hashSum)
+  production $ Scotty.setHeader "Cache-Control" ccontrol
+  Scotty.setHeader "Vary" "Accept-Encoding"
+  Scotty.header "If-None-Match" >>= f . maybe False (== hashSum)
   where
-    ccontrol = "public,max-age=3600,s-max-age=3600,no-cache,must-revalidate,proxy-revalidate,no-transform" -- 1 hour
+    ccontrol = "public,max-age=3600,s-max-age=3600,no-cache,must-revalidate,proxy-revalidate,no-transform"
     calcMD5sum = BL.fromStrict . B16.encode . MD5.hashlazy
     hashSum = TL.decodeUtf8 . calcMD5sum $ str
-    g True = Scotty.status $ Status 304 ""
-    g False = Scotty.setHeader "ETag" hashSum >> Scotty.raw str
+    f True = Scotty.status $ Status 304 ""
+    f False = Scotty.setHeader "ETag" hashSum >> Scotty.raw str
 
 renderKeywords :: [T.Text] -> Html
 renderKeywords = renderMeta "keywords" . TL.fromStrict . T.intercalate ", "
