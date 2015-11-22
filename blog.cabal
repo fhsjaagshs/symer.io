@@ -17,8 +17,6 @@ executable blog
   build-tools:       hsc2hs
   other-modules:     Blog.System.Terminal
   ghc-options:       -threaded -Wall -O2
-  if os(linux)
-    ghc-options:     -threaded -optl-static -optl-pthread -O2
   build-depends:     base,
                      containers,
                      unordered-containers,
