@@ -32,7 +32,7 @@ compressResponse :: Response -> (Response -> IO a) -> IO a
 compressResponse res sendResponse = f $ lookup "Content-Type" hs
   where
     (s,hs,wb) = responseToStream res
-    hs' = (("Content-Encoding","gzip"):) . filter ((/=) "Content-Length" . fst) $ hs
+    hs' = (++) [("Vary","Accept-Encoding"),("Content-Encoding","gzip")] . filter ((/=) "Content-Length" . fst) $ hs
     f (Just _) = wb $ \b -> sendResponse $ responseStream s hs' $ \w fl -> b (writeCompressed w) fl
     f _ = sendResponse res
     writeCompressed w = w . fromLazyByteString .  GZIP.compress . toLazyByteString
