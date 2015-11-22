@@ -260,13 +260,14 @@ loadAsset assetsPath = do
     loadFromCache cache = (liftIO $ FC.lookup cache assetsPath) >>= (f cache)
     f _     (Just (Left err)) = status . Status 500 . B.pack $ err
     f _     (Just (Right cached)) = do
-      setHeader "Content-Type" $ TL.pack mimetype
+      setHeader "Content-Type" $ mconcat [TL.pack mimetype, "; charset=utf-8"]
       setBody $ BL.fromStrict cached
     f cache Nothing = do
       liftIO $ FC.register' cache assetsPath (g mimetype)
       loadFromCache cache
+    builderToBS = BL.toStrict . TL.encodeUtf8 . TL.toLazyText
     g "application/javascript" = fmap BL.toStrict . JS.minifym . BL.fromStrict
-    g "text/css" = fmap (BL.toStrict . TL.encodeUtf8 . TL.toLazyText . CSS.renderNestedBlocks) . CSS.parseNestedBlocks . T.decodeUtf8
+    g "text/css" = fmap (builderToBS . CSS.renderNestedBlocks) . CSS.parseNestedBlocks . T.decodeUtf8
     g _ = Right
 
 setBody :: (ScottyError e) => BL.ByteString -> ActionT e WebM ()
