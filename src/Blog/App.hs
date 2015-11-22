@@ -93,7 +93,7 @@ app = do
         
   -- create a post
   get "/posts/new" $ do
-    authenticate
+    void $ authenticate
     beginHtml $ do
       renderHead (appendedBlogTitle "New Post") $ do
         renderMeta "robots" "noindex, nofollow"
@@ -140,7 +140,7 @@ app = do
 
   -- edit a post
   get "/posts/:id/edit" $ do
-    authenticate
+    void $ authenticate
     identifier_ <- param "id"
     res <- getPost identifier_
     case res of
@@ -246,6 +246,7 @@ app = do
         renderTitle "Oh fudge!"
         renderSubtitle "The page you're looking for does not exist."
 
+-- TODO: Compress mem-mapped values
 loadAsset :: (ScottyError e) => FilePath -> ActionT e WebM ()
 loadAsset assetsPath = do
   cache <- webM $ gets stateCache
@@ -263,7 +264,7 @@ loadAsset assetsPath = do
       setHeader "Content-Type" $ mconcat [TL.pack mimetype, "; charset=utf-8"]
       setBody $ BL.fromStrict cached
     f cache Nothing = do
-      liftIO $ FC.register' cache assetsPath (g mimetype)
+      void $ liftIO $ FC.register' cache assetsPath (g mimetype)
       loadFromCache cache
     builderToBS = BL.toStrict . TL.encodeUtf8 . TL.toLazyText
     g "application/javascript" = fmap BL.toStrict . JS.minifym . BL.fromStrict

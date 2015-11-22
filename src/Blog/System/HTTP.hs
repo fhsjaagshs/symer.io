@@ -9,6 +9,7 @@ where
 import Blog.State
 import Blog.System.IO
 import Blog.System.FileCache
+import Blog.Web.Gzip
 
 import Data.Maybe
 import Control.Monad
@@ -21,7 +22,6 @@ import Network.Wai (responseLBS,requestHeaderHost,rawPathInfo,rawQueryString,App
 import Network.Wai.Handler.Warp (defaultSettings,setPort,setBeforeMainLoop,setInstallShutdownHandler,runSettings,Settings)
 import Network.Wai.Handler.WarpTLS (certFile,defaultTlsSettings,keyFile,runTLS)
 import Network.HTTP.Types.Status (status301)
-import Network.Wai.Middleware.Gzip
 import Network.Wai.Middleware.AddHeaders
 
 import System.Exit
@@ -66,7 +66,7 @@ mkWarpSettings port state = setBeforeMainLoop before
 -- Adds middleware to a scotty app
 applyMiddleware :: (ScottyError e) => Bool -> ScottyT e WebM () -> ScottyT e WebM ()
 applyMiddleware ssl app = do
-  middleware $ gzip def
+  middleware $ gzip 860 -- min length to GZIP
   when ssl $ middleware $ addHeaders [("Strict-Transport-Security","max-age=31536000")]
   app
     

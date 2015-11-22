@@ -56,4 +56,5 @@ executable blog
                      fsnotify,
                      hashtables,
                      directory,
-                     filepath
+                     filepath,
+                     zlib
