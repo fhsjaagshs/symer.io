@@ -28,6 +28,7 @@ gzip minLen app env sendResponse = app env f
     isEncoded = isJust . lookup "Content-Encoding" . responseHeaders
     isBigEnough = maybe True ((<=) minLen) . contentLength . responseHeaders
 
+-- TODO: ensure original flushing action is eval'd
 compressResponse :: Response -> (Response -> IO a) -> IO a
 compressResponse res sendResponse = f $ lookup "Content-Type" hs
   where
