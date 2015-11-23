@@ -57,8 +57,8 @@ initState rootcrt crt key = do
   return $ AppState pg cache
   where
     runMigrations pg = PG.withTransaction pg $ do
-      PG.execute_ pg "SET client_min_messages=WARNING;"
-      runMigration $ MigrationContext MigrationInitialization True pg
-      PG.execute_ pg "SET client_min_messages=NOTICE;"
+      void $ PG.execute_ pg "SET client_min_messages=WARNING;"
+      void $ runMigration $ MigrationContext MigrationInitialization True pg
+      void $ PG.execute_ pg "SET client_min_messages=NOTICE;"
       forM_ migrations $ \(f, p) -> do
         runMigration $ MigrationContext (MigrationFile f p) True pg

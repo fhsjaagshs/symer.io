@@ -274,6 +274,8 @@ loadAsset assetsPath = do
 setBody :: (ScottyError e) => BL.ByteString -> ActionT e WebM ()
 setBody str = do
   production $ Scotty.setHeader "Cache-Control" ccontrol
+  Scotty.addHeader "Vary" "Accept-Encoding"
+  Scotty.setHeader "Content-Encoding" "gzip" -- files in FileCaches are gzipped
   Scotty.header "If-None-Match" >>= f . maybe False (== hashSum)
   where
     ccontrol = "public,max-age=3600,s-max-age=3600,no-cache,must-revalidate,proxy-revalidate,no-transform"

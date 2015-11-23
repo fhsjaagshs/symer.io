@@ -8,6 +8,8 @@ import Foreign
 import Foreign.C.Error
 import Foreign.C.Types
 
+import Control.Monad as M (void)
+
 #include <sys/ioctl.h>
 #include <unistd.h>
 
@@ -36,7 +38,7 @@ foreign import ccall "sys/ioctl.h ioctl"
 getTermSize :: IO (Maybe (Int, Int))
 getTermSize = with (WinSize 0 0) $ \ws -> do
   resetErrno
-  ioctl (#const STDOUT_FILENO) (#const TIOCGWINSZ) ws
+  M.void $ ioctl (#const STDOUT_FILENO) (#const TIOCGWINSZ) ws
   err <- getErrno
   if isValidErrno err
     then do

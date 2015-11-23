@@ -18,14 +18,16 @@ import           System.FSNotify
 import           System.Directory
 import           System.FilePath
 
-import           Data.List ((\\))
 import qualified Data.HashTable.IO as HT
+import qualified Data.ByteString.Lazy.Char8 as BL
 import qualified Data.ByteString.Char8 as B
 import           Data.ByteString.Char8 (ByteString)
 
 import           Control.Monad
 import           Control.Concurrent
 import           Control.Exception (try, displayException, IOException)
+
+import qualified Codec.Compression.GZip as GZIP (compress)
 
 import           Prelude hiding (lookup)
 
@@ -49,14 +51,14 @@ data FileCache = FileCache {
 --                outside this path will not be automatically updated
 newFileCache :: FilePath -> IO FileCache
 newFileCache path@('/':_) = do -- create a file cache based on an absolute path
-  fc <- FileCache path <$> (HT.new >>= newMVar) <*> startManager
+  fc <- FileCache (addTrailingPathSeparator path) <$> (HT.new >>= newMVar) <*> startManager
   startWatching fc
   return fc
   where
-    startWatching fc@(FileCache bp _ m) = watchDir m bp (const True) (f fc)
+    startWatching fc@(FileCache bp _ m) = void $ watchDir m bp (const True) (f fc)
     f _                     (Added _ _)      = return ()
-    f fc@(FileCache bp _ _) (Modified pth _) = refresh fc (pth \\ bp)
-    f fc@(FileCache bp _ _) (Removed pth _)  = invalidate fc (pth \\ bp)
+    f fc@(FileCache bp _ _) (Modified pth _) = refresh fc (makeRelative bp pth)
+    f fc@(FileCache bp _ _) (Removed pth _)  = invalidate fc (makeRelative bp pth)
 newFileCache path = mkAbsPath path >>= newFileCache -- resolve a relative path to an absolute path
   where mkAbsPath p = (</>) <$> getCurrentDirectory <*> pure p
 
@@ -129,4 +131,7 @@ readFileE fp = f <$> readF--((try $ B.readFile fp) :: Either IOException ByteStr
     f (Right s) = Right s
 
 xformedReadFileE :: FileTransform -> FilePath -> IO (Either String ByteString)
-xformedReadFileE f fp = readFileE fp >>= return . either Left f
+xformedReadFileE f fp = readFileE fp >>= return . either Left xform
+  where
+    xform = fmap compress . f
+    compress = BL.toStrict . GZIP.compress . BL.fromStrict

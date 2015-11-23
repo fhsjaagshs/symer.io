@@ -60,7 +60,7 @@ mkWarpSettings port state = setBeforeMainLoop before
   where
     before = resignPrivileges "daemon"
     shutdown act = do
-      act 
+      void $ act 
       teardownFileCache $ stateCache state
     
 -- Adds middleware to a scotty app
@@ -92,11 +92,11 @@ startRedirectProcess = void $ do
     redirectStdout $ Just "/dev/null"
     redirectStderr $ Just "/dev/null"
     redirectStdin $ Just "/dev/null"
-    installHandler sigTERM (Catch childHandler) Nothing
+    void $ installHandler sigTERM (Catch childHandler) Nothing
     runSettings warpSettings $ \req respond -> do
       respond $ responseLBS status301 (mkHeaders req) ""
-  installHandler sigTERM (Catch $ parentHandler pid) Nothing
-  installHandler sigINT (Catch $ parentHandler pid) Nothing
+  void $ installHandler sigTERM (Catch $ parentHandler pid) Nothing
+  void $ installHandler sigINT (Catch $ parentHandler pid) Nothing
   where
     warpSettings = setBeforeMainLoop (resignPrivileges "daemon") $ setPort 80 defaultSettings
     mkHeaders r = [("Location", url r)]

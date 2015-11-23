@@ -9,7 +9,7 @@ where
 import Blog.System.IO
   
 import Control.Exception
-import Control.Monad (when)
+import Control.Monad (when,void)
 
 import System.Exit
 import System.Posix
@@ -38,15 +38,15 @@ daemonRunning pidFile = fileExist pidFile >>= f
 
 daemonize :: FilePath -> IO () -> IO ()
 daemonize pidFile program = do
-  forkProcess $ do
-    createSession
-    forkProcess $ do
+  void $ forkProcess $ do
+    void $ createSession
+    void $ forkProcess $ do
       pidWrite pidFile
       redirectStdout $ Just "/dev/null"
       redirectStderr $ Just "/dev/null"
       redirectStdin $ Just "/dev/null"
       closeFd stdInput -- close STDIN
-      installHandler sigHUP Ignore Nothing
+      void $ installHandler sigHUP Ignore Nothing
       program
     exitImmediately ExitSuccess
   exitImmediately ExitSuccess

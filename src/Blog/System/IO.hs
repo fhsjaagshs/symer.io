@@ -6,7 +6,7 @@ module Blog.System.IO
 )
 where
 
-import Control.Monad (when)
+import Control.Monad (when,void)
 
 import System.IO
 import System.Posix
@@ -49,5 +49,5 @@ safeOpenFd p = do
 swapFd :: Fd -> FilePath -> IO ()
 swapFd old path = do
   new <- safeOpenFd path
-  dupTo new old
+  void $ dupTo new old
   closeFd new
