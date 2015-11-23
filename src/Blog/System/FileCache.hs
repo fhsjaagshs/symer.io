@@ -55,7 +55,7 @@ newFileCache path@('/':_) = do -- create a file cache based on an absolute path
   startWatching fc
   return fc
   where
-    startWatching fc@(FileCache bp _ m) = void $ watchDir m bp (const True) (f fc)
+    startWatching fc@(FileCache bp _ m) = void $ watchTree m bp (const True) (f fc)
     f _                     (Added _ _)      = return ()
     f fc@(FileCache bp _ _) (Modified pth _) = refresh fc (makeRelative bp pth)
     f fc@(FileCache bp _ _) (Removed pth _)  = invalidate fc (makeRelative bp pth)
