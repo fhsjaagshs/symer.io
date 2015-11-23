@@ -13,7 +13,6 @@ import Blog.Database.Config
 import Blog.Database.Util
 import Blog.Util.HTML
 import Blog.Util.MIME
-import Blog.Util.Env
 import Blog.Web.Auth
 import qualified Blog.System.FileCache as FC
 
@@ -26,10 +25,8 @@ import Web.Scotty.Trans as Scotty
 import Network.HTTP.Types.Status (Status(..))
 
 import qualified Crypto.BCrypt as BCrypt
-import qualified Crypto.Hash.MD5 as MD5 (hashlazy)
 
 import Data.String
-import qualified Data.ByteString.Base16 as B16
 import qualified Data.ByteString.Char8 as B
 import qualified Data.ByteString.Lazy.Char8 as BL
 import qualified Data.Text as T
@@ -176,14 +173,13 @@ app = do
     mUser <- param "username" >>= getUserWithUsername
     case mUser of
       Nothing -> redirect "/login?err=Username%20does%20not%20exist%2E"
-      Just user@(User _ _ _ (Just phash)) -> do
+      Just user@(User _ _ _ phash) -> do
         pPassword <- T.encodeUtf8 <$> param "password"
         if BCrypt.validatePassword (T.encodeUtf8 phash) pPassword
           then do
             setUser user
             params >>= redirect . fromMaybe "/" . lookup "redirect"
           else redirect "/login?err=Invalid%20password%2E"
-      _ -> redirect "/login?err=Invalid%20user%2E"
 
   -- creates/updates a BlogPost in the database
   post "/posts" $ do
@@ -246,7 +242,6 @@ app = do
         renderTitle "Oh fudge!"
         renderSubtitle "The page you're looking for does not exist."
 
--- TODO: Compress mem-mapped values
 loadAsset :: (ScottyError e) => FilePath -> ActionT e WebM ()
 loadAsset assetsPath = do
   cache <- webM $ gets stateCache
@@ -255,14 +250,22 @@ loadAsset assetsPath = do
     then doesntExist $ B.pack relPath
     else loadFromCache cache
   where
-    mimetype = getMimeAtPath relPath -- TODO: get mimetype from file contents (or use OS)
+    mimetype = getMimeAtPath relPath
     relPath = "assets/" ++ assetsPath
     doesntExist pth = status . Status 404 $ mconcat ["File ", pth, " does not exist."]
     loadFromCache cache = (liftIO $ FC.lookup cache assetsPath) >>= (f cache)
-    f _     (Just (Left err)) = status . Status 500 . B.pack $ err
-    f _     (Just (Right cached)) = do
+    f _     (Just (Left err)) = status . Status 500 $ B.pack err
+    f _     (Just (Right (cached, md5))) = do
       setHeader "Content-Type" $ mconcat [TL.pack mimetype, "; charset=utf-8"]
-      setBody $ BL.fromStrict cached
+      Scotty.addHeader "Vary" "Accept-Encoding"
+      Scotty.setHeader "Content-Encoding" "gzip" -- files in FileCaches are gzipped
+      Scotty.header "If-None-Match" >>= h . maybe False (== md5')
+      where
+        md5' = TL.decodeUtf8 $ BL.fromStrict md5
+        h True = Scotty.status $ Status 304 ""
+        h False = do
+          Scotty.setHeader "ETag" md5'
+          Scotty.raw $ BL.fromStrict cached
     f cache Nothing = do
       void $ liftIO $ FC.register' cache assetsPath (g mimetype)
       loadFromCache cache
@@ -270,19 +273,11 @@ loadAsset assetsPath = do
     g "application/javascript" = fmap BL.toStrict . JS.minifym . BL.fromStrict
     g "text/css" = fmap (builderToBS . CSS.renderNestedBlocks) . CSS.parseNestedBlocks . T.decodeUtf8
     g _ = Right
-
-setBody :: (ScottyError e) => BL.ByteString -> ActionT e WebM ()
-setBody str = do
-  production $ Scotty.setHeader "Cache-Control" ccontrol
-  Scotty.addHeader "Vary" "Accept-Encoding"
-  Scotty.setHeader "Content-Encoding" "gzip" -- files in FileCaches are gzipped
-  Scotty.header "If-None-Match" >>= f . maybe False (== hashSum)
-  where
-    ccontrol = "public,max-age=3600,s-max-age=3600,no-cache,must-revalidate,proxy-revalidate,no-transform"
-    calcMD5sum = BL.fromStrict . B16.encode . MD5.hashlazy
-    hashSum = TL.decodeUtf8 . calcMD5sum $ str
-    f True = Scotty.status $ Status 304 ""
-    f False = Scotty.setHeader "ETag" hashSum >> Scotty.raw str
+    
+-- setCacheControl :: ActionT e WebM ()
+-- setCacheControl = Scotty.setHeader "Cache-Control" ccontrol
+--   where
+--     ccontrol = "public,max-age=3600,s-max-age=3600,no-cache,must-revalidate,proxy-revalidate,no-transform"
 
 renderKeywords :: [T.Text] -> Html
 renderKeywords = renderMeta "keywords" . TL.fromStrict . T.intercalate ", "

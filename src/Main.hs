@@ -1,15 +1,20 @@
+{-# LANGUAGE OverloadedStrings #-}
+
 module Main
 (
   main
 )
 where
 
-import Blog.App -- contains @app@ function used in startApp
+import Blog.App
 import Blog.CommandLine
 import Blog.State
 import Blog.System.Daemon
 import Blog.System.IO
 import Blog.System.HTTP
+
+import Crypto.BCrypt
+import qualified Data.ByteString.Char8 as B (pack, putStrLn)
 
 -- Setup:
 -- ensure your executable is setuid & owned by root:
@@ -27,5 +32,8 @@ main = getCommand >>= f
       startHTTPS app (initState pgrootca pgcrt pgkey) crt key port
     f StopCommand = daemonKill 4 "/tmp/blog.pid"
     f StatusCommand = daemonRunning "/tmp/blog.pid" >>= putStrLn . showStatus
+    f (PasswordCommand pwd) = hashPasswordUsingPolicy (HashingPolicy 12 "$2b$") (B.pack pwd) >>= g
+      where g (Just v) = B.putStrLn v
+            g Nothing = return ()
     showStatus True = "running"
     showStatus False = "stopped"

@@ -3,6 +3,7 @@
 module Blog.System.FileCache
 (
   FileCache(..),
+  Entry,
   newFileCache,
   teardownFileCache,
   lookup,
@@ -22,12 +23,15 @@ import qualified Data.HashTable.IO as HT
 import qualified Data.ByteString.Lazy.Char8 as BL
 import qualified Data.ByteString.Char8 as B
 import           Data.ByteString.Char8 (ByteString)
+import qualified Data.ByteString.Base16 as B16
 
 import           Control.Monad
 import           Control.Concurrent
 import           Control.Exception (try, displayException, IOException)
 
 import qualified Codec.Compression.GZip as GZIP (compress)
+
+import qualified Crypto.Hash.MD5 as MD5 (hash)
 
 import           Prelude hiding (lookup)
 
@@ -38,10 +42,20 @@ type HashTable k v = HT.CuckooHashTable k v
 -- The function either returns an error message or the transformed bytestring
 type FileTransform = (ByteString -> Either String ByteString)
 
+-- Entry
+-- either
+--   error message
+-- or
+--   fst -> error (String) or (gzipped file contents, uncompressed md5)
+--   snd -> transform
+type Entry = Either String (ByteString, ByteString)
+
+-- FileCache
+-- You shouldn't mess with the internals of this data type
 data FileCache = FileCache {
-  fileCacheBasePath  :: FilePath,
-  fileCacheHashTable :: MVar (HashTable FilePath (Either String ByteString, FileTransform)),
-  fileCacheFSMonitor :: WatchManager
+  fileCacheBasePath  :: FilePath, -- absolute path on which entry paths are based
+  fileCacheHashTable :: MVar (HashTable FilePath (Entry, FileTransform)), -- hash table
+  fileCacheFSMonitor :: WatchManager -- watches the directory
 }
 
 -- @newFileCache@
@@ -73,7 +87,7 @@ teardownFileCache = stopManager . fileCacheFSMonitor
 -- lookup an entry in the cache
 -- fc -> the cache
 -- k -> the key used; Should be a path relative to the FileCache's base path
-lookup :: FileCache -> FilePath -> IO (Maybe (Either String ByteString))
+lookup :: FileCache -> FilePath -> IO (Maybe Entry)
 lookup (FileCache _ mht _) k = withMVar mht $ \ht -> fmap fst <$> HT.lookup ht k
 
 -- @register@
@@ -83,7 +97,7 @@ lookup (FileCache _ mht _) k = withMVar mht $ \ht -> fmap fst <$> HT.lookup ht k
 --            For values of 1 or more, how long the entry will live in the cache
 -- k -> the key used; Should be a path relative to the FileCache's base path
 -- f -> transform to applied to file contents
-register :: FileCache -> Int -> FilePath -> FileTransform -> IO (Either String ByteString)
+register :: FileCache -> Int -> FilePath -> FileTransform -> IO Entry
 register fc@(FileCache bp mht _) timeout k f = do
   v <- xformedReadFileE f (bp </> k)
   withMVar mht $ \ht -> HT.insert ht k (v, f)
@@ -95,11 +109,11 @@ register fc@(FileCache bp mht _) timeout k f = do
       invalidate fc k
       
 -- see @register@, minus @timeout@
-register' :: FileCache -> FilePath -> FileTransform -> IO (Either String ByteString)
+register' :: FileCache -> FilePath -> FileTransform -> IO Entry
 register' fc k f = register fc 0 k f
 
 -- see @register@, minus @timeout@ & @readAction@
-register'' :: FileCache -> FilePath -> IO (Either String ByteString)
+register'' :: FileCache -> FilePath -> IO Entry
 register'' fc k = register fc 0 k Right
 
 -- @refresh@
@@ -123,15 +137,18 @@ invalidate (FileCache _ mht _) k = withMVar mht (flip HT.delete k)
 {- Internal -}
 
 readFileE :: FilePath -> IO (Either String ByteString)
-readFileE fp = f <$> readF--((try $ B.readFile fp) :: Either IOException ByteString)
+readFileE fp = f <$> readF
   where
     readF :: IO (Either IOException ByteString)
     readF = try $ B.readFile fp
     f (Left e) = Left $ displayException e
     f (Right s) = Right s
 
-xformedReadFileE :: FileTransform -> FilePath -> IO (Either String ByteString)
-xformedReadFileE f fp = readFileE fp >>= return . either Left xform
+-- returns (contents, md5)
+xformedReadFileE :: FileTransform -> FilePath -> IO Entry
+xformedReadFileE f fp = readFileE fp >>= return . either Left (g . f)
   where
-    xform = fmap compress . f
+    g (Left err) = Left err
+    g (Right cnts) = Right (compress cnts, md5 cnts)
     compress = BL.toStrict . GZIP.compress . BL.fromStrict
+    md5 = B16.encode . MD5.hash

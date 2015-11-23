@@ -26,6 +26,9 @@ data Cmd
   }
   | StopCommand
   | StatusCommand
+  | PasswordCommand {
+    passwordCmdPassword :: String
+  }
 
 getCommand :: IO Cmd
 getCommand = getArgs >>= getCommandArgs
@@ -43,7 +46,8 @@ parseCommand = sp <|> parseStart
   where
     sp = subparser $ (mkcmd "start" "Start the blog" parseStart) <>
                      (mkcmd "stop" "Stop the blog" parseStop) <>
-                     (mkcmd "status" "Determine if the blog is running" parseStatus)
+                     (mkcmd "status" "Determine if the blog is running" parseStatus) <>
+                     (mkcmd "password" "Make a BCrypt hash from a password" parseHash)
     parseStart = StartCommand
       <$> (flag False True $ short 'd')
       <*> (option auto $ opt "port" 'p' "PORT" (Just 3000) "port to run blog on.")
@@ -56,6 +60,7 @@ parseCommand = sp <|> parseStart
       <*> (optional $ strOption $ opt "stderr" 'e' "FILEPATH" Nothing "which file to redirect STDERR to")
     parseStop     = pure $ StopCommand
     parseStatus   = pure $ StatusCommand
+    parseHash     = PasswordCommand <$> (strArgument $ metavar "PASSWORD" <> help "password to hash")
     opt lng shrt mvar (Just defVal) hlp = (long lng <> short shrt <> metavar mvar <> value defVal <> help hlp)
     opt lng shrt mvar Nothing       hlp = (long lng <> short shrt <> metavar mvar <> help hlp)
     mkcmd cmd desc p = command cmd $ info (helper <*> p) $ progDesc desc

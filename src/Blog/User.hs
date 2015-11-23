@@ -7,27 +7,25 @@ module Blog.User
 where
 
 import Control.Monad
-import Data.Maybe
 
-import           Data.Attoparsec.ByteString.Char8 as A
+import Data.Aeson as Aeson
+import Data.Attoparsec.ByteString.Char8 as A
+import Blaze.ByteString.Builder (fromByteString)
 
-import           Data.Text (Text)
+import Data.Text (Text)
 import qualified Data.Text.Encoding as T
-  
-import           Data.ByteString.Char8 (ByteString)
-import           Blaze.ByteString.Builder (fromByteString)
-  
-import           Data.Aeson as Aeson
-import           Database.PostgreSQL.Simple.FromField as PG.FromField
-import           Database.PostgreSQL.Simple.ToField as PG.ToField
-import           Database.PostgreSQL.Simple.FromRow as PG.FromRow
-import           Database.PostgreSQL.Simple.ToRow as PG.ToRow
+import Data.ByteString.Char8 (ByteString)
+
+import Database.PostgreSQL.Simple.FromField as PG.FromField
+import Database.PostgreSQL.Simple.ToField as PG.ToField
+import Database.PostgreSQL.Simple.FromRow as PG.FromRow
+import Database.PostgreSQL.Simple.ToRow as PG.ToRow
 
 data User = User {
   userUID :: !Integer,
   userUsername :: Text,
   userDisplayName :: Text,
-  userPasswordHash :: Maybe Text
+  userPasswordHash :: Text
 } deriving (Show)
 
 instance ToJSON User where
@@ -41,7 +39,7 @@ instance FromJSON User where
     <$> o .: "uid"
     <*> o .: "username"
     <*> o .: "display_name"
-    <*> (o .:? "password_hash")
+    <*> o .: "password_hash"
   parseJSON _ = mzero
 
 instance Eq User where
@@ -66,13 +64,14 @@ instance FromField User where
 instance ToField User where
   toField (User uid uname dname phash) =
     Many [plain "ROW(",
-          toField uid, comma, toField uname, comma, toField dname, comma,
-          fromMaybe nullv (toField <$> phash),
+          toField uid, comma,
+          toField uname, comma,
+          toField dname, comma,
+          toField phash,
           plain ")"]
     where
       plain = Plain . fromByteString
       comma = plain ","
-      nullv = plain "NULL"
   
 instance FromRow User where
   fromRow = User <$> field <*> field <*> field <*> field
@@ -93,7 +92,7 @@ userRowParser = User
   <$> (char '(' >> decimal)
   <*> (skipUntakeable >> T.decodeUtf8 <$> takeTakeable)
   <*> (skipUntakeable >> T.decodeUtf8 <$> takeTakeable)
-  <*> (skipUntakeable >> option Nothing (Just . T.decodeUtf8 <$> takeTakeable))
+  <*> (skipUntakeable >> T.decodeUtf8 <$> takeTakeable)
   where
     takeable ',' = False
     takeable '"' = False

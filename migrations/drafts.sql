@@ -1,1 +1,0 @@
-ALTER TABLE blogposts ADD COLUMN is_draft bool DEFAULT false;

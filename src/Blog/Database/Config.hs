@@ -20,14 +20,7 @@ import Data.Maybe
 -- IMPORTANT: Do no remove entries from here once
 -- the app has been run. It will mess up the DB
 migrations :: [(String, String)]
-migrations = [
-  ("blog.sql", "./migrations/blog.sql"),
-  ("array_funcs.sql", "./migrations/array_funcs.sql"),
-  ("authorship.sql", "./migrations/authorship.sql"),
-  ("drafts.sql", "./migrations/drafts.sql"),
-  ("comments.sql", "./migrations/comments.sql"),
-  ("auth.sql", "./migrations/auth.sql"),
-  ("views.sql", "./migrations/views.sql")]
+migrations = [("blog.sql", "migrations/blog.sql")]
 
 postgresConfigs :: FilePath -> FilePath -> FilePath -> String -> [(String, String)]
 postgresConfigs _      _     _    "development" = [("user", "nathaniel"),
@@ -40,6 +33,7 @@ postgresConfigs rootcrt ccrt ckey "production" = [("user", "symerdotio"),
                                                   ("port", "5432"),
                                                   ("dbname", "blog"),
                                                   ("sslmode", "verify-ca"), -- TODO configure verify-full
+                                                  ("sslcompression", "1"),
                                                   ("sslrootcert", rootcrt),
                                                   ("sslcert", ccrt),
                                                   ("sslkey", ckey)]
