@@ -55,7 +55,7 @@ a.read-more {
 
 a {
   text-decoration: none;
-  color: #80B9B4;
+  color: gray;
 }
 
 a:hover {
@@ -104,6 +104,8 @@ a < img {
   font-size:40px;
   margin-top: 50px;
   font-family: oxygen-regular,sans-serif;
+  font-color: #80B9B4;
+  color: #80B9B4;
 }
 
 .post-content > * {

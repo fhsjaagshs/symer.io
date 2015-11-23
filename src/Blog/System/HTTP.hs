@@ -19,8 +19,9 @@ import Control.Concurrent.STM
 import Web.Scotty.Trans as Scotty
 
 import Network.Wai (responseLBS,requestHeaderHost,rawPathInfo,rawQueryString,Application)
-import Network.Wai.Handler.Warp (defaultSettings,setPort,setBeforeMainLoop,setInstallShutdownHandler,runSettings,Settings)
-import Network.Wai.Handler.WarpTLS (certFile,defaultTlsSettings,keyFile,runTLS)
+import Network.Wai.HTTP2 (promoteApplication)
+import Network.Wai.Handler.Warp (defaultSettings,setPort,setBeforeMainLoop,setInstallShutdownHandler,runHTTP2Settings,Settings)
+import Network.Wai.Handler.WarpTLS (certFile,defaultTlsSettings,keyFile,runHTTP2TLS)
 import Network.HTTP.Types.Status (status301)
 import Network.Wai.Middleware.AddHeaders
 
@@ -33,7 +34,9 @@ import System.Posix
 startHTTP :: (ScottyError e) => ScottyT e WebM () -> IO AppState -> Int -> IO ()
 startHTTP app mkstate port = mkstate >>= runApp (applyMiddleware False app)
   where
-    runApp a st = mkScottyAppT a st >>= runSettings (mkWarpSettings port st)
+    runApp a st = do
+      wai <- mkApplication a st
+      runHTTP2Settings (mkWarpSettings port st) (promoteApplication wai) wai
 
 -- app -> your Scotty app
 -- mkstate -> IO action to create your app's initial state (post-fork to avoid DB connection issues)
@@ -48,7 +51,9 @@ startHTTPS app mkstate cert key port = do
   mkstate >>= runApp (applyMiddleware True app)
   where
     mksettings = defaultTlsSettings { keyFile = key, certFile = cert }
-    runApp a st = mkScottyAppT a st >>= runTLS mksettings (mkWarpSettings port st)
+    runApp a st = do
+      wai <- mkApplication a st
+      runHTTP2TLS mksettings (mkWarpSettings port st) (promoteApplication wai) wai
 
 {- Internal -}
 
@@ -70,8 +75,8 @@ applyMiddleware ssl app = do
   when ssl $ middleware $ addHeaders [("Strict-Transport-Security","max-age=31536000")]
   app
     
-mkScottyAppT :: (ScottyError e) => ScottyT e WebM () -> AppState -> IO Application
-mkScottyAppT app state = do
+mkApplication :: (ScottyError e) => ScottyT e WebM () -> AppState -> IO Application
+mkApplication app state = do
   sync <- newTVarIO state
   let runActionToIO m = runReaderT (runWebM m) sync
   scottyAppT runActionToIO app
@@ -93,8 +98,8 @@ startRedirectProcess = void $ do
     redirectStderr $ Just "/dev/null"
     redirectStdin $ Just "/dev/null"
     void $ installHandler sigTERM (Catch childHandler) Nothing
-    runSettings warpSettings $ \req respond -> do
-      respond $ responseLBS status301 (mkHeaders req) ""
+    runHTTP2Settings warpSettings (promoteApplication app) app
+      
   void $ installHandler sigTERM (Catch $ parentHandler pid) Nothing
   void $ installHandler sigINT (Catch $ parentHandler pid) Nothing
   where
@@ -107,3 +112,5 @@ startRedirectProcess = void $ do
       putStrLn "killing HTTP -> HTTPS process"
       signalProcess sigTERM pid
       exitImmediately ExitSuccess
+    app req respond = respond $ responseLBS status301 (mkHeaders req) ""
+      
