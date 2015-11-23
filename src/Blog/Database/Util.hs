@@ -90,7 +90,7 @@ getDrafts :: (ScottyError e) => User -> Maybe Integer -> ActionT e WebM [Post]
 getDrafts user mPageNum = webMQuery sql (userUID user, pageNum*(fromIntegral postsPerPage), postsPerPage+1)
   where
     pageNum = fromMaybe 0 mPageNum
-    sql = "SELECT * FROM v_drafts ORDER BY identifier DESC OFFSET ? LIMIT ?"
+    sql = "SELECT * FROM v_drafts WHERE (v_drafts.user).id=? ORDER BY identifier DESC OFFSET ? LIMIT ?"
 
 getPost :: (ScottyError e) => Integer -> ActionT e WebM (Maybe Post)
 getPost pid = listToMaybe <$> webMQuery sql [pid]
