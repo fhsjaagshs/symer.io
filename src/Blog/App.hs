@@ -88,17 +88,6 @@ app = do
         mapM_ (renderPost True maybeUser) (take postsPerPage posts)
         renderPageControls mPageNum (length posts > postsPerPage)
         
-  -- create a post
-  get "/posts/new" $ do
-    void $ authenticate
-    beginHtml $ do
-      renderHead (appendedBlogTitle "New Post") $ do
-        renderMeta "robots" "noindex, nofollow"
-        renderStylesheet "/assets/css/editor.css"
-        renderStylesheet "/assets/css/wordlist.css"
-      renderBody $ do
-        renderPostEditor Nothing
-
   -- view a specific post
   get "/posts/:id" $ do
     mpost <- param "id" >>= getPost
@@ -134,6 +123,17 @@ app = do
         when (isJust maybeUser) renderAdminControls
         mapM_ (renderPost True maybeUser) (take postsPerPage posts)
         renderPageControls mPageNum (length posts > postsPerPage)
+        
+  -- create a post
+  get "/posts/new" $ do
+    void $ authenticate
+    beginHtml $ do
+      renderHead (appendedBlogTitle "New Post") $ do
+        renderMeta "robots" "noindex, nofollow"
+        renderStylesheet "/assets/css/editor.css"
+        renderStylesheet "/assets/css/wordlist.css"
+      renderBody $ do
+        renderPostEditor Nothing
 
   -- edit a post
   get "/posts/:id/edit" $ do
@@ -188,13 +188,12 @@ app = do
       Nothing -> status $ Status 401 "Missing authentication"
       Just authUser -> do
         ps <- params
-        let pid = read . TL.unpack <$> lookup "id" ps
+        let pid      = read . TL.unpack <$> lookup "id" ps
             ptitle   = TL.toStrict <$> lookup "title" ps
             pbody    = TL.toStrict <$> lookup "body" ps
             ptags    = map TL.toStrict . TL.splitOn "," <$> lookup "tags" ps
-            pdeltags = map TL.toStrict . TL.splitOn "," <$> lookup "deleted_tags" ps
             pisdraft = maybe True truthy $ lookup "draft" ps
-        mPostID <- upsertPost authUser pid ptitle pbody ptags pdeltags pisdraft
+        mPostID <- upsertPost authUser pid ptitle pbody ptags pisdraft
         case mPostID of
           Nothing -> status $ Status 400 "Missing required parameters"
           Just postId -> addHeader "Location" $ TL.pack $ "/posts/" ++ (show postId)

@@ -1,34 +1,43 @@
-$(".wordlist").wordlist();
-$(".wordlist").on("wordlist:addedWord", function(e,word) { addTag(word); }); 
-$(".wordlist").on("wordlist:deletedWord", function(e,word) { deleteTag(word); });
+// TODO:
+// 1. Improve preview code
+// 2. Double check tags posting code
+// 3. fix lexical error in marked
+function Post(id) {
+  this.tags = [];
+  this.id = id;
+  this.draft = true;
+}
 
-var editing = true;
+Post.prototype = {
+  deleteTag: function(tag) {
+    var idx = this.tags.indexOf(tag);
+    if (idx != -1) this.tags.splice(idx, 1);
+  },
+  addTag: function(tag) {
+    this.tags.push(tag);
+  }
+}
+
 var editor = document.getElementById("editor");
 var preview = document.getElementById("preview");
 var previewButton = document.getElementById("preview-button");
 var deleteButton = document.getElementById("delete-button");
 var saveButton = document.getElementById("save-button");
 var titleField = document.getElementById("title-field");
-var publicCheckbox = document.getElementById("public-checkbox");
 
+// variable @tags@ is defined prior to this script's evaluation
 
-function Post() {
-  this.tags = [];
-  this.deleted_tags = [];
-  this.id = parseInt(editor.getAttribute("post-id"));
-}
+var post = new Post(parseInt(editor.getAttribute("post-id")));
+post.tags = tags;
 
-var post = new Post();
+var wordList = new WordList(tags);
+wordList.onAdd = function(word) { post.addTag(word); }
+wordList.onDelete = function(word) { post.deleteTag(word); }
 
-function deleteTag(word) {
-  post.deleted_tags.push(word);
-  var idx = post.tags.indexOf(word);
-  if (idx != -1) post.tags.splice(idx, 1);
-}
+editor.parentNode.insertBefore(wordList.div, editor.nextSibling);
 
-function addTag(word) {
-  post.tags.push(word);
-  post.deleted_tags.delete(word);
+document.getElementById("public-checkbox").onchange = function(e) {
+  post.draft = e.target.checked ? "False" : "True";
 }
 
 editor.oninput = function() {
@@ -40,29 +49,9 @@ titleField.oninput = function() {
 }
 
 saveButton.onclick = function() {
-  console.log(post);
-  if (post.tags.length > 0) {
-    post.tags = post.tags.join();
-  } else {
-    delete post.tags;
-  }
-  
-  if (post.deleted_tags.length > 0) {
-    if (post.id == -1) {
-      delete post.deleted_tags
-    } else {
-      post.deleted_tags = post.deleted_tags.join();
-    }
-  } else {
-    delete post.deleted_tags;
-  }
-  
+  post.tags = post.tags.join();
   if (post.id == -1) delete post.id; 
-  
-  post.draft = publicCheckbox.checked ? "False" : "True";
-  
-  console.log("SHIT");
-  
+  console.log(post);
   sendHTTP("POST", "/posts", post, function(http) {
     post = new Post();
     if (http.status == 200)
@@ -70,11 +59,12 @@ saveButton.onclick = function() {
   });
 }
 
+var editing = true;
 previewButton.onclick = function() {
   editing = !editing;
   previewButton.innerHTML = editing ? "Preview" : "Edit";
   editor.style.display = editing ? "block" : "none";
-  preview.innerHTML = editing ? "" : "<div class=\"post-content\">" + marked(editor.value) + "</div>";
+  preview.innerHTML = editing ? "" : "<div class=\"post-content\">" + marked(post.body) + "</div>";
 }
 
 deleteButton.onclick = function() {

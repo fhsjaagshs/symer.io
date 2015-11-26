@@ -1,58 +1,21 @@
-CREATE FUNCTION array_diff(anyarray,anyarray) RETURNS anyarray AS $BODY$
+CREATE OR REPLACE FUNCTION uniq(ary anyarray) RETURNS anyarray AS $$
+DECLARE
+	i integer;
+	ret ary%TYPE := '{}';
 BEGIN
-  SELECT array_agg(unnest) FROM unnest($1) WHERE unnest != ALL($2) INTO $1;
-  return $1;
-END;
-$BODY$ LANGUAGE 'plpgsql' VOLATILE;
-
--- uniq(myarray)
--- returns unique copy of myarray
-CREATE FUNCTION duniq(anyarray) RETURNS anyarray AS $BODY$
-BEGIN
-  SELECT ARRAY(SELECT DISTINCT unnest FROM unnest($1)) INTO $1;
-  return $1;
-END;
-$BODY$ LANGUAGE 'plpgsql' VOLATILE;
-
--- uniq_append(array,elem)
--- appends elem onto array if it doesn't exist in array.
-CREATE FUNCTION uniq_append(anyarray, anyelement) RETURNS anyarray AS $BODY$
-BEGIN
-	if ($2 = ANY($1)) THEN
-		return $1;
-	ELSE
-		return array_append($1, $2);
+	IF ary IS NULL THEN
+		return NULL;
 	END IF;
-END;
-$BODY$ LANGUAGE 'plpgsql' VOLATILE;
 
--- uniq_prepend(array,elem)
--- prepends elem onto array if it doesn't exist in array.
-CREATE FUNCTION uniq_prepend(anyarray, anyelement) RETURNS anyarray AS $BODY$
-BEGIN
-	if ($2 = ANY($1)) THEN
-		return $1;
-	ELSE
-		return array_prepend($1, $2);
-	END IF;
-END;
-$BODY$ LANGUAGE 'plpgsql' VOLATILE;
+  FOR i IN ARRAY_LOWER(ary, 1)..ARRAY_UPPER(ary, 1) LOOP
+    IF NOT ary[i] = any(ret) THEN
+      ret = array_append(ret, ary[i]);
+    END IF;
+  END LOOP;
 
--- uniq_cat(one, two)
--- Concatenates one and an array consisting of values in two that don't exist in one
-CREATE FUNCTION uniq_cat(anyarray, anyarray) RETURNS anyarray AS $BODY$
-BEGIN
-  return array_cat($1,array_diff($2,$1));
+  RETURN ret;
 END;
-$BODY$ LANGUAGE 'plpgsql' VOLATILE;
-
--- uniq_cat2(one, two)
--- Concatenates one and two and returns a copy without duplicates.
-CREATE FUNCTION uniq_cat2(anyarray, anyarray) RETURNS anyarray AS $BODY$
-BEGIN
-  return uniq(array_cat($1,$2));
-END;
-$BODY$ LANGUAGE 'plpgsql' VOLATILE;
+$$ LANGUAGE plpgsql;
 
 CREATE TABLE users (
   id bigserial PRIMARY KEY NOT NULL,

@@ -137,18 +137,15 @@ invalidate (FileCache _ mht _) k = withMVar mht (flip HT.delete k)
 {- Internal -}
 
 readFileE :: FilePath -> IO (Either String ByteString)
-readFileE fp = f <$> readF
+readFileE fp = (either (Left . displayException) Right) <$> readF
   where
     readF :: IO (Either IOException ByteString)
     readF = try $ B.readFile fp
-    f (Left e) = Left $ displayException e
-    f (Right s) = Right s
 
 -- returns (contents, md5)
 xformedReadFileE :: FileTransform -> FilePath -> IO Entry
-xformedReadFileE f fp = readFileE fp >>= return . either Left (g . f)
+xformedReadFileE f fp = readFileE fp >>= return . either Left (buildEntry . f)
   where
-    g (Left err) = Left err
-    g (Right cnts) = Right (compress cnts, md5 cnts)
+    buildEntry = either Left (\cnts -> Right (compress cnts, md5 cnts))
     compress = BL.toStrict . GZIP.compress . BL.fromStrict
     md5 = B16.encode . MD5.hash

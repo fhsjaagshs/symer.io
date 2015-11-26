@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE OverloadedStrings, TupleSections #-}
 
 module Blog.Database.Util
 (
@@ -31,11 +31,13 @@ import Data.Maybe
 import Web.Scotty.Trans (ActionT, ScottyError)
 
 import Data.Text (Text)
+import Data.List (intercalate)
 
 import Blog.Database.PGExtensions()
 
 import Database.PostgreSQL.Simple as PG
 import Database.PostgreSQL.Simple.Types as PG.Types
+import Database.PostgreSQL.Simple.ToField as PG.ToField
 
 import           Blaze.ByteString.Builder (toByteString)
 import qualified Blaze.ByteString.Builder.Char.Utf8 as Utf8
@@ -44,35 +46,44 @@ import qualified Blaze.ByteString.Builder.Char.Utf8 as Utf8
 Database TODO:
 
 1. Rename columns
-
-This will require migrating production:
-1. Finalize migrations
-2. Backup prod
-3. Run migrations in prod
-4. Condense migrations into one .sql file
-5. Manually update prod accordingly
+2. Dump & rebuild production DB
 
 -}
 
--- TODO: only update if user is correct
-upsertPost :: (ScottyError e) => User -> Maybe Integer -> Maybe Text -> Maybe Text -> Maybe [Text] -> Maybe [Text] -> Bool -> ActionT e WebM (Maybe Integer)
-upsertPost _    (Just pid) Nothing      Nothing     Nothing     Nothing            draft = processResult $ webMQuery "UPDATE blogposts SET is_draft=? WHERE identifier=? RETURNING identifier" (draft, pid)
-upsertPost _    (Just pid) (Just title) Nothing     Nothing     Nothing            draft = processResult $ webMQuery "UPDATE blogposts SET title=?, is_draft=? WHERE identifier=? RETURNING identifier" (title, draft, pid)
-upsertPost _    (Just pid) (Just title) (Just body) Nothing     Nothing            draft = processResult $ webMQuery "UPDATE blogposts SET title=?, bodyText=?, is_draft=? WHERE identifier=? RETURNING identifier" (title, body, draft, pid)
-upsertPost _    (Just pid) (Just title) (Just body) (Just tags) Nothing            draft = processResult $ webMQuery "UPDATE blogposts SET title=?, bodyText=?, tags=uniq_cat(tags,?), is_draft=? WHERE identifier=? RETURNING identifier" (title, body, tags, draft, pid)
-upsertPost _    (Just pid) (Just title) (Just body) (Just tags) (Just deletedTags) draft = processResult $ webMQuery "UPDATE blogposts SET title=?, bodyText=?, tags=array_diff(uniq_cat(tags,?),?), is_draft=? WHERE identifier=? RETURNING identifier" (title, body, tags, deletedTags, draft, pid)
-upsertPost _    (Just pid) Nothing      (Just body) Nothing     Nothing            draft = processResult $ webMQuery "UPDATE blogposts SET bodyText=?, is_draft=? WHERE identifier=? RETURNING identifier" (body, draft, pid)
-upsertPost _    (Just pid) Nothing      Nothing     (Just tags) Nothing            draft = processResult $ webMQuery "UPDATE blogposts SET tags=uniq_cat(tags,?), is_draft=? WHERE identifier=? RETURNING identifier" (tags, draft, pid)
-upsertPost _    (Just pid) Nothing      (Just body) (Just tags) Nothing            draft = processResult $ webMQuery "UPDATE blogposts SET bodyText=?, tags=uniq_cat(tags,?), is_draft=? WHERE identifier=? RETURNING identifier" (body, tags, draft, pid)
-upsertPost _    (Just pid) (Just title) Nothing     (Just tags) Nothing            draft = processResult $ webMQuery "UPDATE blogposts SET title=?, tags=uniq_cat(tags,?), is_draft=? WHERE identifier=? RETURNING identifier" (title, tags, draft, pid)
-upsertPost _    (Just pid) Nothing      Nothing     Nothing     (Just deletedTags) draft = processResult $ webMQuery "UPDATE blogposts SET tags=array_diff(tags,?), is_draft=? WHERE identifier=? RETURNING identifier" (deletedTags, draft, pid)
-upsertPost _    (Just pid) Nothing      Nothing     (Just tags) (Just deletedTags) draft = processResult $ webMQuery "UPDATE blogposts SET tags=uniq_cat(array_diff(tags,?),?), is_draft=? WHERE identifier=? RETURNING identifier" (deletedTags, tags, draft, pid)
-upsertPost _    (Just pid) Nothing      (Just body) Nothing     (Just deletedTags) draft = processResult $ webMQuery "UPDATE blogposts SET bodyText=?, tags=array_diff(tags,?), is_draft=? WHERE identifier=? RETURNING identifier" (body, deletedTags, draft, pid)
-upsertPost _    (Just pid) (Just title) Nothing     Nothing     (Just deletedTags) draft = processResult $ webMQuery "UPDATE blogposts SET title=?, tags=array_diff(tags,?), is_draft=? WHERE identifier=? RETURNING identifier" (title, deletedTags, draft, pid)
-upsertPost _    (Just pid) (Just title) (Just body) Nothing     (Just deletedTags) draft = processResult $ webMQuery "UPDATE blogposts SET title=?, bodyText=?, tags=array_diff(tags,?), is_draft=? WHERE identifier=? RETURNING identifier" (title, body, deletedTags, draft, pid)
-upsertPost user Nothing    (Just title) (Just body) Nothing     _                  draft = processResult $ webMQuery "INSERT INTO blogposts (title, bodyText, author_id, is_draft) VALUES (?, ?, ?, ?) RETURNING identifier" (title, body, userUID user, draft)
-upsertPost user Nothing    (Just title) (Just body) (Just tags) _                  draft = processResult $ webMQuery "INSERT INTO blogposts (title, bodyText, tags, author_id, is_draft) VALUES (?, ?, ?, ?, ?) RETURNING identifier" (title, body, tags, userUID user, draft)
-upsertPost _    _          _            _           _           _                  _     = return Nothing
+upsertPost :: (ScottyError e) => User -> Maybe Integer -> Maybe Text -> Maybe Text -> Maybe [Text] -> Bool -> ActionT e WebM (Maybe Integer)
+upsertPost user Nothing    title body tags draft = insertPost user title body tags draft
+upsertPost user (Just pid) title body tags draft = updatePost user pid title body tags draft
+
+insertPost :: (ScottyError e) => User -> Maybe Text -> Maybe Text -> Maybe [Text] -> Bool -> ActionT e WebM (Maybe Integer)
+insertPost user title body tags draft = processResult $ webMQuery q fieldValues
+  where
+    q = "INSERT INTO blogposts (" ++ intercalate "," fieldNames ++ ") VALUES (" ++ intercalate "," qMarks ++ ") RETURNING identifier"
+    fieldNames = map fst values
+    fieldValues = map snd values
+    qMarks = replicate (length values) "?"
+    values :: [(String, Action)]
+    values = catMaybes $ [Just ("is_draft", toField draft),
+                          Just ("author_id", toField $ userUID user),
+                          mkField "title" <$> title,
+                          mkField "bodyText" <$> body,
+                          mkField "tags" <$> tags]
+      where
+        mkField sql = (sql,) . toField
+
+-- TODO: update timestamp??
+updatePost :: (ScottyError e) => User -> Integer -> Maybe Text -> Maybe Text -> Maybe [Text] -> Bool -> ActionT e WebM (Maybe Integer)
+updatePost user pid title body tags draft = processResult $ webMQuery q (fvalues ++ [toField $ userUID user, toField pid])
+  where
+    q = "UPDATE blogposts SET " ++ (intercalate "," fsetters) ++ " WHERE author_id=? AND identifier=? RETURNING identifier"
+    fsetters = map fst values
+    fvalues = map snd values
+    values :: [(String, Action)]
+    values = catMaybes $ [Just ("is_draft=?", toField draft),
+                          mkField "title=?" title,
+                          mkField "bodyText=?" body,
+                          mkField "tags=uniq(?)" tags]
+    mkField sql (Just v ) = Just (sql, toField v)
+    mkField _   Nothing = Nothing
 
 getPostsByTag :: (ScottyError e) => Text -> Maybe Integer -> ActionT e WebM [Post]
 getPostsByTag tag mPageNum = webMQuery sql (tag,pageNum*(fromIntegral postsPerPage),postsPerPage+1)
@@ -120,7 +131,10 @@ webMQuery q ps = do
 webMQuery_ :: (ToRow q, ScottyError e) => String -> q -> ActionT e WebM ()
 webMQuery_ q ps = void $ do
   pg <- webM $ gets statePostgres
-  liftIO $ execute pg (Query . toByteString . Utf8.fromString $ q) ps
+  liftIO $ execute pg (stringToQuery q) ps
+
+stringToQuery :: String -> Query
+stringToQuery = Query . toByteString . Utf8.fromString
 
 processResult :: ActionT e WebM [Only Integer] -> ActionT e WebM (Maybe Integer)
 processResult res = (listToMaybe . map fromOnly) <$> res

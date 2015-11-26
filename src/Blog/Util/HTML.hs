@@ -24,6 +24,7 @@ import           Blog.Post
 import           Control.Monad
 import           Data.Maybe
 
+import qualified Data.Text as T
 import           Data.Text.Lazy (Text)
 import qualified Data.Text.Lazy as TL
 
@@ -125,25 +126,33 @@ renderPageControls mPageNum hasNext = do
 
 renderPostEditor :: Maybe Post -> Html
 renderPostEditor post = do
-  input ! type_ "text" ! id "title-field" ! placeholder "Post title" ! value (textValue ptitle)
-
-  div ! id "preview" $ ""
-  textarea ! id "editor" ! customAttribute "post-id" (stringValue $ show pid) $ H.text pbody
-  textarea ! id "tags" ! class_ "wordlist" $ toHtml . TL.intercalate ", " . map TL.fromStrict $ tags
+  input
+    ! type_ "text"
+    ! id "title-field"
+    ! placeholder "Post title"
+    ! value (textValue ptitle)
   
+  div ! id "preview" $ ""
+  textarea
+    ! id "editor"
+    ! customAttribute "post-id" (stringValue $ show pid)
+    $ H.text pbody
+
   div ! id "checkbox-container" $ do
     renderCheckbox "public-checkbox" "Public" $ not isDraft
-
+  
   renderButton "Delete" "delete-button" Nothing
   renderButton "Preview" "preview-button" Nothing
   renderButton "Save" "save-button" Nothing
-  
-  renderScript "/assets/js/jquery-2.1.3.min.js"
+
   renderScript "/assets/js/marked.min.js"
-  renderScript "/assets/js/wordlist.js"
+  renderScript "/assets/js/wordlist-pure.js"
   renderScript "/assets/js/common.js"
+  script $ toHtml $ tagJS -- supply tags to editor.js
   renderScript "/assets/js/editor.js"
   where
+    tagJS = mconcat ["var tags = [", T.intercalate ", " $ map quote tags, "];"]
+    quote s = mconcat ["'", s, "'"]
     ptitle = maybe "" postTitle post
     pbody = maybe "" postBody post
     pid = maybe (-1) postID post
