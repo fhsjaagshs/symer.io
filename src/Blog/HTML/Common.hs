@@ -1,8 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-module Blog.Util.HTML
+module Blog.HTML.Common
 (
-  beginHtml,
   renderMeta,
   renderStylesheet,
   renderScript,
@@ -14,33 +13,19 @@ module Blog.Util.HTML
   renderTitle,
   renderSubtitle,
   renderAdminControls,
-  renderPageControls,
-  renderPostEditor
+  renderPageControls
 )
 where
 
-import           Blog.Post
-
-import           Control.Monad
 import           Data.Maybe
+import           Control.Monad
 
-import qualified Data.Text as T
 import           Data.Text.Lazy (Text)
 import qualified Data.Text.Lazy as TL
 
-import           Text.Blaze.Html.Renderer.Text as R
 import           Text.Blaze.Html5 as H hiding (style, param, map)
 import           Text.Blaze.Html5.Attributes as A
 import           Prelude as P hiding (head, div, id)
-
-import qualified Web.Scotty.Trans as Scotty (html)
-import           Web.Scotty.Trans (ActionT, ScottyError)
-
---------------------------------------------------------------------------------
---- | Scotty Helper
-
-beginHtml :: (ScottyError e, Monad m) => Html -> ActionT e m ()
-beginHtml = Scotty.html . R.renderHtml . docTypeHtml
 
 --------------------------------------------------------------------------------
 --- | HTML primitives
@@ -117,44 +102,8 @@ renderAdminControls = do
   renderButton "New Post" "" $ Just "/posts/new"
   renderButton "Drafts" "" $ Just "/drafts"
   
-renderPageControls :: Maybe Integer -> Bool -> Html
-renderPageControls mPageNum hasNext = do
+renderPageControls :: Integer -> Bool -> Html
+renderPageControls pageNum hasNext = do
   when (pageNum > 0)  $ renderButton "Newer" "prevbutton" $ mkHref $ pageNum-1
   when hasNext        $ renderButton "Older" "nextbutton" $ mkHref $ pageNum+1
-  where pageNum = fromMaybe 0 mPageNum
-        mkHref = Just . TL.pack . (++) "/?page=" . show
-
-renderPostEditor :: Maybe Post -> Html
-renderPostEditor post = do
-  input
-    ! type_ "text"
-    ! id "title-field"
-    ! placeholder "Post title"
-    ! value (textValue ptitle)
-  
-  div ! id "preview" $ ""
-  textarea
-    ! id "editor"
-    ! customAttribute "post-id" (stringValue $ show pid)
-    $ H.text pbody
-
-  div ! id "checkbox-container" $ do
-    renderCheckbox "public-checkbox" "Public" $ not isDraft
-  
-  renderButton "Delete" "delete-button" Nothing
-  renderButton "Preview" "preview-button" Nothing
-  renderButton "Save" "save-button" Nothing
-
-  renderScript "/assets/js/marked.min.js"
-  renderScript "/assets/js/wordlist-pure.js"
-  renderScript "/assets/js/common.js"
-  script $ toHtml $ tagJS -- supply tags to editor.js
-  renderScript "/assets/js/editor.js"
-  where
-    tagJS = mconcat ["var tags = [", T.intercalate ", " $ map quote tags, "];"]
-    quote s = mconcat ["'", s, "'"]
-    ptitle = maybe "" postTitle post
-    pbody = maybe "" postBody post
-    pid = maybe (-1) postID post
-    tags = maybe [] postTags post
-    isDraft = maybe True postIsDraft post
+  where mkHref = Just . TL.pack . (++) "/?page=" . show

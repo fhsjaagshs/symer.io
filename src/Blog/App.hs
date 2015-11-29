@@ -9,18 +9,17 @@ where
 import Blog.State
 import Blog.User
 import Blog.Post as Post
-import Blog.Database.Config
 import Blog.Database.Util
-import Blog.Util.HTML
 import Blog.Util.MIME
 import Blog.Web.Auth
+import qualified Blog.HTML as HTML
 import qualified Blog.System.FileCache as FC
 
 import Data.Maybe
        
 import Control.Monad
 import Control.Monad.IO.Class
-       
+
 import Web.Scotty.Trans as Scotty
 import Network.HTTP.Types.Status (Status(..))
 
@@ -29,14 +28,13 @@ import qualified Crypto.BCrypt as BCrypt
 import Data.String
 import qualified Data.ByteString.Char8 as B
 import qualified Data.ByteString.Lazy.Char8 as BL
-import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
 import qualified Data.Text.Lazy as TL
 import qualified Data.Text.Lazy.Encoding as TL
 import qualified Data.Text.Lazy.Builder as TL
 
-import Text.Blaze.Html5 as H hiding (style, param, map)
-import Text.Blaze.Html5.Attributes as A
+import qualified Text.Blaze.Html.Renderer.Text as R (renderHtml)
+
 import qualified Text.CSS.Parse as CSS (parseNestedBlocks)
 import qualified Text.CSS.Render as CSS (renderNestedBlocks)
 import qualified Text.Jasmine as JS (minifym)
@@ -57,83 +55,50 @@ import System.Directory
 -- Miscellaneous Ideas:
 -- 1. 'Top 5' tags map in side bar?
 
+-- type StreamingBody = (Builder -> IO ()) -> IO () -> IO ()
+
 --------------------------------------------------------------------------------
+getPageNumber :: (ScottyError e, Monad m) => ActionT e m Integer
+getPageNumber = maybe 0 (read . TL.unpack) . lookup "page" <$> params
+
+renderHtml :: (ScottyError e, Monad m) => HTML.Html -> ActionT e m ()
+renderHtml = Scotty.html . R.renderHtml
+
 app :: ScottyT TL.Text WebM ()
 app = do
   get "/" $ do
     maybeUser <- getUser
-    mPageNum <- fmap (read . TL.unpack) . lookup "page" <$> params
-    posts <- getPosts mPageNum
-    beginHtml $ do
-      renderHead blogTitle $ do
-        renderMeta "description" description
-        renderKeywords keywords
-      renderBody $ do
-        renderTitle blogTitle
-        renderSubtitle blogSubtitle
-        when (isJust maybeUser) renderAdminControls
-        mapM_ (renderPost True maybeUser) (take postsPerPage posts)
-        renderPageControls mPageNum (length posts > postsPerPage)
+    pageNum <- getPageNumber
+    posts <- getPosts pageNum
+    renderHtml $ HTML.root maybeUser posts pageNum
         
   get "/drafts" $ do
     maybeUser <- authenticate
-    mPageNum <- fmap (read . TL.unpack) . lookup "page" <$> params
-    posts <- getDrafts (fromJust maybeUser) mPageNum
-    beginHtml $ do
-      renderHead (appendedBlogTitle "Drafts") $ do
-        renderMeta "robots" "noindex, nofollow"
-      renderBody $ do
-        renderTitle "Drafts"
-        when (isJust maybeUser) renderAdminControls
-        mapM_ (renderPost True maybeUser) (take postsPerPage posts)
-        renderPageControls mPageNum (length posts > postsPerPage)
+    pageNum <- getPageNumber
+    drafts <- getDrafts (fromJust maybeUser) pageNum
+    renderHtml $ HTML.drafts maybeUser drafts pageNum
         
   -- view a specific post
   get "/posts/:id" $ do
     mpost <- param "id" >>= getPost
     case mpost of
       Nothing -> redirect "/notfound"
-      Just pst@(Post _ ttl _ _ tags draft author) -> do
+      Just pst@(Post _ _ _ _ _ draft author) -> do
         maybeUser <- getUser
         when (draft && (maybe True ((/=) author) maybeUser)) (redirect "/notfound")
-
-        beginHtml $ do
-          renderHead (appendedBlogTitle $ TL.fromStrict ttl) $ do
-            renderKeywords $ tags ++ keywords
-            renderMeta "description" $ TL.fromStrict $ postDescription pst
-          renderBody $ do
-            renderTitle blogTitle
-            renderSubtitle blogSubtitle
-            when (isJust maybeUser) renderAdminControls
-            renderPost False maybeUser pst
-            renderScript "/assets/js/common.js"
-            renderScript "/assets/js/comments.js"
+        renderHtml $ HTML.postDetail maybeUser pst
             
   get "/posts/by/tag/:tag" $ do
     tag <- param "tag"
     maybeUser <- getUser
-    mPageNum <- (fmap (read . TL.unpack) . lookup "page") <$> params
-    posts <- getPostsByTag tag mPageNum
-    beginHtml $ do
-      renderHead (appendedBlogTitle $ TL.fromStrict tag) $ do
-        renderMeta "description" description
-        renderKeywords keywords
-      renderBody $ do
-        renderTitle $ mconcat ["Posts tagged '", TL.fromStrict tag, "'"]
-        when (isJust maybeUser) renderAdminControls
-        mapM_ (renderPost True maybeUser) (take postsPerPage posts)
-        renderPageControls mPageNum (length posts > postsPerPage)
+    pageNum <- getPageNumber
+    posts <- getPostsByTag tag pageNum
+    renderHtml $ HTML.postsByTag maybeUser (TL.fromStrict tag) posts pageNum
         
   -- create a post
   get "/posts/new" $ do
     void $ authenticate
-    beginHtml $ do
-      renderHead (appendedBlogTitle "New Post") $ do
-        renderMeta "robots" "noindex, nofollow"
-        renderStylesheet "/assets/css/editor.css"
-        renderStylesheet "/assets/css/wordlist.css"
-      renderBody $ do
-        renderPostEditor Nothing
+    renderHtml $ HTML.postEditor Nothing
 
   -- edit a post
   get "/posts/:id/edit" $ do
@@ -142,30 +107,12 @@ app = do
     res <- getPost identifier_
     case res of
       Nothing -> next
-      Just post_ -> beginHtml $ do
-        renderHead (appendedBlogTitle $ TL.fromStrict $ postTitle post_) $ do
-          renderMeta "robots" "noindex, nofollow"
-          renderStylesheet "/assets/css/editor.css"
-          renderStylesheet "/assets/css/wordlist.css"
-        renderBody $ do
-          renderPostEditor $ Just post_
+      Just p -> renderHtml $ HTML.postEditor $ Just p
 
   get "/login" $ do
     maybeUser <- getUser
     when (isJust maybeUser) (redirect "/")
-    merrmsg <- lookup "err" <$> params
-    beginHtml $ do
-      renderHead (appendedBlogTitle "Login") $ do
-        renderMeta "robots" "noindex, nofollow"
-      renderBody $ do
-        renderTitle "Login"
-        when (isJust merrmsg) (renderSubtitle $ fromJust merrmsg)
-        H.form ! A.id "loginform" ! action "/login" ! method "POST" $ do
-          input ! type_ "hidden" ! A.name "source" ! value "form"
-          renderInput "text" ! A.id "username" ! placeholder "Username" ! A.name "username"
-          renderInput "password" ! A.id "password" ! placeholder "Password" ! A.name "password"
-        renderButton "Login" "submit" Nothing
-        renderScript "/assets/js/login.js"
+    params >>= renderHtml . HTML.login . lookup "err"
 
   get "/logout" $ deleteAuth >> redirect "/"
   
@@ -224,22 +171,8 @@ app = do
   get (regex "/assets/(.*)") $ param "1" >>= loadAsset
   get (regex "/favicon.*") $ loadAsset "images/philly_skyline.svg"
 
-  defaultHandler $ \err -> do
-    beginHtml $ do
-      renderHead (appendedBlogTitle "Internal Error") $ do
-        renderMeta "robots" "noindex, nofollow"
-      renderBody $ do
-        renderTitle "Something happened..."
-        renderSubtitle err
-
-  -- TODO: add picture of fudge
-  notFound $ do
-    beginHtml $ do
-      renderHead (appendedBlogTitle "Not Found") $ do
-        renderMeta "robots" "noindex, nofollow"
-      renderBody $ do
-        renderTitle "Oh fudge!"
-        renderSubtitle "The page you're looking for does not exist."
+  defaultHandler $ renderHtml . HTML.internalError
+  notFound $ renderHtml $ HTML.notFound
 
 loadAsset :: (ScottyError e) => FilePath -> ActionT e WebM ()
 loadAsset assetsPath = do
@@ -278,39 +211,9 @@ loadAsset assetsPath = do
 --   where
 --     ccontrol = "public,max-age=3600,s-max-age=3600,no-cache,must-revalidate,proxy-revalidate,no-transform"
 
-renderKeywords :: [T.Text] -> Html
-renderKeywords = renderMeta "keywords" . TL.fromStrict . T.intercalate ", "
-
 truthy :: (Eq a, IsString a) => a -> Bool
 truthy "t" = True
 truthy "y" = True
 truthy "true" = True
 truthy "True" = True
 truthy _ = False
-
-keywords :: [T.Text]
-keywords = ["computer science",
-            "functional programming",
-            "fp",
-            "politics",
-            "haskell",
-            "ruby",
-            "web development",
-            "art",
-            "blogs",
-            "computers",
-            "startups",
-            "tutorial",
-            "rails"]
-
-blogTitle :: TL.Text
-blogTitle = "Segmentation Fault (core dumped)"
-
-blogSubtitle :: TL.Text
-blogSubtitle = "a blog about code."
-
-appendedBlogTitle :: TL.Text -> TL.Text
-appendedBlogTitle s = mconcat [s, " | ", blogTitle]
-
-description :: TL.Text
-description = "Rants and raves about functional programming, politics, and everything in between."

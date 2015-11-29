@@ -85,23 +85,17 @@ updatePost user pid title body tags draft = processResult $ webMQuery q (fvalues
     mkField sql (Just v ) = Just (sql, toField v)
     mkField _   Nothing = Nothing
 
-getPostsByTag :: (ScottyError e) => Text -> Maybe Integer -> ActionT e WebM [Post]
-getPostsByTag tag mPageNum = webMQuery sql (tag,pageNum*(fromIntegral postsPerPage),postsPerPage+1)
-  where
-    pageNum = fromMaybe 0 mPageNum
-    sql = "SELECT * FROM v_posts v WHERE ?=any(v.tags) ORDER BY identifier DESC OFFSET ? LIMIT ?"
+getPostsByTag :: (ScottyError e) => Text -> Integer -> ActionT e WebM [Post]
+getPostsByTag tag pageNum = webMQuery sql (tag,pageNum*(fromIntegral postsPerPage),postsPerPage+1)
+  where sql = "SELECT * FROM v_posts v WHERE ?=any(v.tags) ORDER BY identifier DESC OFFSET ? LIMIT ?"
 
-getPosts :: (ScottyError e) => Maybe Integer -> ActionT e WebM [Post]
-getPosts mPageNum = webMQuery sql (pageNum*(fromIntegral postsPerPage), postsPerPage+1)
-  where
-    pageNum = fromMaybe 0 mPageNum
-    sql = "SELECT * FROM v_posts ORDER BY identifier DESC OFFSET ? LIMIT ?"
+getPosts :: (ScottyError e) => Integer -> ActionT e WebM [Post]
+getPosts pageNum = webMQuery sql (pageNum*(fromIntegral postsPerPage), postsPerPage+1)
+  where sql = "SELECT * FROM v_posts ORDER BY identifier DESC OFFSET ? LIMIT ?"
 
-getDrafts :: (ScottyError e) => User -> Maybe Integer -> ActionT e WebM [Post]
-getDrafts user mPageNum = webMQuery sql (userUID user, pageNum*(fromIntegral postsPerPage), postsPerPage+1)
-  where
-    pageNum = fromMaybe 0 mPageNum
-    sql = "SELECT * FROM v_drafts WHERE (v_drafts.user).id=? ORDER BY identifier DESC OFFSET ? LIMIT ?"
+getDrafts :: (ScottyError e) => User -> Integer -> ActionT e WebM [Post]
+getDrafts user pageNum = webMQuery sql (userUID user, pageNum*(fromIntegral postsPerPage), postsPerPage+1)
+  where sql = "SELECT * FROM v_drafts WHERE (v_drafts.user).id=? ORDER BY identifier DESC OFFSET ? LIMIT ?"
 
 getPost :: (ScottyError e) => Integer -> ActionT e WebM (Maybe Post)
 getPost pid = listToMaybe <$> webMQuery sql [pid]
