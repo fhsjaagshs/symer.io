@@ -68,6 +68,7 @@ appendChild p c = p { commentChildren = (c:commentChildren p) }
 addChildIfChild :: Comment -> Comment -> Comment
 addChildIfChild p c = if isParent p c then appendChild p c else p
 
+-- TODO: TAIL RECURSIVE
 nestComments :: [Comment] -> [Comment]
 nestComments [] = []
 nestComments [x] = [x]

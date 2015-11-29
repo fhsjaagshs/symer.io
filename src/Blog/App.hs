@@ -34,7 +34,6 @@ import qualified Data.Text.Lazy.Encoding as TL
 import qualified Data.Text.Lazy.Builder as TL
 
 import qualified Text.Blaze.Html.Renderer.Text as R (renderHtml)
-
 import qualified Text.CSS.Parse as CSS (parseNestedBlocks)
 import qualified Text.CSS.Render as CSS (renderNestedBlocks)
 import qualified Text.Jasmine as JS (minifym)
@@ -58,11 +57,6 @@ import System.Directory
 -- type StreamingBody = (Builder -> IO ()) -> IO () -> IO ()
 
 --------------------------------------------------------------------------------
-getPageNumber :: (ScottyError e, Monad m) => ActionT e m Integer
-getPageNumber = maybe 0 (read . TL.unpack) . lookup "page" <$> params
-
-renderHtml :: (ScottyError e, Monad m) => HTML.Html -> ActionT e m ()
-renderHtml = Scotty.html . R.renderHtml
 
 app :: ScottyT TL.Text WebM ()
 app = do
@@ -103,11 +97,10 @@ app = do
   -- edit a post
   get "/posts/:id/edit" $ do
     void $ authenticate
-    identifier_ <- param "id"
-    res <- getPost identifier_
-    case res of
+    pst <- param "id" >>= getPost
+    case pst of
       Nothing -> next
-      Just p -> renderHtml $ HTML.postEditor $ Just p
+      Just _ -> renderHtml $ HTML.postEditor pst
 
   get "/login" $ do
     maybeUser <- getUser
@@ -167,9 +160,7 @@ app = do
         Scotty.text . TL.pack . show $ commentId
 
   get "/posts/:id/comments.json" $ param "id" >>= getCommentsForPost >>= Scotty.json
-    
   get (regex "/assets/(.*)") $ param "1" >>= loadAsset
-  get (regex "/favicon.*") $ loadAsset "images/philly_skyline.svg"
 
   defaultHandler $ renderHtml . HTML.internalError
   notFound $ renderHtml $ HTML.notFound
@@ -217,3 +208,9 @@ truthy "y" = True
 truthy "true" = True
 truthy "True" = True
 truthy _ = False
+
+getPageNumber :: (ScottyError e, Monad m) => ActionT e m Integer
+getPageNumber = maybe 0 (read . TL.unpack) . lookup "page" <$> params
+
+renderHtml :: (ScottyError e, Monad m) => HTML.Html -> ActionT e m ()
+renderHtml = Scotty.html . R.renderHtml

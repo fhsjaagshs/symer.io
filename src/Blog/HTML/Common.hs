@@ -31,24 +31,30 @@ import           Prelude as P hiding (head, div, id)
 --- | HTML primitives
 
 renderMeta :: Text -> Text -> Html
+{-# INLINE renderMeta #-}
 renderMeta k v = meta ! name (lazyTextValue k) ! content (lazyTextValue v)
 
 renderStylesheet :: Text -> Html
+{-# INLINE renderStylesheet #-}
 renderStylesheet x = link ! href (lazyTextValue x) ! rel "stylesheet" ! type_ "text/css"
 
 renderScript :: Text -> Html
+{-# INLINE renderScript #-}
 renderScript scriptSrc = script ! src (lazyTextValue scriptSrc) $ ""
 
 renderHead :: Text -> Html -> Html
+{-# INLINE renderHead #-}
 renderHead pageTitle htmlAction = H.head $ do
   H.title $ toHtml pageTitle
   renderMeta "revisit-after" "2 days"
-  renderMeta "viewport" "width=device-width, initial-scale=1"
+  renderMeta "viewport" "width=device-width,initial-scale=1"
+  link ! rel "icon" ! type_ "image/png" ! href "/assets/images/favicon.png"
   meta ! httpEquiv "Content-Type" ! content "text/html; charset=UTF-8"
   renderStylesheet "/assets/css/blog.css"
   htmlAction
 
 renderBody :: Html -> Html
+{-# INLINE renderBody #-}
 renderBody bodyHtml = do
   H.body ! style "text-align: center;" $ do
     a ! href "/" $ do
@@ -59,6 +65,7 @@ renderBody bodyHtml = do
 --- | Controls
 
 renderInput :: String -> Html
+{-# INLINE renderInput #-}
 renderInput kind = input
                    ! class_ "blogtextfield"
                    ! customAttribute "autocorrect" "off"
@@ -67,6 +74,7 @@ renderInput kind = input
                    ! type_ (stringValue kind)
                    
 renderCheckbox :: Text -> Text -> Bool -> Html
+{-# INLINE renderCheckbox #-}
 renderCheckbox boxId txt isChecked = do
   H.label ! customAttribute "for" "public-checkbox" $ do
     if isChecked
@@ -77,6 +85,7 @@ renderCheckbox boxId txt isChecked = do
     checkbox = input ! type_ "checkbox" ! id (lazyTextValue boxId)
 
 renderButton :: Text -> Text -> Maybe Text -> Html
+{-# INLINE renderButton #-}
 renderButton btnTitle btnId btnHref = a
                                       ! class_ "blogbutton"
                                       ! rel "nofollow"

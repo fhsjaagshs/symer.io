@@ -17,6 +17,7 @@ where
 import Blog.User
 import Blog.Post
 import Blog.HTML.Common
+import Blog.Util.Markdown
 import Blog.Database.Config (postsPerPage)
 
 import qualified Data.Text as T
@@ -25,8 +26,13 @@ import qualified Data.Text.Lazy as TL
 import Data.Maybe
 import Control.Monad
 
-import Prelude as P hiding (head, div, id)
-import Text.Blaze.Html5 as H hiding (style, param, map, title)
+import Cheapskate
+import Cheapskate.Html
+
+import Data.Time.Format
+
+import Prelude as P hiding (head,div,id)
+import Text.Blaze.Html5 as H hiding (style,param,map,title,body,head)
 import Text.Blaze.Html5.Attributes as A hiding (title)
 
 root :: (Maybe User) -> [Post] -> Integer -> Html
@@ -146,7 +152,38 @@ notFound = docTypeHtml $ do
     renderTitle "Oh fudge!"
     renderSubtitle "The page you're looking for does not exist."
     
+--------------------------------------------------------------------------------
+renderPost :: Bool -> Maybe User -> Post -> Html
+renderPost isShort user (Post pid title body ts tags _ author) = do
+  a ! href postURL $ do
+    h1 ! class_ "post-title" ! A.id (stringValue $ show pid) $ toHtml title
+  h4 ! class_ "post-subtitle" $ toHtml subtitle
+  mapM_ taglink tags
+  when canEdit renderEditButton
+  div ! class_ "post-content" $ if isShort
+    then do
+      renderDoc . truncateMarkdown 500 . markdown def $ body
+      a ! class_ "read-more" ! href postURL $ "read more..."
+    else toHtml $ markdown def body
+  where
+    -- values
+    editURL = stringValue $ mconcat ["/posts/", show pid, "/edit"]
+    postURL = stringValue $ "/posts/" ++ show pid
+    canEdit = isJust user && author == (fromJust user)
+    timeFormat = "%-m • %-e • %-y | %l:%M %p %Z"
+    subtitle = mconcat [formatDate ts, " | ", userDisplayName author]
+    renderEditButton = a ! class_ "post-edit-button"
+                         ! href editURL
+                         ! rel "nofollow"
+                         $ "edit"
+    -- functions
+    formatDate = T.pack . formatTime defaultTimeLocale timeFormat
+    taglink t = a ! class_ "taglink"
+                  ! href (textValue $ T.append "/posts/by/tag/" t)
+                  $ h4 ! class_ "post-subtitle" $ toHtml t
+
 renderKeywords :: [TL.Text] -> Html
+{-# INLINE renderKeywords #-}
 renderKeywords = renderMeta "keywords" . TL.intercalate ", "
 
 keywords :: [TL.Text]
