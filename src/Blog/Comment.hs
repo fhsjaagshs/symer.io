@@ -7,17 +7,16 @@ module Blog.Comment
 )
 where
   
-import           Data.Maybe
-import           Data.List
-import qualified Data.Vector as V
-import           Data.Time.Clock
-import           Data.Text (Text)
-import           Data.Aeson as Aeson
+import Data.Maybe
+import Data.List
+import Data.Time.Clock
+import Data.Text (Text)
+import Data.Aeson as Aeson
 
-import           Cheapskate
-import           Cheapskate.Html
-import           Text.Blaze.Html.Renderer.Text (renderHtml)
-import           Database.PostgreSQL.Simple.FromRow
+import Cheapskate
+import Cheapskate.Html
+import Text.Blaze.Html.Renderer.Text (renderHtml)
+import Database.PostgreSQL.Simple.FromRow
 
 data Comment = Comment {
   commentID :: !Integer,
@@ -43,10 +42,7 @@ instance ToJSON Comment where
                   "timestamp" .= ts,
                   "body" .= (renderHtml $ renderDoc $ markdown def body),
                   "children" .= map toJSON children]
-                  
-instance ToJSON [Comment] where
-  toJSON = Aeson.Array . V.fromList . map toJSON
-  
+
 instance FromRow Comment where
   fromRow = Comment
     <$> field
@@ -67,6 +63,12 @@ appendChild p c = p { commentChildren = (c:commentChildren p) }
 
 addChildIfChild :: Comment -> Comment -> Comment
 addChildIfChild p c = if isParent p c then appendChild p c else p
+
+-- tail recursive nestComments
+-- f ancestors currentParents xs = f (roots xs ++ ancestors) (roots xs) (xs \\ roots xs)
+-- 1. find all "root" parents in xs
+-- 2. match them to currentParents
+-- 3. add comments from step 1 to ancestors
 
 -- TODO: TAIL RECURSIVE
 nestComments :: [Comment] -> [Comment]
