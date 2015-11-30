@@ -8,10 +8,7 @@ where
 
 import Blog.App
 import Blog.CommandLine
-import Blog.State
-import Blog.System.Daemon
-import Blog.System.IO
-import Blog.System.HTTP
+import System.WebApp
 
 import Crypto.BCrypt
 import qualified Data.ByteString.Char8 as B (pack, putStrLn)
@@ -24,12 +21,12 @@ import qualified Data.ByteString.Char8 as B (pack, putStrLn)
 main :: IO ()
 main = getCommand >>= f
   where
-    f c@(StartCommand True _ _ _ _ _ _ _ _) = do
+    f c@(StartCommand True _ _ _ _ _) = do
       daemonize "/tmp/blog.pid" $ f $ c { startCmdDaemonize = False }
-    f (StartCommand False port crt key pgrootca pgcrt pgkey out err) = do
+    f (StartCommand False port crt key out err) = do
       redirectStdout out
       redirectStderr err
-      startHTTPS app (initState pgrootca pgcrt pgkey) crt key port
+      startHTTPS app port crt key
     f StopCommand = daemonKill 4 "/tmp/blog.pid"
     f StatusCommand = daemonRunning "/tmp/blog.pid" >>= putStrLn . showStatus
     f (PasswordCommand pwd) = hashPasswordUsingPolicy (HashingPolicy 12 "$2b$") (B.pack pwd) >>= g

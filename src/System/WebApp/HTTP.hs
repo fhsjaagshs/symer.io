@@ -1,15 +1,16 @@
 {-# LANGUAGE OverloadedStrings #-}
-module Blog.System.HTTP
+module System.WebApp.HTTP
 (
   startHTTPS,
   startHTTP
 )
 where
 
-import Blog.State
-import Blog.System.IO
-import Blog.System.FileCache
-import Blog.Web.Gzip
+import System.WebApp.Monad
+import System.WebApp.IO
+import System.WebApp.FileCache
+import System.WebApp.Gzip
+import System.WebApp.Privileges
 
 import Data.Maybe
 import Control.Monad
@@ -19,7 +20,7 @@ import Control.Concurrent.STM
 import Web.Scotty.Trans as Scotty
 
 import Network.Wai (responseLBS,requestHeaderHost,rawPathInfo,rawQueryString,Application)
-import Network.Wai.HTTP2 (promoteApplication)
+import Network.Wai.HTTP2 (promoteApplication,HTTP2Application)
 import Network.Wai.Handler.Warp (defaultSettings,setPort,setBeforeMainLoop,setInstallShutdownHandler,runHTTP2Settings,Settings)
 import Network.Wai.Handler.WarpTLS (certFile,defaultTlsSettings,keyFile,runHTTP2TLS)
 import Network.HTTP.Types.Status (status301)
@@ -30,69 +31,51 @@ import System.Posix
 
 -- app -> your Scotty app
 -- port -> port to run the HTTPS server on
--- state -> the application state
-startHTTP :: (ScottyError e) => ScottyT e WebM () -> IO AppState -> Int -> IO ()
-startHTTP app mkstate port = mkstate >>= runApp (applyMiddleware False app)
-  where
-    runApp a st = do
-      wai <- mkApplication a st
-      runHTTP2Settings (mkWarpSettings port st) (promoteApplication wai) wai
+startHTTP :: (ScottyError e, WebAppState s) => ScottyT e (WebAppM s) () -> Int -> IO ()
+startHTTP app port = do
+  (wai,wai2,webapp) <- mkApplication app False
+  runHTTP2Settings (mkWarpSettings port webapp) wai2 wai
 
 -- app -> your Scotty app
--- mkstate -> IO action to create your app's initial state (post-fork to avoid DB connection issues)
 -- cert -> SSL certificate file path
 -- key -> SSL private key file path
 -- port -> port to run the HTTPS server on
--- state -> the application state
-startHTTPS :: (ScottyError e) => ScottyT e WebM () -> IO AppState -> FilePath -> FilePath -> Int -> IO ()
-startHTTPS app mkstate cert key port = do
-  privileged <- isPrivileged
-  when privileged startRedirectProcess
-  mkstate >>= runApp (applyMiddleware True app)
-  where
-    mksettings = defaultTlsSettings { keyFile = key, certFile = cert }
-    runApp a st = do
-      wai <- mkApplication a st
-      runHTTP2TLS mksettings (mkWarpSettings port st) (promoteApplication wai) wai
+startHTTPS :: (ScottyError e, WebAppState s) => ScottyT e (WebAppM s) () -> Int -> FilePath -> FilePath -> IO ()
+startHTTPS app port cert key = do
+  whenPrivileged startRedirectProcess
+  (wai,wai2,webapp) <- mkApplication app True
+  runHTTP2TLS tlssettings (mkWarpSettings port webapp) wai2 wai
+  where tlssettings = defaultTlsSettings { keyFile = key, certFile = cert }
 
 {- Internal -}
 
-mkWarpSettings :: Int -> AppState -> Settings
-mkWarpSettings port state = setBeforeMainLoop before
+mkWarpSettings :: (WebAppState s) => Int -> WebApp s -> Settings
+mkWarpSettings port (WebApp cache st) = setBeforeMainLoop before
                             $ setInstallShutdownHandler shutdown
                             $ setPort port
                             defaultSettings
   where
     before = resignPrivileges "daemon"
     shutdown act = do
-      void $ act 
-      teardownFileCache $ stateCache state
-    
--- Adds middleware to a scotty app
-applyMiddleware :: (ScottyError e) => Bool -> ScottyT e WebM () -> ScottyT e WebM ()
-applyMiddleware ssl app = do
-  middleware $ gzip 860 -- min length to GZIP
-  when ssl $ middleware $ addHeaders [("Strict-Transport-Security","max-age=31536000")]
-  app
-    
-mkApplication :: (ScottyError e) => ScottyT e WebM () -> AppState -> IO Application
-mkApplication app state = do
-  sync <- newTVarIO state
-  let runActionToIO m = runReaderT (runWebM m) sync
-  scottyAppT runActionToIO app
-    
-resignPrivileges :: String -> IO ()
-resignPrivileges user = do
-  privileged <- isPrivileged
-  when privileged $ do
-    getUserEntryForName user >>= setUserID . userID
-
-isPrivileged :: IO Bool
-isPrivileged = ((==) 0) <$> getEffectiveUserID
+      void $ act
+      teardownFileCache cache
+      destroyState st
+      
+mkApplication :: (ScottyError e, WebAppState s) => ScottyT e (WebAppM s) () -> Bool -> IO (Application, HTTP2Application, WebApp s)
+mkApplication app ssl = do
+  webapp <- WebApp <$> (newFileCache "assets/") <*> initState
+  sync <- newTVarIO webapp
+  let runActionToIO m = runReaderT (runWebAppM m) sync
+  wai <- scottyAppT runActionToIO $ do
+    middleware $ gzip 860 -- min length to GZIP
+    when ssl $ middleware $ addHeaders [("Strict-Transport-Security","max-age=31536000")]
+    app
+  return (wai, promoteApplication wai, webapp)
 
 startRedirectProcess :: IO ()
 startRedirectProcess = void $ do
   putStrLn "starting HTTP -> HTTPS process"
+  -- TODO: improve separation from parent process
   pid <- forkProcess $ do
     redirectStdout $ Just "/dev/null"
     redirectStderr $ Just "/dev/null"

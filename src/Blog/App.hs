@@ -6,14 +6,15 @@ module Blog.App
 )
 where
 
-import Blog.State
+import Blog.Postgres
 import Blog.User
 import Blog.Post as Post
 import Blog.Database.Util
 import Blog.Util.MIME
 import Blog.Web.Auth
 import qualified Blog.HTML as HTML
-import qualified Blog.System.FileCache as FC
+import qualified System.WebApp.FileCache as FC
+import System.WebApp.Monad
 
 import Data.Maybe
        
@@ -58,7 +59,7 @@ import System.Directory
 
 --------------------------------------------------------------------------------
 
-app :: ScottyT TL.Text WebM ()
+app :: PostgresScottyM ()
 app = do
   get "/" $ do
     maybeUser <- getUser
@@ -165,9 +166,9 @@ app = do
   defaultHandler $ renderHtml . HTML.internalError
   notFound $ renderHtml $ HTML.notFound
 
-loadAsset :: (ScottyError e) => FilePath -> ActionT e WebM ()
+loadAsset :: FilePath -> PostgresActionM ()
 loadAsset assetsPath = do
-  cache <- webM $ gets stateCache
+  cache <- getCache
   exists <- liftIO $ doesFileExist relPath
   if not exists
     then doesntExist $ B.pack relPath

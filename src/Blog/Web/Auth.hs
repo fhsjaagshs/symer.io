@@ -10,10 +10,9 @@ module Blog.Web.Auth
 )
 where
   
-import Blog.State
+import Blog.Postgres
 import Blog.User
-import Blog.Web.Cookie
-import Blog.Database.Util
+import System.WebApp.Cookie
 
 import qualified Data.ByteString.Lazy.Char8 as BL
 import qualified Data.Text.Lazy as TL
@@ -25,30 +24,30 @@ import System.Random
 import Web.Scotty.Trans as Scotty
 import Control.Monad.IO.Class (liftIO)
 
-accessToken :: (ScottyError e) => ActionT e WebM (Maybe String)
+accessToken :: PostgresActionM (Maybe String)
 accessToken = f <$> Scotty.header "Cookie"
   where
     f = maybe Nothing (g . parseCookie . BL.toStrict . TL.encodeUtf8)
     g = maybe Nothing (H.lookup "token" . cookiePairs)
 
-authenticate :: (ScottyError e) => ActionT e WebM (Maybe User)
+authenticate :: PostgresActionM (Maybe User)
 authenticate = getUser >>= f
   where f Nothing = redirect "/login?err=Login%20required%2E"
         f v = return v
 
-getUser :: (ScottyError e) => ActionT e WebM (Maybe User)
+getUser :: PostgresActionM (Maybe User)
 getUser = accessToken >>= f
   where f (Just t) = listToMaybe <$> webMQuery sql [t]
         f Nothing = return Nothing
         sql = "SELECT u.* FROM users u, auth a WHERE a.token=? AND a.user_id=u.id LIMIT 1"
 
-setUser :: (ScottyError e) => User -> ActionT e WebM ()
+setUser :: User -> PostgresActionM ()
 setUser (User uid _ _ _) = do
   token <- liftIO $ TL.pack . take 15 . curry randomRs 'a' 'z' <$> newStdGen
   webMQuery_ "INSERT INTO auth (token,user_id) VALUES (?,?)" (token, uid)
   Scotty.addHeader "Set-Cookie" $ mconcat ["token=", token, "; HttpOnly; Secure"] -- this screws up pre warp-3.1.4
 
-deleteAuth :: (ScottyError e) => ActionT e WebM ()
+deleteAuth :: PostgresActionM ()
 deleteAuth = accessToken >>= f
   where f Nothing = return ()
         f (Just token) = do

@@ -17,10 +17,10 @@ import           Data.Text (Text)
 import qualified Data.Text as T
 import           Data.Time.Clock
 
-import           Blog.Database.PGExtensions()
 import           Database.PostgreSQL.Simple.ToField as PG.ToField
 import           Database.PostgreSQL.Simple.FromRow as PG.FromRow
 import           Database.PostgreSQL.Simple.ToRow as PG.ToRow
+import           Database.PostgreSQL.Simple.Types as PG.Types
 
 data Post = Post {
   postID :: !Integer,
@@ -36,7 +36,7 @@ instance Eq Post where
   (==) a_ b_ = (postID a_) == (postID b_)
 
 instance FromRow Post where
-  fromRow = Post <$> field <*> field <*> field <*> field <*> field <*> field <*> field
+  fromRow = Post <$> field <*> field <*> field <*> field <*> (fmap fromPGArray field) <*> field <*> field
   
 instance ToRow Post where
   toRow (Post pid title body ts tags isDraft (User authorId _ _ _)) =
@@ -44,7 +44,7 @@ instance ToRow Post where
     toField title,
     toField body,
     toField ts,
-    toField tags,
+    toField $ PGArray tags,
     toField authorId,
     toField isDraft]
   

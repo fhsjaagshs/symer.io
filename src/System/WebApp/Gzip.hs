@@ -1,6 +1,6 @@
 {-# LANGUAGE OverloadedStrings, ScopedTypeVariables #-}
 
-module Blog.Web.Gzip
+module System.WebApp.Gzip
 (
   gzip
 )

@@ -18,7 +18,7 @@ import Blog.User
 import Blog.Post
 import Blog.HTML.Common
 import Blog.Util.Markdown
-import Blog.Database.Config (postsPerPage)
+import Blog.Postgres (postsPerPage)
 
 import qualified Data.Text as T
 import qualified Data.Text.Lazy as TL

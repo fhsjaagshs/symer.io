@@ -1,4 +1,4 @@
-module Blog.System.IO
+module System.WebApp.IO
 (
   redirectStdout,
   redirectStderr,

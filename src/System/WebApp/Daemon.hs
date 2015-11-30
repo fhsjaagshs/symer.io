@@ -1,4 +1,4 @@
-module Blog.System.Daemon
+module System.WebApp.Daemon
 (
   daemonize,
   daemonRunning,
@@ -6,7 +6,7 @@ module Blog.System.Daemon
 )
 where
   
-import Blog.System.IO
+import System.WebApp.IO
   
 import Control.Exception
 import Control.Monad (when,void)
