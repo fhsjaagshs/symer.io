@@ -116,17 +116,18 @@ a < img {
 
 code {
   font-family: monospace;
-  padding-left: 5px;
-  padding-right: 5px;
 }
 
 :not(pre) > code {
   border: 1px solid #C9C6C6;
   background: #F2EDED;
+	padding: 0 0.2em 0 0.2em;
 }
 
 pre {
-  overflow-x: auto;
+  padding: 0.1em 0.4em 0.1em 0.4em;
+	overflow: auto;
+	width: 93%;
   border: 1px solid #C9C6C6;
   background: #F2EDED;
 }

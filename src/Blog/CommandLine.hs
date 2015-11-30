@@ -6,7 +6,7 @@ module Blog.CommandLine
 )
 where
 
-import Blog.System.Terminal
+import Blog.Terminal
 
 import Control.Applicative
 import Options.Applicative

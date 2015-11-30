@@ -2,7 +2,7 @@
 
 -- From http://stackoverflow.com/questions/12806053/get-terminal-width-haskell
 
-module Blog.System.Terminal (getTermSize) where
+module Blog.Terminal (getTermSize) where
 
 import Foreign
 import Foreign.C.Error

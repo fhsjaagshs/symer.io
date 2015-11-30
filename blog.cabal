@@ -15,7 +15,7 @@ executable blog
   main-is:           Main.hs
   hs-source-dirs:    src
   build-tools:       hsc2hs
-  other-modules:     Blog.System.Terminal
+  other-modules:     Blog.Terminal
   ghc-options:       -threaded -Wall -O2
   build-depends:     base,
                      containers,

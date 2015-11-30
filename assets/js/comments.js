@@ -70,6 +70,7 @@ var Editor = function Editor(hidden, id) {
   this.el = document.createElement('div');
   this.el.className = 'editor';
   this.el.style.display = hidden?'none':'block';
+  this.el.style.textAlign = "center"
   this.el.appendChild(topFields);
   this.el.appendChild(bottomFields);
   this.el.__ref = this;
