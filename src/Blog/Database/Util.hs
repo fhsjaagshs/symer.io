@@ -11,9 +11,6 @@ module Blog.Database.Util
   deletePost,
   getCommentsForPost,
   getUserWithUsername,
-  
-  webMQuery,
-  webMQuery_
 )
 where
 
@@ -26,8 +23,6 @@ import Data.Maybe
 
 import Data.Text (Text)
 import Data.List (intercalate)
-
--- import Blog.Database.PGExtensions()
 
 import Database.PostgreSQL.Simple as PG
 import Database.PostgreSQL.Simple.Types as PG.Types
@@ -63,12 +58,11 @@ insertPost user title body tags draft = processResult $ webMQuery q fieldValues
       where
         mkField sql = (sql,) . toField
 
--- TODO: update timestamp??
 updatePost :: User -> Integer -> Maybe Text -> Maybe Text -> Maybe [Text] -> Bool -> PostgresActionM (Maybe Integer)
 updatePost user pid title body tags draft = processResult $ webMQuery q (fvalues ++ [toField $ userUID user, toField pid])
   where
     q = "UPDATE blogposts SET " ++ (intercalate "," fsetters) ++ " WHERE author_id=? AND identifier=? RETURNING identifier"
-    fsetters = map fst values
+    fsetters = "timestamp=clock_timestamp()":(map fst values)
     fvalues = map snd values
     values :: [(String, Action)]
     values = catMaybes $ [Just ("is_draft=?", toField draft),
