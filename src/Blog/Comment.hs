@@ -8,7 +8,6 @@ module Blog.Comment
 where
   
 import Data.Maybe
-import Data.List
 import Data.Time.Clock
 import Data.Text (Text)
 import Data.Aeson as Aeson
@@ -54,31 +53,18 @@ instance FromRow Comment where
     <*> field
     <*> return []
     <*> return Nothing
-    
-isParent :: Comment -> Comment -> Bool
-isParent prnt child = maybe False ((==) (commentID prnt)) (commentParentID child)
-     
-appendChild :: Comment -> Comment -> Comment
-appendChild p c = p { commentChildren = (c:commentChildren p) }
 
-addChildIfChild :: Comment -> Comment -> Comment
-addChildIfChild p c = if isParent p c then appendChild p c else p
-
--- tail recursive nestComments
--- f ancestors currentParents xs = f (roots xs ++ ancestors) (roots xs) (xs \\ roots xs)
--- 1. find all "root" parents in xs
--- 2. match them to currentParents
--- 3. add comments from step 1 to ancestors
-
--- TODO: TAIL RECURSIVE
+-- TODO: add strictness ($!)
+-- TODO: fix children ordering (it's reverse)
 nestComments :: [Comment] -> [Comment]
-nestComments [] = []
-nestComments [x] = [x]
-nestComments comments
-  | length leaves == length comments = comments
-  | otherwise = nestComments $ processed ++ singletonLeaves
+nestComments cmnts = map (f antiroots) roots
   where
-    isLeaf cmnt = isNothing $ find (isParent cmnt) (delete cmnt comments) -- O(n)
-    leaves = filter isLeaf comments -- O(n^2)
-    singletonLeaves = filter (isNothing . commentParentID) leaves -- O(l)
-    processed = map (\p -> foldl addChildIfChild p leaves) (comments \\ leaves) -- O((n-l)*l)
+    roots = filter (isNothing . commentParentID) cmnts
+    antiroots = filter (isJust . commentParentID) cmnts
+    f [] a = a
+    f (x:xs) a = f xs (addHierarchical a x)
+    modifyChildren n g = n { commentChildren = (g $ commentChildren n) }
+    isParent p c = maybe False ((==) (commentID p)) (commentParentID c)
+    addHierarchical a c
+      | isParent a c = modifyChildren a ((:) c)
+      | otherwise = modifyChildren a (map (\a' -> addHierarchical a' c))
