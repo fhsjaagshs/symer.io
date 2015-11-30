@@ -56,6 +56,9 @@ instance FromRow Comment where
 
 -- TODO: add strictness ($!)
 -- TODO: fix children ordering (it's reverse)
+-- TODO: make sure comment ordering doesn't affect nesting (this func
+--       works only if @cmnts@ is in posted order due to the nature
+--       of how comments & replies are posted)
 nestComments :: [Comment] -> [Comment]
 nestComments cmnts = map (f antiroots) roots
   where
