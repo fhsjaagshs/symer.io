@@ -1,6 +1,6 @@
 {-# LANGUAGE OverloadedStrings, TupleSections #-}
 
-module Blog.Database.Util
+module Blog.Postgres.Queries
 (
   upsertPost,
   insertComment,

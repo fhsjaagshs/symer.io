@@ -12,7 +12,7 @@ where
   
 import Blog.Postgres
 import Blog.User
-import System.WebApp.Cookie
+import Web.App.Cookie
 
 import qualified Data.ByteString.Lazy.Char8 as BL
 import qualified Data.Text.Lazy as TL

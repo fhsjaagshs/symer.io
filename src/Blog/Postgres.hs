@@ -15,7 +15,7 @@ module Blog.Postgres
 )
 where
 
-import System.WebApp
+import Web.App
 import Blog.Util.Env
 
 import Control.Monad

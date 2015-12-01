@@ -7,19 +7,17 @@ module Blog.App
 where
 
 import Blog.Postgres
+import Blog.Postgres.Queries
 import Blog.User
 import Blog.Post as Post
-import Blog.Database.Util
-import Blog.Util.MIME
 import Blog.Web.Auth
 import qualified Blog.HTML as HTML
-import qualified System.WebApp.FileCache as FC
-import System.WebApp.Monad
+
+import Web.App.Assets
 
 import Data.Maybe
        
 import Control.Monad
-import Control.Monad.IO.Class
 
 import Web.Scotty.Trans as Scotty
 import Network.HTTP.Types.Status (Status(..))
@@ -27,19 +25,10 @@ import Network.HTTP.Types.Status (Status(..))
 import qualified Crypto.BCrypt as BCrypt
 
 import Data.String
-import qualified Data.ByteString.Char8 as B
-import qualified Data.ByteString.Lazy.Char8 as BL
 import qualified Data.Text.Encoding as T
 import qualified Data.Text.Lazy as TL
-import qualified Data.Text.Lazy.Encoding as TL
-import qualified Data.Text.Lazy.Builder as TL
 
 import qualified Text.Blaze.Html.Renderer.Text as R (renderHtml)
-import qualified Text.CSS.Parse as CSS (parseNestedBlocks)
-import qualified Text.CSS.Render as CSS (renderNestedBlocks)
-import qualified Text.Jasmine as JS (minifym)
-
-import System.Directory
 
 -- TODO features:
 -- Comment-optional posts
@@ -165,38 +154,6 @@ app = do
 
   defaultHandler $ renderHtml . HTML.internalError
   notFound $ renderHtml $ HTML.notFound
-
-loadAsset :: FilePath -> PostgresActionM ()
-loadAsset assetsPath = do
-  cache <- getCache
-  exists <- liftIO $ doesFileExist relPath
-  if not exists
-    then doesntExist $ B.pack relPath
-    else loadFromCache cache
-  where
-    mimetype = getMimeAtPath relPath
-    relPath = "assets/" ++ assetsPath
-    doesntExist pth = status . Status 404 $ mconcat ["File ", pth, " does not exist."]
-    loadFromCache cache = (liftIO $ FC.lookup cache assetsPath) >>= (f cache)
-    f _     (Just (Left err)) = status . Status 500 $ B.pack err
-    f _     (Just (Right (cached, md5))) = do
-      setHeader "Content-Type" $ mconcat [TL.pack mimetype, "; charset=utf-8"]
-      Scotty.addHeader "Vary" "Accept-Encoding"
-      Scotty.setHeader "Content-Encoding" "gzip" -- files in FileCaches are gzipped
-      Scotty.header "If-None-Match" >>= h . maybe False (== md5')
-      where
-        md5' = TL.decodeUtf8 $ BL.fromStrict md5
-        h True = Scotty.status $ Status 304 ""
-        h False = do
-          Scotty.setHeader "ETag" md5'
-          Scotty.raw $ BL.fromStrict cached
-    f cache Nothing = do
-      void $ liftIO $ FC.register' cache assetsPath (g mimetype)
-      loadFromCache cache
-    builderToBS = BL.toStrict . TL.encodeUtf8 . TL.toLazyText
-    g "application/javascript" = fmap BL.toStrict . JS.minifym . BL.fromStrict
-    g "text/css" = fmap (builderToBS . CSS.renderNestedBlocks) . CSS.parseNestedBlocks . T.decodeUtf8
-    g _ = Right
     
 -- setCacheControl :: ActionT e WebM ()
 -- setCacheControl = Scotty.setHeader "Cache-Control" ccontrol
