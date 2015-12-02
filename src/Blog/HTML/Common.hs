@@ -57,7 +57,7 @@ renderBody :: Bool -> Html -> Html
 {-# INLINE renderBody #-}
 renderBody showAbout bodyHtml = do
   H.body $ do
-    div ! class_ "header" $ do
+    div ! class_ (stringValue $ "header" ++ (if not showAbout then " nopadding" else "")) $ do
       a ! href "/" $ do
         img ! src "/assets/images/philly_skyline.svg" ! width "300" ! height "200"
       when showAbout $ do

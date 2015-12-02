@@ -77,7 +77,7 @@ pre {
   background: #F2EDED;
 }
 
-.header {
+.header:not(.nopadding):not(:last-child) {
   margin-bottom: 80px;
 }
 
