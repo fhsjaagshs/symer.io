@@ -1,0 +1,20 @@
+/* Text Fields */
+input[type="text"].blogtextfield, input[type="password"].blogtextfield {
+  text-align: center;
+  display: block;
+  margin: 20px auto;
+  font-family: sans-serif;
+  font-size: 18px;
+  appearance: none;
+  box-shadow: none;
+  border-radius: none;
+  padding: 10px;
+  border: none;
+  border-bottom: solid 2px #c9c9c9;
+  transition: border 0.3s;
+}
+
+input[type="text"].blogtextfield:focus, input[type="password"].blogtextfield:focus {
+  outline: none;
+  border-bottom: solid 2px #969696;
+}

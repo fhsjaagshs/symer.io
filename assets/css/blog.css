@@ -1,14 +1,4 @@
 @font-face {
-    font-family: refrigerator-light;
-    src: url('/assets/fonts/refrigerator/refrigerator-light.eot') format('eot'),
-         url('/assets/fonts/refrigerator/refrigerator-light.woff2') format('woff2'),
-         url('/assets/fonts/refrigerator/refrigerator-light.woff') format('woff'),
-         url('/assets/fonts/refrigerator/refrigerator-light.ttf') format('truetype');
-    font-weight: normal;
-    font-style: normal;
-}
-
-@font-face {
     font-family: oxygen-bold;
     src: url('/assets/fonts/oxygen/Oxygen-Bold.eot') format('eot'),
          url('/assets/fonts/oxygen/Oxygen-Bold.woff2') format('woff2'),
@@ -40,17 +30,19 @@
 
 *[hidden] { display: none; }
 
+/* Primitive HTML Elements */
+
 body {
   background: #F0F0F0;
-  margin: 0px;
-  padding: 10px;
   font-family: helvetica, sans-serif;
   text-align: center;
   color: #333;
+  max-width: 700px;
+  margin: auto;
 }
 
-a.read-more {
-  text-align: left;
+img {
+  margin: 10px;
 }
 
 a {
@@ -65,53 +57,6 @@ a:hover {
 a < img {
   border: none;
   outline: none;
-}
-
-#content {
-  max-width: 700px;
-  margin: auto;
-}
-
-#blog-title {
-  font-size: 50px;
-  margin: 25px;
-  font-family: refrigerator-light,helvetica,sans-serif;
-}
-
-#blog-subtitle {
-  font-size: 20px;
-  margin: 20px;
-  font-family: menlo,helvetica,sans-serif;
-}
-  
-#prevbutton {
-  float: left;
-  margin: 20px;
-}
-
-#nextbutton {
-  float: right;
-  margin: 20px;
-}
-
-.separator {
-  text-align: center;
-  border-top: dashed 3px;
-  width: 100%;
-}
-
-.post-title {
-  font-size:40px;
-  margin-top: 50px;
-  font-family: oxygen-regular,sans-serif;
-  font-color: #80B9B4;
-  color: #80B9B4;
-}
-
-.post-content > * {
-  font-size: 20px;
-  line-height: 1.35em;
-  text-align: left;
 }
 
 code {
@@ -132,28 +77,33 @@ pre {
   background: #F2EDED;
 }
 
-.post-edit-button {
-  display: block;
+.header {
+  margin-bottom: 80px;
 }
 
-.taglink {
-  display: inline-block;
-  color: inherit;
-  padding: 0px 10px;
+/* Text */
+
+.title {
+  font-size: 50px;
+  margin: 5px;
+  font-family: oxygen-regular,helvetica,sans-serif;
+  
 }
 
-.taglink:hover {
-  color: #888;
+.subtitle {
+  font-size: 20px;
+  margin: 10px;
+  font-family: oxygen-light,helvetica,sans-serif;
 }
 
-.unselectable {
-  -webkit-touch-callout: none;
-  -webkit-user-select: none;
-  -khtml-user-select: none;
-  -moz-user-select: none;
-  -ms-user-select: none;
-  -o-user-select: none;
-  user-select: none;
+.tagline {
+  font-size: 15px;
+  margin: 10px;
+  font-family: oxygen-light,helvetica,sans-serif;
+}
+
+#name-title {
+  color: #b15d42;
 }
 
 /* Buttons */
@@ -184,23 +134,73 @@ a.blogbutton:active {
   background-color: #9F9F9F;
 }
 
-/* Text Fields */
-input[type="text"].blogtextfield, input[type="password"].blogtextfield {
-  text-align: center;
-  display: block;
-  margin: 20px auto;
-  font-family: sans-serif;
-  font-size: 18px;
-  appearance: none;
-  box-shadow: none;
-  border-radius: none;
-  padding: 10px;
-  border: none;
-  border-bottom: solid 2px #c9c9c9;
-  transition: border 0.3s;
+#prevbutton {
+  float: left;
+  margin: 20px;
 }
 
-input[type="text"].blogtextfield:focus, input[type="password"].blogtextfield:focus {
-  outline: none;
-  border-bottom: solid 2px #969696;
+#nextbutton {
+  float: right;
+  margin: 20px;
+}
+
+/* Posts */
+
+.post {
+  text-align: left;
+  margin: 0px 10px 25px 10px;
+}
+
+.post-header {
+  margin-bottom: 10px;
+  position: relative;
+}
+
+.post-headerbox {
+  width: 50%;
+  display: inline-block;
+  vertical-align: top;
+}
+
+.post-title {
+  font-size:30px;
+  font-family: oxygen-regular,sans-serif;
+  color: #80B9B4;
+  margin: 0px;
+}
+
+.post-title:hover {
+  color: #80B9B4;
+}
+
+.post-subtitle {
+  margin: 0px;
+  margin-top: 10px;
+}
+
+.post-content > * {
+  font-size: 20px;
+  line-height: 1.35em;
+}
+
+.post-edit-button {
+  margin-top: 10px;
+  display: block;
+}
+
+a.taglink {
+  display: inline-block;
+  margin: 5px;
+  padding: 0.4em 0.6em 0.4em 0.6em;
+  border-radius: 1em;
+  border: 0.1em solid white;
+}
+
+a.taglink:hover {
+  color: #888;
+  background-color: #ddd;
+}
+
+a.read-more {
+  text-align: left;
 }

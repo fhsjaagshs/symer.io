@@ -161,7 +161,7 @@ Comment.prototype = {
 }
 
 Comment.commentMap = {};
-Comment.div = document.getElementById('content').appendChild(document.createElement('div'));
+Comment.div = document.body.appendChild(document.createElement('div'));
 
 Comment.fromJSON = function(json) {
   return new Comment(json.email, json.display_name, json.body, json.id);

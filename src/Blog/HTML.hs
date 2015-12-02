@@ -37,21 +37,19 @@ import Text.Blaze.Html5.Attributes as A hiding (title)
 
 root :: (Maybe User) -> [Post] -> Integer -> Html
 root user posts pageNumber = docTypeHtml $ do
-  renderHead blogTitle $ do
+  renderHead "Nate Symer" $ do
     renderMeta "description" description
     renderKeywords keywords
-  renderBody $ do
-    renderTitle blogTitle
-    renderSubtitle blogSubtitle
+  renderBody True $ do
     when (isJust user) renderAdminControls
     mapM_ (renderPost True user) (take postsPerPage posts)
     renderPageControls pageNumber (length posts > postsPerPage)
       
 drafts :: (Maybe User) -> [Post] -> Integer -> Html
 drafts muser posts pageNumber = docTypeHtml $ do
-  renderHead (appendedBlogTitle "Drafts") $ do
+  renderHead "Drafts" $ do
     renderMeta "robots" "noindex, nofollow"
-  renderBody $ do
+  renderBody False $ do
     renderTitle "Drafts"
     when (isJust muser) renderAdminControls
     mapM_ (renderPost True muser) (take postsPerPage posts)
@@ -59,12 +57,10 @@ drafts muser posts pageNumber = docTypeHtml $ do
   
 postDetail :: (Maybe User) -> Post -> Html
 postDetail user pst@(Post _ title _ _ tags _ _) = docTypeHtml $ do
-  renderHead (appendedBlogTitle $ TL.fromStrict title) $ do
+  renderHead (TL.fromStrict title) $ do
     renderKeywords $ (map TL.fromStrict tags) ++ keywords
     renderMeta "description" $ TL.fromStrict $ postDescription pst
-  renderBody $ do
-    renderTitle blogTitle
-    renderSubtitle blogSubtitle
+  renderBody True $ do
     when (isJust user) renderAdminControls
     renderPost False user pst
     renderScript "/assets/js/common.js"
@@ -72,10 +68,10 @@ postDetail user pst@(Post _ title _ _ tags _ _) = docTypeHtml $ do
       
 postsByTag :: (Maybe User) -> TL.Text -> [Post] -> Integer -> Html
 postsByTag user tag posts pageNum = docTypeHtml $ do
-  renderHead (appendedBlogTitle tag) $ do
+  renderHead tag $ do
     renderMeta "description" description
     renderKeywords keywords
-  renderBody $ do
+  renderBody True $ do
     renderTitle $ mconcat ["Posts tagged '", tag, "'"]
     when (isJust user) renderAdminControls
     mapM_ (renderPost True user) (take postsPerPage posts)
@@ -83,11 +79,11 @@ postsByTag user tag posts pageNum = docTypeHtml $ do
       
 postEditor :: Maybe Post -> Html
 postEditor post = docTypeHtml $ do
-  renderHead (appendedBlogTitle $ maybe "New Post" (TL.fromStrict . postTitle) post) $ do
+  renderHead (maybe "New Post" (TL.fromStrict . postTitle) post) $ do
     renderMeta "robots" "noindex, nofollow"
     renderStylesheet "/assets/css/editor.css"
     renderStylesheet "/assets/css/wordlist.css"
-  renderBody $ do
+  renderBody False $ do
     input
       ! type_ "text"
       ! id "title-field"
@@ -123,9 +119,10 @@ postEditor post = docTypeHtml $ do
     
 login :: Maybe TL.Text -> Html
 login merrmsg = docTypeHtml $ do
-  renderHead (appendedBlogTitle "Login") $ do
+  renderHead "Login" $ do
     renderMeta "robots" "noindex, nofollow"
-  renderBody $ do
+    renderStylesheet "/assets/css/login.css"
+  renderBody False $ do
     renderTitle "Login"
     when (isJust merrmsg) (renderSubtitle $ fromJust merrmsg)
     H.form ! A.id "loginform" ! action "/login" ! method "POST" $ do
@@ -137,34 +134,38 @@ login merrmsg = docTypeHtml $ do
     
 internalError :: TL.Text -> Html
 internalError err = docTypeHtml $ do
-  renderHead (appendedBlogTitle "Internal Error") $ do
+  renderHead "Internal Error" $ do
     renderMeta "robots" "noindex, nofollow"
-  renderBody $ do
+  renderBody True $ do
     renderTitle "Something happened..."
     renderSubtitle err
 
 -- TODO: add picture of fudge
 notFound :: Html
 notFound = docTypeHtml $ do
-  renderHead (appendedBlogTitle "Not Found") $ do
+  renderHead "Not Found" $ do
     renderMeta "robots" "noindex, nofollow"
-  renderBody $ do
+  renderBody True $ do
     renderTitle "Oh fudge!"
     renderSubtitle "The page you're looking for does not exist."
     
 --------------------------------------------------------------------------------
 renderPost :: Bool -> Maybe User -> Post -> Html
 renderPost isShort user (Post pid title body ts tags _ author) = do
-  a ! href postURL $ do
-    h1 ! class_ "post-title" ! A.id (stringValue $ show pid) $ toHtml title
-  h4 ! class_ "post-subtitle" $ toHtml subtitle
-  mapM_ taglink tags
-  when canEdit renderEditButton
-  div ! class_ "post-content" $ if isShort
-    then do
-      renderDoc . truncateMarkdown 500 . markdown def $ body
-      a ! class_ "read-more" ! href postURL $ "read more..."
-    else toHtml $ markdown def body
+  div ! class_ "post" $ do
+    div ! class_ "post-header" $ do
+      div ! class_ "post-headerbox" $ do
+        a ! href postURL $ do
+          h1 ! class_ "post-title" ! A.id (stringValue $ show pid) $ toHtml title
+        h4 ! class_ "post-subtitle" $ toHtml subtitle
+      div ! class_ "post-headerbox" $ do
+        mapM_ taglink tags
+      when canEdit renderEditButton
+    div ! class_ "post-content" $ if isShort
+      then do
+        renderDoc . truncateMarkdown 500 . markdown def $ body
+        a ! class_ "read-more" ! href postURL $ "read more..."
+      else toHtml $ markdown def body
   where
     -- values
     editURL = stringValue $ mconcat ["/posts/", show pid, "/edit"]
@@ -180,35 +181,29 @@ renderPost isShort user (Post pid title body ts tags _ author) = do
     formatDate = T.pack . formatTime defaultTimeLocale timeFormat
     taglink t = a ! class_ "taglink"
                   ! href (textValue $ T.append "/posts/by/tag/" t)
-                  $ h4 ! class_ "post-subtitle" $ toHtml t
+                  $ toHtml t
 
 renderKeywords :: [TL.Text] -> Html
 {-# INLINE renderKeywords #-}
 renderKeywords = renderMeta "keywords" . TL.intercalate ", "
 
 keywords :: [TL.Text]
-keywords = ["computer science",
-            "functional programming",
-            "fp",
-            "politics",
+keywords = ["nate",
+            "nathaniel",
+            "symer",
+            "nate symer",
+            "computer",
+            "science",
+            "software",
+            "functional",
+            "programming",
+            "web",
             "haskell",
             "ruby",
-            "web development",
             "art",
-            "blogs",
-            "computers",
-            "startups",
-            "tutorial",
-            "rails"]
-
-blogTitle :: TL.Text
-blogTitle = "Segmentation Fault (core dumped)"
-
-blogSubtitle :: TL.Text
-blogSubtitle = "a blog about code."
-
-appendedBlogTitle :: TL.Text -> TL.Text
-appendedBlogTitle s = mconcat [s, " | ", blogTitle]
+            "studio",
+            "lean",
+            "startup"]
 
 description :: TL.Text
-description = "Rants and raves about functional programming, politics, and everything in between."
+description = "Nate Symer website & blog. Nate is a software engineer & designer."
