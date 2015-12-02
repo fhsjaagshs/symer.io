@@ -1,24 +1,35 @@
 {-# LANGUAGE OverloadedStrings #-}
 
+{-|
+Module      : Blog.HTML.Common
+Copyright   : (c) Nathaniel Symer, 2015
+License     : MIT
+Maintainer  : nate@symer.io
+Stability   : experimental
+Portability : Cross-Platform
+
+Common HTML structures that are used throughout the blog.
+-}
+
 module Blog.HTML.Common
 (
+  -- * HTML Primitives
   renderMeta,
   renderStylesheet,
   renderScript,
-  renderHead,
-  renderBody,
+  -- * Specific HTML Primitives
+  renderKeywords,
+  -- * HTML Controls
   renderButton,
   renderCheckbox,
-  renderInput,
+  renderTextField,
+  -- * Text
   renderTitle,
-  renderSubtitle,
-  renderAdminControls,
-  renderPageControls
+  renderSubtitle
 )
 where
 
 import           Data.Maybe
-import           Control.Monad
 
 import           Data.Text.Lazy (Text)
 import qualified Data.Text.Lazy as TL
@@ -27,69 +38,75 @@ import           Text.Blaze.Html5 as H hiding (style, param, map)
 import           Text.Blaze.Html5.Attributes as A
 import           Prelude as P hiding (head, div, id)
 
---------------------------------------------------------------------------------
---- | HTML primitives
-
-renderMeta :: Text -> Text -> Html
+-- |Render an HTML @meta@ tag.
+renderMeta :: Text -- ^ The @name@ of the meta tag
+           -> Text -- ^ The @content@ of the meta tag
+           -> Html
 {-# INLINE renderMeta #-}
-renderMeta k v = meta ! name (lazyTextValue k) ! content (lazyTextValue v)
+renderMeta k v = meta
+                 ! name (lazyTextValue k)
+                 ! content (lazyTextValue v)
 
-renderStylesheet :: Text -> Html
+-- |Render an HTML @link@ tag representing a CSS stylesheet.
+renderStylesheet :: Text -- ^ @href@ of the stylesheet
+                 -> Html
 {-# INLINE renderStylesheet #-}
-renderStylesheet x = link ! href (lazyTextValue x) ! rel "stylesheet" ! type_ "text/css"
+renderStylesheet x = link
+                     ! href (lazyTextValue x)
+                     ! rel "stylesheet"
+                     ! type_ "text/css"
 
-renderScript :: Text -> Html
+-- |Render an HTML @script@ tag referencing a JavaScript script.
+renderScript :: Text -- ^ @href@ of the script
+             -> Html
 {-# INLINE renderScript #-}
 renderScript scriptSrc = script ! src (lazyTextValue scriptSrc) $ ""
 
-renderHead :: Text -> Html -> Html
-{-# INLINE renderHead #-}
-renderHead pageTitle htmlAction = H.head $ do
-  H.title $ toHtml pageTitle
-  renderMeta "revisit-after" "2 days"
-  renderMeta "viewport" "width=device-width,initial-scale=1"
-  link ! rel "icon" ! type_ "image/png" ! href "/assets/images/favicon.png"
-  meta ! httpEquiv "Content-Type" ! content "text/html; charset=UTF-8"
-  renderStylesheet "/assets/css/blog.css"
-  htmlAction
+-- |Render a meta tag containing page keywords.
+renderKeywords :: [TL.Text] -- ^ keywords to render
+               -> Html
+{-# INLINE renderKeywords #-}
+renderKeywords = renderMeta "keywords" . TL.intercalate ", "
 
-renderBody :: Bool -> Html -> Html
-{-# INLINE renderBody #-}
-renderBody showAbout bodyHtml = do
-  H.body $ do
-    div ! class_ (stringValue $ "header" ++ (if not showAbout then " nopadding" else "")) $ do
-      a ! href "/" $ do
-        img ! src "/assets/images/philly_skyline.svg" ! width "300" ! height "200"
-      when showAbout $ do
-        h1 ! class_ "title" ! A.id "name-title" $ "Nate Symer"
-        h3 ! class_ "subtitle" $ "Software Engineer & Designer"
-        h3 ! class_ "tagline" $ "nate@symer.io • 856-419-7654"
-    bodyHtml
+-- |Render a text field.
+renderTextField :: Bool -- ^ whether or not the text field is "secure"
+                -> String -- ^ DOM @id@ and @name@ of text field
+                -> Html
+{-# INLINE renderTextField #-}
+renderTextField isSecure n = f isSecure
+  where
+    f True  = base ! type_ "password"
+    f False = base ! type_ "text"
+    base = input
+           ! class_ "blogtextfield"
+           ! A.id (stringValue n)
+           ! A.name (stringValue n)
+           ! customAttribute "autocorrect" "off"
+           ! customAttribute "autocapitalize" "off"
+           ! customAttribute "spellcheck" "false"
 
---------------------------------------------------------------------------------
---- | Controls
-
-renderInput :: String -> Html
-{-# INLINE renderInput #-}
-renderInput kind = input
-                   ! class_ "blogtextfield"
-                   ! customAttribute "autocorrect" "off"
-                   ! customAttribute "autocapitalize" "off"
-                   ! customAttribute "spellcheck" "false"
-                   ! type_ (stringValue kind)
-                   
-renderCheckbox :: Text -> Text -> Bool -> Html
+-- |Render a checkbox.
+renderCheckbox :: Text -- ^ DOM @id@ of the checkbox
+               -> Text -- ^ text to be displayed to the right of the checkbox
+               -> Bool -- ^ whether or not the checkbox is checked
+               -> Html
 {-# INLINE renderCheckbox #-}
 renderCheckbox boxId txt isChecked = do
-  H.label ! customAttribute "for" "public-checkbox" $ do
-    if isChecked
-      then checkbox ! A.checked ""
-      else checkbox
+  H.label ! customAttribute "for" (lazyTextValue boxId) $ do
+    checkbox isChecked
     toHtml txt
   where
-    checkbox = input ! type_ "checkbox" ! id (lazyTextValue boxId)
+    checkbox True = base ! A.checked ""
+    checkbox False = base
+    base = input
+           ! type_ "checkbox"
+           ! id (lazyTextValue boxId)
 
-renderButton :: Text -> Text -> Maybe Text -> Html
+-- |Render a button.
+renderButton :: Text -- ^ text to be displayed in the button
+             -> Text -- ^ DOM @id@ of the button
+             -> Maybe Text -- ^ DOM @href@ of the button
+             -> Html
 {-# INLINE renderButton #-}
 renderButton btnTitle btnId btnHref = a
                                       ! class_ "blogbutton"
@@ -100,24 +117,15 @@ renderButton btnTitle btnId btnHref = a
   where
     f (Just anHref) = href (lazyTextValue anHref)
     f Nothing = mempty
-                                      
---------------------------------------------------------------------------------
---- | Composite HTML DRY
 
-renderTitle :: Text -> Html
+-- |Render some title text.
+renderTitle :: Text -- ^ text
+            -> Html
+{-# INLINE renderTitle #-}
 renderTitle = (h2 ! class_ "title" ! id "blog-title") . toHtml
 
-renderSubtitle :: Text -> Html
-renderSubtitle = (h3 ! id "blog-subtitle") . toHtml
-
-renderAdminControls :: Html
-renderAdminControls = do
-  renderButton "Log Out" "" $ Just "/logout"
-  renderButton "New Post" "" $ Just "/posts/new"
-  renderButton "Drafts" "" $ Just "/drafts"
-  
-renderPageControls :: Integer -> Bool -> Html
-renderPageControls pageNum hasNext = do
-  when (pageNum > 0)  $ renderButton "Newer" "prevbutton" $ mkHref $ pageNum-1
-  when hasNext        $ renderButton "Older" "nextbutton" $ mkHref $ pageNum+1
-  where mkHref = Just . TL.pack . (++) "/?page=" . show
+-- |Render some subtitle text.
+renderSubtitle :: Text -- ^ text
+               -> Html
+{-# INLINE renderSubtitle #-}
+renderSubtitle = (h3 ! id "subtitle") . toHtml

@@ -7,9 +7,9 @@ module Blog.App
 where
 
 import Blog.Postgres
-import Blog.Postgres.Queries
 import Blog.User
-import Blog.Post as Post
+import Blog.Post
+import Blog.Comment
 import Blog.Web.Auth
 import qualified Blog.HTML as HTML
 
@@ -51,7 +51,7 @@ import qualified Text.Blaze.Html.Renderer.Text as R (renderHtml)
 app :: PostgresScottyM ()
 app = do
   get "/" $ do
-    maybeUser <- getUser
+    maybeUser <- getAuthenticatedUser
     pageNum <- getPageNumber
     posts <- getPosts pageNum
     renderHtml $ HTML.root maybeUser posts pageNum
@@ -68,13 +68,13 @@ app = do
     case mpost of
       Nothing -> redirect "/notfound"
       Just pst@(Post _ _ _ _ _ draft author) -> do
-        maybeUser <- getUser
+        maybeUser <- getAuthenticatedUser
         when (draft && (maybe True ((/=) author) maybeUser)) (redirect "/notfound")
         renderHtml $ HTML.postDetail maybeUser pst
             
   get "/posts/by/tag/:tag" $ do
     tag <- param "tag"
-    maybeUser <- getUser
+    maybeUser <- getAuthenticatedUser
     pageNum <- getPageNumber
     posts <- getPostsByTag tag pageNum
     renderHtml $ HTML.postsByTag maybeUser (TL.fromStrict tag) posts pageNum
@@ -93,21 +93,21 @@ app = do
       Just _ -> renderHtml $ HTML.postEditor pst
 
   get "/login" $ do
-    maybeUser <- getUser
+    maybeUser <- getAuthenticatedUser
     when (isJust maybeUser) (redirect "/")
     params >>= renderHtml . HTML.login . lookup "err"
 
   get "/logout" $ deleteAuth >> redirect "/"
   
   post "/login" $ do
-    mUser <- param "username" >>= getUserWithUsername
+    mUser <- param "username" >>= getUser
     case mUser of
       Nothing -> redirect "/login?err=Username%20does%20not%20exist%2E"
       Just user@(User _ _ _ phash) -> do
         pPassword <- T.encodeUtf8 <$> param "password"
         if BCrypt.validatePassword (T.encodeUtf8 phash) pPassword
           then do
-            setUser user
+            setAuthenticatedUser user
             params >>= redirect . fromMaybe "/" . lookup "redirect"
           else redirect "/login?err=Invalid%20password%2E"
 

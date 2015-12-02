@@ -2,19 +2,23 @@
 
 module Blog.User
 (
-  User(..)
+  User(..),
+  getUser
 )
 where
 
+import Blog.Postgres
+
 import Control.Monad
+
+import Data.Maybe
+import Data.Text (Text)
+import qualified Data.Text.Encoding as T
+import Data.ByteString.Char8 (ByteString)
 
 import Data.Aeson as Aeson
 import Data.Attoparsec.ByteString.Char8 as A
 import Blaze.ByteString.Builder (fromByteString)
-
-import Data.Text (Text)
-import qualified Data.Text.Encoding as T
-import Data.ByteString.Char8 (ByteString)
 
 import Database.PostgreSQL.Simple.FromField as PG.FromField
 import Database.PostgreSQL.Simple.ToField as PG.ToField
@@ -85,18 +89,20 @@ instance ToRow User where
     
 parseUserRow :: ByteString -> Maybe User
 parseUserRow = maybeResult . A.parse userRowParser
-
--- TODO: Allow for end paren aka ')' to be part of a field
-userRowParser :: Parser User
-userRowParser = User
-  <$> (char '(' >> decimal)
-  <*> (skipUntakeable >> T.decodeUtf8 <$> takeTakeable)
-  <*> (skipUntakeable >> T.decodeUtf8 <$> takeTakeable)
-  <*> (skipUntakeable >> T.decodeUtf8 <$> takeTakeable)
   where
-    takeable ',' = False
-    takeable '"' = False
-    takeable ')' = False
-    takeable _   = True
-    skipUntakeable = skipWhile (not . takeable)
-    takeTakeable = A.takeWhile takeable
+    -- TODO: Allow for end paren aka ')' to be part of a field
+    userRowParser = User
+      <$> (char '(' >> decimal)
+      <*> (skipUntakeable >> T.decodeUtf8 <$> takeTakeable)
+      <*> (skipUntakeable >> T.decodeUtf8 <$> takeTakeable)
+      <*> (skipUntakeable >> T.decodeUtf8 <$> takeTakeable)
+      where
+        takeable ',' = False
+        takeable '"' = False
+        takeable ')' = False
+        takeable _   = True
+        skipUntakeable = skipWhile (not . takeable)
+        takeTakeable = A.takeWhile takeable
+    
+getUser :: Text -> PostgresActionM (Maybe User)
+getUser username = listToMaybe <$> postgresQuery "SELECT * FROM users WHERE username=? LIMIT 1" [username]

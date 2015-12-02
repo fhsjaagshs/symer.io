@@ -6,12 +6,17 @@
 
 module Blog.Postgres 
 (
+  -- * Types
   Postgres(..),
   PostgresScottyM,
   PostgresActionM,
-  webMQuery,
-  webMQuery_,
-  postsPerPage
+  -- * Connecting and Disconnecting
+  connectPostgres,
+  disconnectPostgres,
+  -- * Performing Queries
+  postgresQuery,
+  postgresExec,
+  maybeQuery
 )
 where
 
@@ -21,10 +26,11 @@ import Blog.Util.Env
 import Control.Monad
 import Control.Monad.IO.Class
 
+import Data.Maybe
+
 import Data.Text.Lazy (Text)
 import Web.Scotty.Trans (ActionT, ScottyT)
 
--- import Database.PostgreSQL.Simple (Connection,ToRow,FromRow)
 import Database.PostgreSQL.Simple.Types
 import Database.PostgreSQL.Simple
 import Database.PostgreSQL.Simple.Migration as PG.Migration
@@ -41,35 +47,54 @@ data Postgres = Postgres {
 }
 
 instance WebAppState Postgres where
-  initState = do
-    putStrLn "establishing database connections"
-    pg <- appEnvIO >>= connectPostgreSQL . connString
-    putStrLn "running database migrations"
-    void $ withTransaction pg $ do
-      void $ execute_ pg "SET client_min_messages=WARNING;"
-      void $ runMigration $ MigrationContext MigrationInitialization True pg
-      void $ execute_ pg "SET client_min_messages=NOTICE;"
-      runMigration $ MigrationContext (MigrationFile "blog.sql" "migrations/blog.sql") True pg
-    return $ Postgres pg
-    where
-    connString "production" = "" -- postgres config loaded *only* from env vars
-    connString _            = "dbname='blog' host='localhost'"
-  destroyState (Postgres pg) = do
-    putStrLn "closing database connections"
-    close pg
-
-postsPerPage :: Int
-postsPerPage = 10
+  initState = Postgres <$> connectPostgres
+  destroyState (Postgres pg) = disconnectPostgres pg
     
-webMQuery :: (ToRow q, FromRow r) => String -> q -> PostgresActionM [r]
-webMQuery q ps = do
+-- |Connect to a PostgreSQL database. Configure via LibPQ
+-- environment variables. In production, no configuration is
+-- hardcoded. In development, the database is set to @blog@
+-- and the host is set to @localhost@.
+connectPostgres :: IO Connection
+connectPostgres = do
+  putStrLn "establishing database connections"
+  pg <- appEnvIO >>= connectPostgreSQL . connString
+  putStrLn "running database migrations"
+  void $ withTransaction pg $ do
+    void $ execute_ pg "SET client_min_messages=WARNING;"
+    void $ runMigration $ MigrationContext MigrationInitialization True pg
+    void $ execute_ pg "SET client_min_messages=NOTICE;"
+    runMigration $ MigrationContext (MigrationFile "blog.sql" "migrations/blog.sql") True pg
+  return pg
+  where
+  connString "production" = "" -- postgres config loaded *only* from env vars
+  connString _            = "dbname='blog' host='localhost'"
+  
+-- |Disconnect from a PostgreSQL database.
+disconnectPostgres :: Connection -> IO ()
+disconnectPostgres pg = do
+  putStrLn "closing database connections"
+  close pg
+    
+-- |Make a PostgreSQL query & return parameters.
+postgresQuery :: (ToRow q, FromRow r) => String -- query
+                                      -> q -- parameters
+                                      -> PostgresActionM [r]
+postgresQuery q ps = do
   pg <- fmap postgresConnection getState
   liftIO $ query pg (Query . toByteString . Utf8.fromString $ q) ps
   
-webMQuery_ :: (ToRow q) => String -> q -> PostgresActionM ()
-webMQuery_ q ps = void $ do
+-- |Make a PostgreSQL query & don't return parameters.
+postgresExec :: (ToRow q) => String -- query
+                          -> q -- parameters
+                          -> PostgresActionM ()
+postgresExec q ps = void $ do
   pg <- fmap postgresConnection getState
   liftIO $ execute pg (stringToQuery q) ps
 
 stringToQuery :: String -> Query
 stringToQuery = Query . toByteString . Utf8.fromString
+
+-- |Make a query return a maybe value.
+maybeQuery :: PostgresActionM [Only a] -- ^ query action to maybe-ify
+           -> PostgresActionM (Maybe a)
+maybeQuery res = (listToMaybe . map fromOnly) <$> res

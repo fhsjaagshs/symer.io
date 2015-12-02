@@ -87,7 +87,6 @@ pre {
   font-size: 50px;
   margin: 5px;
   font-family: oxygen-regular,helvetica,sans-serif;
-  
 }
 
 .subtitle {
@@ -201,6 +200,11 @@ a.taglink:hover {
   background-color: #ddd;
 }
 
+a.taglink:active {
+  color: #888;
+  background-color: white;
+}
+
 a.read-more {
-  text-align: left;
+/*  TODO: colors */
 }
