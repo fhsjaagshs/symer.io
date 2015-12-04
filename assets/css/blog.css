@@ -195,6 +195,10 @@ a.taglink {
   border: 0.1em solid white;
 }
 
+a.taglink.selected-tag {
+  background-color: white;
+}
+
 a.taglink:hover {
   color: #888;
   background-color: #ddd;

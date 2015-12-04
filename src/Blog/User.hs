@@ -9,10 +9,11 @@ where
 
 import Blog.Postgres
 
-import Control.Monad
+import Control.Applicative
 
 import Data.Maybe
 import Data.Text (Text)
+import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
 import Data.ByteString.Char8 (ByteString)
 
@@ -30,79 +31,62 @@ data User = User {
   userUsername :: Text,
   userDisplayName :: Text,
   userPasswordHash :: Text
-} deriving (Show)
+} deriving (Eq,Show)
 
 instance ToJSON User where
-  toJSON User{..} = Aeson.object ["uid" .= userUID,
+  toJSON User{..} = Aeson.object ["id" .= userUID,
                                   "username" .= userUsername,
                                   "display_name" .= userDisplayName,
                                   "password_hash" .= userPasswordHash]
 
-instance FromJSON User where
-  parseJSON (Object o) = User
-    <$> o .: "uid"
-    <*> o .: "username"
-    <*> o .: "display_name"
-    <*> o .: "password_hash"
-  parseJSON _ = mzero
-
-instance Eq User where
-  (User a_ _ _ _) == (User b_ _ _ _) = a_ == b_
-
 instance FromField User where
-  fromField f (Just fdata) = do
-    tinfo <- typeInfo f
-    case tinfo of
-      (Composite _ _ _ "users" _ _) -> do
-        case parseUserRow fdata of
-          Just user -> return user
-          Nothing -> returnError ConversionFailed f "Failed to read users field."
-      _ -> returnError ConversionFailed f "Failed to read users field."
-  fromField f Nothing = do
-    tinfo <- typeInfo f
-    case tinfo of
-      (Composite _ _ _ "users" _ _) -> returnError Incompatible f "Empty user field."
-      _ -> returnError ConversionFailed f "Failed to read users field."
+  fromField fld Nothing = returnError ConversionFailed fld "empty field"
+  fromField fld (Just fdata) = typeInfo fld >>= f
+      where convFailed = returnError ConversionFailed fld
+            f (Composite _ _ _ "users" _ _) = g $ parseUserRow fdata
+            f _ = convFailed "not a user field"
+            g = either (convFailed . (++) "failed to parse user: ") return
 
---------------------------------------------------------------------------------
 instance ToField User where
-  toField (User uid uname dname phash) =
-    Many [plain "ROW(",
-          toField uid, comma,
-          toField uname, comma,
-          toField dname, comma,
-          toField phash,
-          plain ")"]
-    where
-      plain = Plain . fromByteString
-      comma = plain ","
+  toField (User i u d ph) = Many [plain "ROW(",
+                                  toField i, plain ",",
+                                  toField u, plain ",",
+                                  toField d, plain ",",
+                                  toField ph,
+                                  plain ")"]
+    where plain = Plain . fromByteString
   
 instance FromRow User where
   fromRow = User <$> field <*> field <*> field <*> field
   
 instance ToRow User where
-  toRow (User uid username displayName passwordHash) =
-    [toField uid,
-    toField username,
-    toField displayName,
-    toField passwordHash]
+  toRow (User i u d ph) = [toField i, toField u, toField d, toField ph]
     
-parseUserRow :: ByteString -> Maybe User
-parseUserRow = maybeResult . A.parse userRowParser
+parseUserRow :: ByteString -> Either String User
+parseUserRow = eitherResult . A.parse user
   where
-    -- TODO: Allow for end paren aka ')' to be part of a field
-    userRowParser = User
-      <$> (char '(' >> decimal)
-      <*> (skipUntakeable >> T.decodeUtf8 <$> takeTakeable)
-      <*> (skipUntakeable >> T.decodeUtf8 <$> takeTakeable)
-      <*> (skipUntakeable >> T.decodeUtf8 <$> takeTakeable)
-      where
-        takeable ',' = False
-        takeable '"' = False
-        takeable ')' = False
-        takeable _   = True
-        skipUntakeable = skipWhile (not . takeable)
-        takeTakeable = A.takeWhile takeable
+    user = char '(' *> (User <$> decimal
+                             <*> (skipSeparator *> rowField)
+                             <*> (skipSeparator *> rowField)
+                             <*> (skipSeparator *> rowField)) <* char ')'
+                       
+    skipSeparator = char ',' *> skipSpace
     
+    rowField = quotedField <|> unquotedField
+    quotedField = char '"' *> (T.pack <$> many c) <* char '"'
+    c = dblquote <|> snglquote <|> notquote
+    dblquote = char '"' *> char '"'
+    snglquote = char '\'' *> char '\''
+    notquote = satisfy p
+      where p '"' = False
+            p '\'' = False
+            p _ = True
+
+    unquotedField = T.decodeUtf8 <$> A.takeWhile1 p
+      where p ',' = False
+            p ')' = False
+            p _ = True
+
 getUser :: Text -> PostgresActionM (Maybe User)
-getUser username = listToMaybe <$> postgresQuery "SELECT * FROM users WHERE username=? LIMIT 1" [username]
+getUser username = listToMaybe <$> postgresQuery q [username]
+  where q = "SELECT * FROM users WHERE username=? LIMIT 1"

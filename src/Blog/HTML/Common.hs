@@ -17,115 +17,82 @@ module Blog.HTML.Common
   renderMeta,
   renderStylesheet,
   renderScript,
-  -- * Specific HTML Primitives
-  renderKeywords,
   -- * HTML Controls
   renderButton,
   renderCheckbox,
   renderTextField,
-  -- * Text
-  renderTitle,
-  renderSubtitle
 )
 where
 
-import           Data.Maybe
+import Data.Maybe
 
-import           Data.Text.Lazy (Text)
-import qualified Data.Text.Lazy as TL
-
-import           Text.Blaze.Html5 as H hiding (style, param, map)
-import           Text.Blaze.Html5.Attributes as A
-import           Prelude as P hiding (head, div, id)
+import Text.Blaze.Html
+import Text.Blaze.Html5 as H hiding (style, param, map)
+import Text.Blaze.Html5.Attributes as A
+import Prelude as P hiding (head, div, id)
 
 -- |Render an HTML @meta@ tag.
-renderMeta :: Text -- ^ The @name@ of the meta tag
-           -> Text -- ^ The @content@ of the meta tag
+renderMeta :: AttributeValue -- ^ The @name@ of the meta tag
+           -> AttributeValue -- ^ The @content@ of the meta tag
            -> Html
 {-# INLINE renderMeta #-}
-renderMeta k v = meta
-                 ! name (lazyTextValue k)
-                 ! content (lazyTextValue v)
+renderMeta k v = meta ! name k ! content v
 
 -- |Render an HTML @link@ tag representing a CSS stylesheet.
-renderStylesheet :: Text -- ^ @href@ of the stylesheet
+renderStylesheet :: AttributeValue -- ^ @href@ of the stylesheet
                  -> Html
 {-# INLINE renderStylesheet #-}
 renderStylesheet x = link
-                     ! href (lazyTextValue x)
+                     ! href x
                      ! rel "stylesheet"
                      ! type_ "text/css"
 
 -- |Render an HTML @script@ tag referencing a JavaScript script.
-renderScript :: Text -- ^ @href@ of the script
+renderScript :: AttributeValue -- ^ @href@ of the script
              -> Html
 {-# INLINE renderScript #-}
-renderScript scriptSrc = script ! src (lazyTextValue scriptSrc) $ ""
-
--- |Render a meta tag containing page keywords.
-renderKeywords :: [TL.Text] -- ^ keywords to render
-               -> Html
-{-# INLINE renderKeywords #-}
-renderKeywords = renderMeta "keywords" . TL.intercalate ", "
+renderScript scriptSrc = script ! src (toValue scriptSrc) $ ""
 
 -- |Render a text field.
 renderTextField :: Bool -- ^ whether or not the text field is "secure"
-                -> String -- ^ DOM @id@ and @name@ of text field
+                -> AttributeValue -- ^ DOM @id@ and @name@ of text field
                 -> Html
 {-# INLINE renderTextField #-}
 renderTextField isSecure n = f isSecure
   where
-    f True  = base ! type_ "password"
-    f False = base ! type_ "text"
-    base = input
-           ! class_ "blogtextfield"
-           ! A.id (stringValue n)
-           ! A.name (stringValue n)
-           ! customAttribute "autocorrect" "off"
-           ! customAttribute "autocapitalize" "off"
-           ! customAttribute "spellcheck" "false"
+    f True  = el ! type_ "password"
+    f False = el ! type_ "text"
+    el = input
+         ! class_ "blogtextfield"
+         ! A.id n
+         ! A.name n
+         ! customAttribute "autocorrect" "off"
+         ! customAttribute "autocapitalize" "off"
+         ! customAttribute "spellcheck" "false"
 
 -- |Render a checkbox.
-renderCheckbox :: Text -- ^ DOM @id@ of the checkbox
-               -> Text -- ^ text to be displayed to the right of the checkbox
+renderCheckbox :: AttributeValue -- ^ DOM @id@ of the checkbox
+               -> Html-- ^ content to be displayed to the right of the checkbox
                -> Bool -- ^ whether or not the checkbox is checked
                -> Html
 {-# INLINE renderCheckbox #-}
-renderCheckbox boxId txt isChecked = do
-  H.label ! customAttribute "for" (lazyTextValue boxId) $ do
+renderCheckbox box h isChecked = do
+  H.label ! customAttribute "for" box $ do
     checkbox isChecked
-    toHtml txt
+    h
   where
-    checkbox True = base ! A.checked ""
-    checkbox False = base
-    base = input
-           ! type_ "checkbox"
-           ! id (lazyTextValue boxId)
+    checkbox True  = el ! A.checked ""
+    checkbox False = el
+    el = input ! type_ "checkbox" ! id box
 
 -- |Render a button.
-renderButton :: Text -- ^ text to be displayed in the button
-             -> Text -- ^ DOM @id@ of the button
-             -> Maybe Text -- ^ DOM @href@ of the button
+renderButton :: Html -- ^ text to be displayed in the button
+             -> AttributeValue -- ^ DOM @id@ of the button
+             -> Maybe AttributeValue -- ^ DOM @href@ of the button
              -> Html
 {-# INLINE renderButton #-}
-renderButton btnTitle btnId btnHref = a
-                                      ! class_ "blogbutton"
-                                      ! rel "nofollow"
-                                      ! id (lazyTextValue btnId)
-                                      ! f btnHref
-                                      $ toHtml btnTitle
-  where
-    f (Just anHref) = href (lazyTextValue anHref)
-    f Nothing = mempty
-
--- |Render some title text.
-renderTitle :: Text -- ^ text
-            -> Html
-{-# INLINE renderTitle #-}
-renderTitle = (h2 ! class_ "title" ! id "blog-title") . toHtml
-
--- |Render some subtitle text.
-renderSubtitle :: Text -- ^ text
-               -> Html
-{-# INLINE renderSubtitle #-}
-renderSubtitle = (h3 ! id "subtitle") . toHtml
+renderButton t bid h = a ! class_ "blogbutton"
+                         ! rel "nofollow"
+                         ! id bid
+                         ! maybe mempty href h
+                         $ t
