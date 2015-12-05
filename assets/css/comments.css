@@ -32,6 +32,7 @@ div.gobutton {
   height: 40px;
   background-image: url('/assets/images/gobutton.svg');
   margin-left: 5px;
+  cursor: pointer;
 }
 
 div.gobutton:active {

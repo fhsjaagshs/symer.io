@@ -89,6 +89,6 @@ insertComment :: Maybe Integer -- ^ parent comment id
               -> Text -- ^ email
               -> Text -- ^ display name
               -> Text -- ^ body
-              -> PostgresActionM (Maybe Integer)
-insertComment (Just parentId) i e dn b = maybeQuery $ postgresQuery "INSERT INTO comments (parentId,postId,email,displayName,body) VALUES (?,?,?,?,?) RETURNING id" (parentId, i, e, dn, b)
-insertComment Nothing         i e dn b = maybeQuery $ postgresQuery "INSERT INTO comments (postId,email,displayName,body) VALUES (?,?,?,?) RETURNING id" (i, e, dn, b)
+              -> PostgresActionM (Maybe Comment) -- ^ the inserted comment
+insertComment (Just parentId) i e dn b = listToMaybe <$> postgresQuery "INSERT INTO comments (parentId,postId,email,displayName,body) VALUES (?,?,?,?,?) RETURNING *" (parentId, i, e, dn, b)
+insertComment Nothing         i e dn b = listToMaybe <$> postgresQuery "INSERT INTO comments (postId,email,displayName,body) VALUES (?,?,?,?) RETURNING *" (i, e, dn, b)

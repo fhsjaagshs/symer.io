@@ -1,36 +1,31 @@
 @font-face {
     font-family: oxygen-bold;
+    font-weight: normal;
     src: url('/assets/fonts/oxygen/Oxygen-Bold.eot') format('eot'),
          url('/assets/fonts/oxygen/Oxygen-Bold.woff2') format('woff2'),
          url('/assets/fonts/oxygen/Oxygen-Bold.woff') format('woff'),
          url('/assets/fonts/oxygen/Oxygen-Bold.ttf') format('truetype');
-    font-weight: normal;
-    font-style: normal;
 }
 
 @font-face {
     font-family: oxygen-light;
+    font-weight: normal;
     src: url('/assets/fonts/oxygen/Oxygen-Light.eot') format('eot'),
          url('/assets/fonts/oxygen/Oxygen-Light.woff2') format('woff2'),
          url('/assets/fonts/oxygen/Oxygen-Light.woff') format('woff'),
          url('/assets/fonts/oxygen/Oxygen-Light.ttf') format('truetype');
-    font-weight: normal;
-    font-style: normal;
 }
 
 @font-face {
     font-family: oxygen-regular;
+    font-weight: normal;
     src: url('/assets/fonts/oxygen/Oxygen-Regular.eot') format('eot'),
          url('/assets/fonts/oxygen/Oxygen-Regular.woff2') format('woff2'),
          url('/assets/fonts/oxygen/Oxygen-Regular.woff') format('woff'),
          url('/assets/fonts/oxygen/Oxygen-Regular.ttf') format('truetype');
-    font-weight: normal;
-    font-style: normal;
 }
 
-*[hidden] { display: none; }
-
-/* Primitive HTML Elements */
+/* Page setup */
 
 body {
   background: #F0F0F0;
@@ -38,20 +33,28 @@ body {
   text-align: center;
   color: #333;
   max-width: 700px;
-  margin: auto;
+  margin: 20px auto;
 }
 
-img {
-  margin: 10px;
+/* Page header */
+
+.header:not(.nopadding):not(:last-child) {
+  margin-bottom: 80px;
 }
+
+/* HTML primitive tags (mostly for rendered markdown) */
 
 a {
   text-decoration: none;
-  color: gray;
+  color: #876e71;
 }
 
 a:hover {
-  color: #979797;
+  color: #9f8e90;
+}
+
+a:active {
+  color: #bcadaf;
 }
 
 a < img {
@@ -77,8 +80,15 @@ pre {
   background: #F2EDED;
 }
 
-.header:not(.nopadding):not(:last-child) {
-  margin-bottom: 80px;
+blockquote {
+  background: #f9f9f9;
+  border-left: 8px solid #eab05b;
+  margin: 1.5em 10px;
+  padding: 0.5em 10px;
+}
+
+blockquote p {
+  display: inline;
 }
 
 /* Text */
@@ -169,7 +179,11 @@ a.blogbutton:active {
 }
 
 .post-title:hover {
-  color: #80B9B4;
+  color: #94e1c8;
+}
+
+.post-title:active {
+  color: white;
 }
 
 .post-subtitle {
@@ -188,6 +202,7 @@ a.blogbutton:active {
 }
 
 a.taglink {
+  color: gray;
   display: inline-block;
   margin: 5px;
   padding: 0.4em 0.6em 0.4em 0.6em;

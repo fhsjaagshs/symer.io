@@ -142,12 +142,12 @@ app = do
     displayName <- param "display_name"
     bdy <- param "body"
     parentId <- fmap (read . TL.unpack) . lookup "parent_id" <$> params
-    mCommentId <- insertComment parentId postId email displayName bdy
-    case mCommentId of
+    mcomment <- insertComment parentId postId email displayName bdy
+    case mcomment of
       Nothing -> Scotty.status $ Status 500 "Failed to insert comment."
-      Just commentId -> do
+      Just comment -> do
         addHeader "Location" $ mconcat ["/posts/", TL.pack $ show postId]
-        Scotty.text . TL.pack . show $ commentId
+        Scotty.json $ comment
 
   get "/posts/:id/comments.json" $ param "id" >>= getCommentsForPost >>= Scotty.json
   get (regex "/assets/(.*)") $ param "1" >>= loadAsset
