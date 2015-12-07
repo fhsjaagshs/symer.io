@@ -30,6 +30,7 @@ executable blog
                      http-types,
                      wai,
                      scotty,
+                     resource-pool,
                      postgresql-simple,
                      postgresql-simple-migration,
                      cheapskate,

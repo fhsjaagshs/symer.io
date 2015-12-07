@@ -11,8 +11,9 @@ module Blog.Postgres
   PostgresScottyM,
   PostgresActionM,
   -- * Connecting and Disconnecting
-  connectPostgres,
-  disconnectPostgres,
+  makePostgresPool,
+  destroyPostgresPool,
+  withPostgres,
   -- * Performing Queries
   postgresQuery,
   postgresExec,
@@ -31,6 +32,7 @@ import Data.Maybe
 import Data.Text.Lazy (Text)
 import Web.Scotty.Trans (ActionT, ScottyT)
 
+import Data.Pool
 import Database.PostgreSQL.Simple.Types
 import Database.PostgreSQL.Simple
 import Database.PostgreSQL.Simple.Migration as PG.Migration
@@ -43,58 +45,57 @@ type PostgresScottyM a = ScottyT Text (WebAppM Postgres) a
 type PostgresActionM a = ActionT Text (WebAppM Postgres) a
 
 data Postgres = Postgres {
-  postgresConnection :: Connection
+  postgresPool :: Pool Connection
 }
 
 instance WebAppState Postgres where
-  initState = Postgres <$> connectPostgres
-  destroyState (Postgres pg) = disconnectPostgres pg
-    
--- |Connect to a PostgreSQL database. Configure via LibPQ
--- environment variables. In production, no configuration is
--- hardcoded. In development, the database is set to @blog@
--- and the host is set to @localhost@.
-connectPostgres :: IO Connection
-connectPostgres = do
-  putStrLn "establishing database connections"
-  pg <- appEnvIO >>= connectPostgreSQL . connString
-  putStrLn "running database migrations"
-  void $ withTransaction pg $ do
+  initState = Postgres <$> makePostgresPool
+  destroyState (Postgres pool) = destroyPostgresPool pool
+  
+-- |Create a pool that pools PostgreSQL connections.
+-- Configure connections via LibPQ environment variables.
+-- In production, no configuration is hardcoded. In
+-- development, the database is set to @blog@ and
+-- the host is set to @localhost@.
+makePostgresPool :: IO (Pool Connection)
+makePostgresPool = do
+  pool <- createPool (appEnvIO >>= connectPostgreSQL . connString) close 2 5.0 5
+  withResource pool $ \pg -> void $ withTransaction pg $ do
     void $ execute_ pg "SET client_min_messages=WARNING;"
     void $ runMigration $ MigrationContext MigrationInitialization True pg
     void $ execute_ pg "SET client_min_messages=NOTICE;"
     runMigration $ MigrationContext (MigrationFile "blog.sql" "migrations/blog.sql") True pg
-  return pg
+  return pool
   where
   connString "production" = "" -- postgres config loaded *only* from env vars
   connString _            = "dbname='blog' host='localhost'"
   
--- |Disconnect from a PostgreSQL database.
-disconnectPostgres :: Connection -> IO ()
-disconnectPostgres pg = do
-  putStrLn "closing database connections"
-  close pg
+-- |Empty a postgres connection pool.
+destroyPostgresPool :: Pool Connection -> IO ()
+destroyPostgresPool = destroyAllResources
+    
+-- |"lift" a function into the connection pool.
+withPostgres :: (Connection -> IO b) -> PostgresActionM b
+withPostgres f = getState >>= \(Postgres p) -> liftIO $ withResource p f
     
 -- |Make a PostgreSQL query & return parameters.
-postgresQuery :: (ToRow q, FromRow r) => String -- query
-                                      -> q -- parameters
-                                      -> PostgresActionM [r]
-postgresQuery q ps = do
-  pg <- fmap postgresConnection getState
-  liftIO $ query pg (Query . toByteString . Utf8.fromString $ q) ps
+postgresQuery :: (FromRow a, ToRow b) => String -- ^ query
+                                      -> b -- ^ parameters
+                                      -> PostgresActionM [a] -- ^ returned rows
+postgresQuery q ps = withPostgres $ \pg -> query pg (stringToQuery q) ps
   
 -- |Make a PostgreSQL query & don't return parameters.
-postgresExec :: (ToRow q) => String -- query
-                          -> q -- parameters
+postgresExec :: (ToRow a) => String -- query
+                          -> a -- parameters
                           -> PostgresActionM ()
-postgresExec q ps = void $ do
-  pg <- fmap postgresConnection getState
-  liftIO $ execute pg (stringToQuery q) ps
+postgresExec q ps = withPostgres $ \pg -> void $ execute pg (stringToQuery q) ps
 
 stringToQuery :: String -> Query
 stringToQuery = Query . toByteString . Utf8.fromString
 
--- |Make a query return a maybe value.
-maybeQuery :: PostgresActionM [Only a] -- ^ query action to maybe-ify
+-- |Make a query return a maybe value. Useful if you're updating a
+-- single row and want to get a single column from the updated row
+-- using @RETURNING@.
+maybeQuery :: PostgresActionM [Only a] -- ^ query action
            -> PostgresActionM (Maybe a)
 maybeQuery res = (listToMaybe . map fromOnly) <$> res
