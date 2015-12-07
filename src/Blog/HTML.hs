@@ -57,7 +57,7 @@ root user posts pageNumber = docTypeHtml $ do
     renderMeta "keywords" $ toValue $ T.intercalate ", " keywords
     pageAttributes
   H.body $ do
-    renderHeader user True
+    renderHeader user True Nothing
     mapM_ (renderPost True user Nothing) (take postsPerPage posts)
     renderPageControls pageNumber (length posts > postsPerPage)
 
@@ -68,8 +68,7 @@ drafts user posts pageNumber = docTypeHtml $ do
     renderMeta "robots" "noindex, nofollow"
     pageAttributes
   H.body $ do
-    renderHeader user False
-    h1 ! class_ "title" $ "Drafts"
+    renderHeader user False (Just "Drafts")
     mapM_ (renderPost True user Nothing) (take postsPerPage posts)
     renderPageControls pageNumber (length posts > postsPerPage)
   
@@ -81,9 +80,8 @@ postDetail user pst@(Post _ title _ _ tags _ _) = docTypeHtml $ do
     renderMeta "description" $ toValue $ postDescription pst
     pageAttributes
   H.body $ do
-    renderHeader user True
+    renderHeader user True Nothing
     renderPost False user Nothing pst
-    renderScript "/assets/js/common.js"
     renderScript "/assets/js/comments.js"
       
 postsByTag :: (Maybe User) -> Text -> [Post] -> Integer -> Html
@@ -93,7 +91,7 @@ postsByTag user tag posts pageNum = docTypeHtml $ do
     renderMeta "robots" "noindex, nofollow"
     pageAttributes
   H.body $ do
-    renderHeader user True
+    renderHeader user True Nothing
     mapM_ (renderPost True user (Just tag)) (take postsPerPage posts)
     renderPageControls pageNum (length posts > postsPerPage)
       
@@ -106,34 +104,36 @@ postEditor post = docTypeHtml $ do
     renderStylesheet "/assets/css/wordlist.css"
     pageAttributes
   H.body $ do
-    renderHeader Nothing False
-    input
-      ! type_ "text"
-      ! id "title-field"
-      ! placeholder "Post title"
-      ! value (textValue ptitle)
+    renderHeader Nothing False Nothing
     
-    div ! id "preview" $ ""
-    textarea
-      ! id "editor"
-      ! customAttribute "post-id" (stringValue $ show pid)
-      $ H.text pbody
+    H.form ! id "delete-form" ! action (toValue $ "/posts/" ++ show pid) ! method "DELETE" $ ""
+    H.form ! id "post-form" ! action "/posts" ! method "POST" $ do
+      when (isJust post) $ input ! type_ "hidden" ! name "id" ! value (toValue $ postID $ fromJust post)
+      input ! id "input-tags"  ! type_ "hidden" ! name "tags"  ! value (toValue $ T.intercalate "," tags)
+      input ! id "title-field" ! type_ "text"   ! name "title" ! value (textValue ptitle) ! placeholder "Post title" 
+      textarea ! id "editor" ! A.form "post-form" ! name "body" ! customAttribute "post-id" (stringValue $ show pid) $ H.text pbody
   
-    div ! id "checkbox-container" $ do
-      renderCheckbox "public-checkbox" "Public" $ not isDraft
-    
-    renderButton "Delete" "delete-button" Nothing
-    renderButton "Preview" "preview-button" Nothing
-    renderButton "Save" "save-button" Nothing
+    H.label ! A.id "checkbox" ! customAttribute "for" "public-checkbox" $ do
+      if not isDraft then checkbox ! A.checked "" else checkbox
+      toHtml $ ("Public" :: String)
+
+    when (isJust post) $ do
+      renderButton ! id "delete-button" ! onclick (submitFormJS "delete-form") $ "Delete"
+      
+    renderButton ! id "save-button" ! onclick (submitFormJS "post-form") $ "Save"
   
-    renderScript "/assets/js/marked.min.js"
     renderScript "/assets/js/wordlist-pure.js"
-    renderScript "/assets/js/common.js"
-    script $ toHtml $ tagJS -- supply tags to editor.js
-    renderScript "/assets/js/editor.js"
+    script $ mconcat [
+      "var editor = document.getElementById('editor');",
+      "var taginput = document.getElementById('input-tags');",
+      "editor.parentNode.insertBefore((new WordList(taginput)).div, editor.nextSibling);"
+      ]
   where
-    tagJS = mconcat ["var tags = [", T.intercalate ", " $ map quote tags, "];"]
-    quote s = mconcat ["'", s, "'"]
+    -- html
+    checkbox = input ! type_ "checkbox" ! id "public-checkbox" ! A.form "post-form" ! name "draft" ! value "f"
+    -- inline javascript
+    submitFormJS fid = mconcat ["document.getElementById('", fid,"').submit(); return false;"]
+    -- values
     ptitle = maybe "" postTitle post
     pbody = maybe "" postBody post
     pid = maybe (-1) postID post
@@ -145,18 +145,16 @@ login merrmsg = docTypeHtml $ do
   H.head $ do
     H.title "Login"
     renderMeta "robots" "noindex, nofollow"
-    renderStylesheet "/assets/css/login.css"
     pageAttributes
   H.body $ do
-    renderHeader Nothing False
+    renderHeader Nothing False Nothing
     h1 ! class_ "title" $ "Login"
     when (isJust merrmsg) (h3 ! class_ "subtitle" $ toHtml $ fromJust merrmsg)
     H.form ! A.id "loginform" ! action "/login" ! method "POST" $ do
       input ! type_ "hidden" ! A.name "source" ! value "form"
       renderTextField False "username" ! placeholder "Username"
       renderTextField True "password" ! placeholder "Password"
-    renderButton "Login" "submit" Nothing
-    renderScript "/assets/js/login.js"
+      input ! id "submit" ! class_ "button" ! type_ "submit" ! value "Login"
     
 internalError :: Text -> Html
 internalError err = docTypeHtml $ do
@@ -165,7 +163,7 @@ internalError err = docTypeHtml $ do
     renderMeta "robots" "noindex, nofollow"
     pageAttributes
   H.body $ do
-    renderHeader Nothing True
+    renderHeader Nothing True Nothing
     h1 ! class_ "title" $ "Something happened..."
     h3 ! class_ "subtitle" $ toHtml err
 
@@ -177,7 +175,7 @@ notFound = docTypeHtml $ do
     renderMeta "robots" "noindex, nofollow"
     pageAttributes
   H.body $ do
-    renderHeader Nothing True
+    renderHeader Nothing True Nothing
     h1 ! class_ "title" $ "Oh fudge!"
     h3 ! class_ "subtitle" $ "The page you're looking for does not exist."
     
@@ -243,26 +241,34 @@ pageAttributes = do
 
 -- |Render the page header. Contains things like the "about" information,
 -- the admin controls, etc
-renderHeader :: (Maybe User) -- ^ The authenticated user
+renderHeader :: (Maybe User) -- ^ the authenticated user
              -> Bool -- ^ whether or not the "about" info is rendered
+             -> Maybe Html -- ^ an optional title
              -> Html
-renderHeader user showAbout = do
+renderHeader user showAbout ttl = do
   div ! class_ (stringValue $ "header" ++ (if not showAbout then " nopadding" else "")) $ do
     a ! href "/" $ do
       img ! src "/assets/images/philly_skyline.svg" ! width "300" ! height "200"
+      
     when showAbout $ do
       h1 ! class_ "title" ! A.id "name-title" $ "Nate Symer"
       h3 ! class_ "subtitle" $ "Software Engineer & Designer"
       h3 ! class_ "tagline" $ "nate@symer.io • 856-419-7654"
       
-    -- TODO: render user displayName/username
-    when (isJust user) $ do
-      renderButton "Log Out" "" $ Just "/logout"
-      renderButton "New Post" "" $ Just "/posts/new"
-      renderButton "Drafts" "" $ Just "/drafts"
+    renderTitle ttl
+    renderControls user
+  where
+    renderTitle v = maybe (return ()) (h1 ! class_ "title") v
+    renderControls Nothing = return ()
+    renderControls (Just (User _ uname _ _)) = do
+      renderButton ! href "/logout"    $ "Log Out"
+      renderButton ! href "/posts/new" $ "New Post"
+      renderButton ! href "/drafts"    $ "Drafts"
+      h3 ! class_ "tagline" $ toHtml $ mconcat ["Logged in as ",uname]
+    
 
 renderPageControls :: Integer -> Bool -> Html
 renderPageControls pageNum hasNext = do
-  when (pageNum > 0)  $ renderButton "Newer" "prevbutton" $ mkHref $ pageNum-1
-  when hasNext        $ renderButton "Older" "nextbutton" $ mkHref $ pageNum+1
-  where mkHref = Just . toValue . (++) "/?page=" . show
+  when (pageNum > 0)  $ renderButton ! A.id "prevbutton" ! href (mkHref $ pageNum-1) $ "Newer"
+  when hasNext        $ renderButton ! A.id "nextbutton" ! href (mkHref $ pageNum+1) $ "Older"
+  where mkHref = toValue . (++) "/?page=" . show

@@ -19,12 +19,9 @@ module Blog.HTML.Common
   renderScript,
   -- * HTML Controls
   renderButton,
-  renderCheckbox,
   renderTextField,
 )
 where
-
-import Data.Maybe
 
 import Text.Blaze.Html
 import Text.Blaze.Html5 as H hiding (style, param, map)
@@ -63,36 +60,15 @@ renderTextField isSecure n = f isSecure
     f True  = el ! type_ "password"
     f False = el ! type_ "text"
     el = input
-         ! class_ "blogtextfield"
+         ! class_ "textfield"
          ! A.id n
          ! A.name n
          ! customAttribute "autocorrect" "off"
          ! customAttribute "autocapitalize" "off"
          ! customAttribute "spellcheck" "false"
 
--- |Render a checkbox.
-renderCheckbox :: AttributeValue -- ^ DOM @id@ of the checkbox
-               -> Html-- ^ content to be displayed to the right of the checkbox
-               -> Bool -- ^ whether or not the checkbox is checked
-               -> Html
-{-# INLINE renderCheckbox #-}
-renderCheckbox box h isChecked = do
-  H.label ! customAttribute "for" box $ do
-    checkbox isChecked
-    h
-  where
-    checkbox True  = el ! A.checked ""
-    checkbox False = el
-    el = input ! type_ "checkbox" ! id box
-
--- |Render a button.
-renderButton :: Html -- ^ text to be displayed in the button
-             -> AttributeValue -- ^ DOM @id@ of the button
-             -> Maybe AttributeValue -- ^ DOM @href@ of the button
-             -> Html
+-- |Renders a button, providing it with the a class and the nofollow rel.
+-- for example: @renderButton ! href "/some/path"
+renderButton :: Html -> Html
 {-# INLINE renderButton #-}
-renderButton t bid h = a ! class_ "blogbutton"
-                         ! rel "nofollow"
-                         ! id bid
-                         ! maybe mempty href h
-                         $ t
+renderButton = a ! class_ "button" ! rel "nofollow"

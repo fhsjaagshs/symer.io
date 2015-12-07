@@ -40,6 +40,7 @@ body {
 
 .header:not(.nopadding):not(:last-child) {
   margin-bottom: 80px;
+  display: block;
 }
 
 /* HTML primitive tags (mostly for rendered markdown) */
@@ -81,8 +82,7 @@ pre {
 }
 
 blockquote {
-  background: #f9f9f9;
-  border-left: 8px solid #eab05b;
+  border-left: 5px solid #eab05b;
   margin: 1.5em 10px;
   padding: 0.5em 10px;
 }
@@ -115,33 +115,7 @@ blockquote p {
   color: #b15d42;
 }
 
-/* Buttons */
 
-a.blogbutton {
-  display: inline-block;
-  cursor: pointer;
-  padding: 10px 30px;
-  background-color: #9A9A9A;
-  
-  margin: 6px;
-  color: #F9F9F9;
-  text-decoration: none;
-  -webkit-touch-callout: none;
-  -webkit-user-select: none;
-  -khtml-user-select: none;
-  -moz-user-select: none;
-  -ms-user-select: none;
-  -o-user-select: none;
-  user-select: none;
-}
-
-a.blogbutton:hover {
-  background-color: #5A5A5A;
-}
-
-a.blogbutton:active {
-  background-color: #9F9F9F;
-}
 
 #prevbutton {
   float: left;
@@ -226,4 +200,79 @@ a.taglink:active {
 
 a.read-more {
 /*  TODO: colors */
+}
+
+/*
+
+Common Styles
+
+*/
+
+/* Buttons */
+
+.button {
+  font-size: 16px;
+  border: none;
+  display: inline-block;
+  cursor: pointer;
+  padding: 10px;
+  background-color: #daccae;
+  color: #876e71;
+  border-radius: 2px;
+  margin: 5px;
+  text-decoration: none;
+}
+
+.button:hover {
+  box-shadow: inset 0px 3px gray;
+}
+
+.button:active {
+  background-color: #c9bca0;
+}
+
+/* Text Fields */
+
+input[type="text"].textfield,
+input[type="password"].textfield {
+  display: block;
+  margin: 20px auto;
+  text-align: center;
+  font-family: sans-serif;
+  font-size: 18px;
+  appearance: none;
+  box-shadow: none;
+  border-radius: none;
+  padding: 10px;
+  border: none;
+  border-bottom: solid 2px #C9C9C9;
+  transition: border 0.3s;
+  border-radius: 0;
+}
+
+input[type="text"].textfield:focus,
+input[type="password"].textfield:focus {
+  outline: none;
+  border-bottom: solid 2px #969696;
+}
+
+textarea.textarea {
+  width: 95%;
+  height: 200px;
+  padding: 8px 8px 8px 10px;
+  border: none;
+  border-left: solid 2px #C9C9C9;
+  resize: none;
+  outline: none;
+  font-size: 15pt;
+  background-color: white;
+  font-family: Helvetica, sans-serif;
+  display: inline-block;
+  vertical-align: middle;
+  appearance: none;
+  border-radius: 0;
+}
+
+textarea.textarea:focus {
+  border-left: solid 2px #969696;
 }

@@ -1,10 +1,11 @@
 // WordList
 // constructor build a WordList
 // words -> words to display in the wordlist (cloned)
-var WordList = function WordList(words) {
-  this.words = words.slice(0); // type: Array of String
+var WordList = function WordList(input) {
   this.tagDivs = []; // type: Array of HTMLElement
-  
+  this.formInput = input; // hook into HTML forms
+  this.words = input.value.split(",");
+
   this.div = document.createElement("div");
   this.div.className = "wordlist-view";
 
@@ -57,6 +58,8 @@ WordList.prototype = {
     this.tagDivs.forEach(function(node) {
       this.div.insertBefore(node, this.input);
     }, this);
+    
+    this.formInput.value = this.words.join(',');
   },
   divForWord: function(word) {
     var div = document.createElement("div");
