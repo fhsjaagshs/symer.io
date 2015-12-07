@@ -116,13 +116,13 @@ postEditor post = docTypeHtml $ do
         if not isDraft then checkbox ! A.checked "" else checkbox
         toHtml $ ("Public" :: String)
         
-      input ! id "save-buton" ! class_ "button" ! type_ "submit" ! value "Save"
+      input ! id "save-button" ! class_ "button" ! type_ "submit" ! value "Save"
 
     when (isJust post) $ do
       H.form ! id "delete-form" ! action "/posts" ! method "POST" $ do
         input ! type_ "hidden" ! name "id"     ! value (toValue $ postID $ fromJust post)
         input ! type_ "hidden" ! name "method" ! value "DELETE"
-        input ! id "delete-buton" ! class_ "button" ! type_ "submit" ! value "Delete"
+        input ! id "delete-button" ! class_ "button" ! type_ "submit" ! value "Delete"
       
     renderScript "/assets/js/wordlist-pure.js"
     script $ mconcat [

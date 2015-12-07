@@ -4,7 +4,7 @@
 var WordList = function WordList(input) {
   this.tagDivs = []; // type: Array of HTMLElement
   this.formInput = input; // hook into HTML forms
-  this.words = input.value.split(",");
+  this.words = input.value.length == 0 ? [] : input.value.split(",");
 
   this.div = document.createElement("div");
   this.div.className = "wordlist-view";
@@ -13,11 +13,12 @@ var WordList = function WordList(input) {
   this.input.type = "text";
   this.input.placeholder = "tag";
   this.input.wordlist = this;
-  this.input.onkeyup = function(e) {
+  this.input.onkeypress = function(e) {
     if (e.keyCode == 13 || e.keyCode == 44) { // enter key
       if (this.wordlist.addWord(this.value)) {
         this.value = "";
       }
+      e.preventDefault();
     }
   }
   this.div.appendChild(this.input);
