@@ -18,7 +18,6 @@ import Web.App.Assets
 import Data.Maybe
        
 import Control.Monad
-import Control.Monad.IO.Class
 
 import Web.Scotty.Trans as Scotty
 import Network.HTTP.Types.Status (Status(..))
@@ -112,40 +111,34 @@ app = do
             params >>= redirect . fromMaybe "/" . lookup "redirect"
           else redirect "/login?err=Invalid%20password%2E"
 
-  -- creates/updates a BlogPost in the database
+  -- modify a @Post@ in the database
   post "/posts" $ do
     auth <- authenticate
-    liftIO $ print auth
     case auth of
       Nothing -> status $ Status 401 "Missing authentication"
       Just authUser -> do
         ps <- params
-        liftIO $ print ps
         let pid      = read . TL.unpack <$> lookup "id" ps
             ptitle   = TL.toStrict <$> lookup "title" ps
             pbody    = TL.toStrict <$> lookup "body" ps
             ptags    = map TL.toStrict . TL.splitOn "," <$> lookup "tags" ps
             pisdraft = maybe True truthy $ lookup "draft" ps
-        liftIO $ print pid
-        liftIO $ print ptitle
-        liftIO $ print pbody
-        liftIO $ print ptags
-        liftIO $ print pisdraft
-        mPostID <- upsertPost authUser pid ptitle pbody ptags pisdraft
-        case mPostID of
-          Nothing -> status $ Status 400 "Missing required parameters"
-          Just postId -> do
-            status $ Status 302 ""
-            addHeader "Location" $ TL.pack $ "/posts/" ++ (show postId)
-
-  -- deletes a BlogPost from the database
-  delete "/posts/:id" $ do
-    authUser <- authenticate
-    res <- param "id" >>= (flip deletePost $ fromJust authUser)
-    liftIO $ print res
-    case (res :: Maybe Integer) of
-      Nothing -> status $ Status 404 "blog post not found."
-      Just _  -> Scotty.text "ok"
+            
+        case (lookup "method" ps, pid) of
+          (Just "DELETE", Just jpid) -> do
+            res <- deletePost jpid authUser
+            case res of
+              Nothing -> status $ Status 404 "Failed to find post to delete."
+              Just _  -> do
+                status $ Status 302 ""
+                addHeader "Location" "/"
+          _ -> do
+            mPostID <- upsertPost authUser pid ptitle pbody ptags pisdraft
+            case mPostID of
+              Nothing -> status $ Status 400 "Missing required parameters"
+              Just postId -> do
+                status $ Status 302 ""
+                addHeader "Location" $ TL.pack $ "/posts/" ++ (show postId)
 
   post "/posts/:id/comments" $ do
     postId <- param "id"

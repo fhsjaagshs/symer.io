@@ -105,23 +105,25 @@ postEditor post = docTypeHtml $ do
     pageAttributes
   H.body $ do
     renderHeader Nothing False Nothing
-    
-    H.form ! id "delete-form" ! action (toValue $ "/posts/" ++ show pid) ! method "DELETE" $ ""
+
     H.form ! id "post-form" ! action "/posts" ! method "POST" $ do
-      when (isJust post) $ input ! type_ "hidden" ! name "id" ! value (toValue $ postID $ fromJust post)
-      input ! id "input-tags"  ! type_ "hidden" ! name "tags"  ! value (toValue $ T.intercalate "," tags)
-      input ! id "title-field" ! type_ "text"   ! name "title" ! value (textValue ptitle) ! placeholder "Post title" 
-      textarea ! id "editor" ! A.form "post-form" ! name "body" ! customAttribute "post-id" (stringValue $ show pid) $ H.text pbody
+      when (isJust post) $ input  ! type_ "hidden" ! name "id"    ! value (toValue $ postID $ fromJust post)
+      input    ! id "input-tags"  ! type_ "hidden" ! name "tags"  ! value (toValue $ T.intercalate "," tags)
+      input    ! id "title-field" ! type_ "text"   ! name "title" ! value (textValue ptitle) ! placeholder "Post title" 
+      textarea ! id "editor" ! A.form "post-form"  ! name "body"  ! customAttribute "post-id" (stringValue $ show pid) $ H.text pbody
   
-    H.label ! A.id "checkbox" ! customAttribute "for" "public-checkbox" $ do
-      if not isDraft then checkbox ! A.checked "" else checkbox
-      toHtml $ ("Public" :: String)
+      H.label ! A.id "checkbox" ! customAttribute "for" "public-checkbox" $ do
+        if not isDraft then checkbox ! A.checked "" else checkbox
+        toHtml $ ("Public" :: String)
+        
+      input ! id "save-buton" ! class_ "button" ! type_ "submit" ! value "Save"
 
     when (isJust post) $ do
-      renderButton ! id "delete-button" ! onclick (submitFormJS "delete-form") $ "Delete"
+      H.form ! id "delete-form" ! action "/posts" ! method "POST" $ do
+        input ! type_ "hidden" ! name "id"     ! value (toValue $ postID $ fromJust post)
+        input ! type_ "hidden" ! name "method" ! value "DELETE"
+        input ! id "delete-buton" ! class_ "button" ! type_ "submit" ! value "Delete"
       
-    renderButton ! id "save-button" ! onclick (submitFormJS "post-form") $ "Save"
-  
     renderScript "/assets/js/wordlist-pure.js"
     script $ mconcat [
       "var editor = document.getElementById('editor');",
@@ -131,8 +133,6 @@ postEditor post = docTypeHtml $ do
   where
     -- html
     checkbox = input ! type_ "checkbox" ! id "public-checkbox" ! A.form "post-form" ! name "draft" ! value "f"
-    -- inline javascript
-    submitFormJS fid = mconcat ["document.getElementById('", fid,"').submit(); return false;"]
     -- values
     ptitle = maybe "" postTitle post
     pbody = maybe "" postBody post
