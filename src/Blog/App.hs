@@ -111,35 +111,8 @@ app = do
             params >>= redirect . fromMaybe "/" . lookup "redirect"
           else redirect "/login?err=Invalid%20password%2E"
 
-  -- modify a @Post@ in the database
-  post "/posts" $ do
-    auth <- authenticate
-    case auth of
-      Nothing -> status $ Status 401 "Missing authentication"
-      Just authUser -> do
-        ps <- params
-        let pid      = read . TL.unpack <$> lookup "id" ps
-            ptitle   = TL.toStrict <$> lookup "title" ps
-            pbody    = TL.toStrict <$> lookup "body" ps
-            ptags    = map TL.toStrict . TL.splitOn "," <$> lookup "tags" ps
-            pisdraft = maybe True truthy $ lookup "draft" ps
-            
-        case (lookup "method" ps, pid) of
-          (Just "DELETE", Just jpid) -> do
-            res <- deletePost jpid authUser
-            case res of
-              Nothing -> status $ Status 404 "Failed to find post to delete."
-              Just _  -> do
-                status $ Status 302 ""
-                addHeader "Location" "/"
-          _ -> do
-            mPostID <- upsertPost authUser pid ptitle pbody ptags pisdraft
-            case mPostID of
-              Nothing -> status $ Status 400 "Missing required parameters"
-              Just postId -> do
-                status $ Status 302 ""
-                addHeader "Location" $ TL.pack $ "/posts/" ++ (show postId)
-
+  post "/posts" $ postPosts
+    
   post "/posts/:id/comments" $ do
     postId <- param "id"
     email <- param "email"
@@ -148,16 +121,34 @@ app = do
     parentId <- fmap (read . TL.unpack) . lookup "parent_id" <$> params
     mcomment <- insertComment parentId postId email displayName bdy
     case mcomment of
-      Nothing -> Scotty.status $ Status 500 "Failed to insert comment."
-      Just comment -> do
-        addHeader "Location" $ mconcat ["/posts/", TL.pack $ show postId]
-        Scotty.json $ comment
+      Nothing -> Scotty.status $ Status 500 "Failed to insert comment." -- TODO: revisit this
+      Just comment -> Scotty.json $ comment
 
   get "/posts/:id/comments.json" $ param "id" >>= getCommentsForPost >>= Scotty.json
   get (regex "/assets/(.*)") $ param "1" >>= loadAsset
 
   defaultHandler $ renderHtml . HTML.internalError
   notFound $ renderHtml $ HTML.notFound
+  
+postPosts :: PostgresActionM ()
+postPosts = authenticate >>= handleAuth
+  where
+    handleAuth Nothing     = addHeader "Location" "/login"
+    handleAuth (Just user) = params >>= handleParams user . filter ((<) 0 . TL.length . snd)
+    handleParams user ps = handleMethod user ps (lookup "method" ps) (read . TL.unpack <$> lookup "id" ps)
+    handleMethod user _ (Just "DELETE") (Just pid) = deletePost user pid >>= handleDelete
+    handleMethod user ps _ pid = upsertPost pid title bdy tags draft user >>= handleUpsert
+      where title = maybe "" TL.toStrict                        $ lookup "title" ps
+            bdy   = maybe "" TL.toStrict                        $ lookup "body" ps
+            tags  = maybe [] (map TL.toStrict . TL.splitOn ",") $ lookup "tags" ps
+            draft = maybe True truthy                           $ lookup "draft" ps
+    handleUpsert Nothing = status $ Status 400 "Missing required parameters"
+    handleUpsert (Just postId) = do
+      status $ Status 302 ""
+      addHeader "Location" $ TL.pack $ "/posts/" ++ (show postId)
+    handleDelete Nothing = status $ Status 404 "Failed to find post to delete."
+    handleDelete (Just _) = (status $ Status 302 "") >> (addHeader "Location" "/")
+          
     
 -- setCacheControl :: ActionT e WebM ()
 -- setCacheControl = Scotty.setHeader "Cache-Control" ccontrol

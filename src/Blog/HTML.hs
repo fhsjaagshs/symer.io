@@ -138,7 +138,7 @@ postEditor post = docTypeHtml $ do
     pbody = maybe "" postBody post
     pid = maybe (-1) postID post
     tags = maybe [] postTags post
-    isDraft = maybe True postIsDraft post
+    isDraft = maybe True postDraft post
     
 login :: Maybe Text -> Html
 login merrmsg = docTypeHtml $ do

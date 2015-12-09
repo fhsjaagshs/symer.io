@@ -8,8 +8,6 @@ module Blog.Post
   postDescription,
   -- * Queries
   upsertPost,
-  insertPost,
-  updatePost,
   getPostsByTag,
   getPosts,
   getDrafts,
@@ -25,116 +23,90 @@ import Blog.Util.Markdown
 import Blog.Postgres
 
 import Cheapskate
-import Data.Aeson as Aeson
 
-import Data.Maybe
+import Data.Maybe (listToMaybe)
 import Data.Text (Text)
-import qualified Data.Text as T
-import Data.Time.Clock
-import Data.List (intercalate)
+import qualified Data.Text as T (take)
+import Data.Time.Clock (UTCTime)
+import Data.List (nub)
 
-import Database.PostgreSQL.Simple.ToField as PG.ToField
-import Database.PostgreSQL.Simple.FromRow as PG.FromRow
-import Database.PostgreSQL.Simple.ToRow as PG.ToRow
-import Database.PostgreSQL.Simple.Types as PG.Types
+import Database.PostgreSQL.Simple.FromRow (FromRow(..),field)
+import Database.PostgreSQL.Simple.ToField -- (toField)
+import Database.PostgreSQL.Simple.Types (PGArray(..))
 
+-- |Represents a post - a row from the view @v_posts@.
 data Post = Post {
-  postID :: !Integer,
-  postTitle :: Text,
-  postBody :: Text,
-  postTimestamp :: UTCTime,
-  postTags :: [Text],
-  postIsDraft :: !Bool,
-  postAuthor :: User
-} deriving (Show)
+  postID :: Integer, -- ^ the post's identifier
+  postTitle :: Text, -- ^ post's title
+  postBody :: Text, -- ^ the post itself
+  postTimestamp :: UTCTime, -- ^ when the post was created
+  postTags :: [Text], -- ^ a post's tags
+  postDraft :: !Bool, -- ^ if the post is a draft
+  postAuthor :: User -- ^ the user who wrote the post
+} deriving (Eq, Show)
 
-instance Eq Post where
-  (==) a_ b_ = (postID a_) == (postID b_)
-
-instance FromRow Post where
+instance FromRow Post where -- as selected from v_posts or v_drafts
   fromRow = Post <$> field <*> field <*> field <*> field <*> (fmap fromPGArray field) <*> field <*> field
-  
-instance ToRow Post where
-  toRow (Post pid title body ts tags isDraft (User authorId _ _ _)) =
-    [toField pid,
-    toField title,
-    toField body,
-    toField ts,
-    toField $ PGArray tags,
-    toField authorId,
-    toField isDraft]
-  
-instance ToJSON Post where
-  toJSON (Post pid title body ts tags isDraft author) =
-    Aeson.object [
-      "id" .= pid,
-      "title" .= title,
-      "body" .= body,
-      "timestamp" .= ts,
-      "tags" .= tags,
-      "draft" .= isDraft,
-      "author" .= toJSON author
-    ]
 
+-- |Get an SEO-ready description from a post.
 postDescription :: Post -> Text
 postDescription = T.take 150 . stripMarkdown . markdown def . postBody
 
--- |Number of posts to return per page
+-- |Number of posts to return per page.
 postsPerPage :: Int
 postsPerPage = 10
 
 -- TODO: use postgresql-simple's fold function instead of loading all posts into memory
 
-upsertPost :: User -> Maybe Integer -> Maybe Text -> Maybe Text -> Maybe [Text] -> Bool -> PostgresActionM (Maybe Integer)
-upsertPost user Nothing    title body tags draft = insertPost user title body tags draft
-upsertPost user (Just pid) title body tags draft = updatePost user pid title body tags draft
+-- |Either @INSERT@ or @UPDATE@ a post in the database.
+upsertPost :: Maybe Integer -- ^ post identifier
+           -> Text -- ^ post title
+           -> Text -- ^ post body
+           -> [Text] -- ^ post tags
+           -> Bool -- ^ whether the post is a draft
+           -> User -- ^ post author
+           -> PostgresActionM (Maybe Integer) -- ^ the identifier of the post from the database
+upsertPost (Just p) t b tg d (User aid _ _ _) = onlyQuery $ postgresQuery sql (t,b,mkTagsField tg,d,aid,p)
+  where sql = "UPDATE posts SET title=?,body=?,tags=?,draft=? WHERE author_id=? AND id=? RETURNING id"
+upsertPost Nothing t b tg d (User aid _ _ _) = onlyQuery $ postgresQuery sql (t,b,mkTagsField tg,d,aid)
+  where sql = "INSERT INTO posts (title,body,tags,draft,author_id) VALUES (?,?,?,?,?) RETURNING id"
 
-insertPost :: User -> Maybe Text -> Maybe Text -> Maybe [Text] -> Bool -> PostgresActionM (Maybe Integer)
-insertPost user title body tags draft = maybeQuery $ postgresQuery q fieldValues
-  where
-    q = "INSERT INTO blogposts (" ++ intercalate "," fieldNames ++ ") VALUES (" ++ intercalate "," qMarks ++ ") RETURNING identifier"
-    fieldNames = map fst values
-    fieldValues = map snd values
-    qMarks = replicate (length values) "?"
-    values :: [(String, Action)]
-    values = catMaybes $ [Just ("is_draft", toField draft),
-                          Just ("author_id", toField $ userUID user),
-                          mkField "title" <$> title,
-                          mkField "bodyText" <$> body,
-                          (mkField "tags" . PGArray) <$> tags]
-      where
-        mkField sql = (sql,) . toField
-
-updatePost :: User -> Integer -> Maybe Text -> Maybe Text -> Maybe [Text] -> Bool -> PostgresActionM (Maybe Integer)
-updatePost user pid title body tags draft = maybeQuery $ postgresQuery q (fvalues ++ [toField $ userUID user, toField pid])
-  where
-    q = "UPDATE blogposts SET " ++ (intercalate "," fsetters) ++ " WHERE author_id=? AND identifier=? RETURNING identifier"
-    fsetters = "timestamp=clock_timestamp()":(map fst values)
-    fvalues = map snd values
-    values :: [(String, Action)]
-    values = catMaybes $ [Just ("is_draft=?", toField draft),
-                          mkField "title=?" title,
-                          mkField "bodyText=?" body,
-                          mkField "tags=uniq(?)" $ PGArray <$> tags]
-    mkField sql (Just v) = Just (sql, toField v)
-    mkField _   Nothing = Nothing
-
-getPostsByTag :: Text -> Integer -> PostgresActionM [Post]
+-- |Get a page of posts by tag.
+getPostsByTag :: Text -- ^ a tag
+              -> Integer -- ^ the page number
+              -> PostgresActionM [Post]
 getPostsByTag tag pageNum = postgresQuery sql (tag,pageNum*(fromIntegral postsPerPage),postsPerPage+1)
-  where sql = "SELECT * FROM v_posts v WHERE ?=any(v.tags) ORDER BY identifier DESC OFFSET ? LIMIT ?"
+  where sql = "SELECT * FROM v_posts WHERE ?=any(tags) ORDER BY timestamp DESC OFFSET ? LIMIT ?"
 
-getPosts :: Integer -> PostgresActionM [Post]
+-- |Get a page of posts.
+getPosts :: Integer -- ^ page number
+         -> PostgresActionM [Post]
 getPosts pageNum = postgresQuery sql (pageNum*(fromIntegral postsPerPage), postsPerPage+1)
-  where sql = "SELECT * FROM v_posts ORDER BY identifier DESC OFFSET ? LIMIT ?"
+  where sql = "SELECT * FROM v_posts ORDER BY timestamp DESC OFFSET ? LIMIT ?"
 
-getDrafts :: User -> Integer -> PostgresActionM [Post]
+-- |Get a page of a user's drafts.
+getDrafts :: User -- ^ user to get drafts for
+          -> Integer -- ^ page number
+          -> PostgresActionM [Post]
 getDrafts user pageNum = postgresQuery sql (userUID user, pageNum*(fromIntegral postsPerPage), postsPerPage+1)
-  where sql = "SELECT * FROM v_drafts WHERE (v_drafts.user).id=? ORDER BY identifier DESC OFFSET ? LIMIT ?"
+  where sql = "SELECT * FROM v_drafts p WHERE (p.user).id=? ORDER BY timestamp DESC OFFSET ? LIMIT ?"
 
-getPost :: Integer -> PostgresActionM (Maybe Post)
+-- |Get a post by id.
+getPost :: Integer -- ^ post id
+        -> PostgresActionM (Maybe Post)
 getPost pid = listToMaybe <$> postgresQuery sql [pid]
-  where sql = "SELECT * FROM v_posts_all WHERE identifier=? LIMIT 1"
+  where sql = "SELECT * FROM v_posts_all WHERE id=? LIMIT 1"
 
-deletePost :: Integer -> User -> PostgresActionM (Maybe Integer)
-deletePost pid (User uid _ _ _) = maybeQuery $ postgresQuery sql (pid, uid)
-  where sql = "DELETE FROM blogposts WHERE identifier=? AND author_id=? RETURNING identifier"
+-- |Delete a post.
+deletePost :: User -- ^ post owner
+           -> Integer -- ^ post id
+           -> PostgresActionM (Maybe Integer) -- ^ id of deleted post
+deletePost (User uid _ _ _) pid = onlyQuery $ postgresQuery sql (pid, uid)
+  where sql = "DELETE FROM posts WHERE id=? AND author_id=? RETURNING id"
+
+{- Internal -}
+
+-- |Satisfy SQL type checking if the tags list is empty
+mkTagsField :: [Text] -- ^ the tags to serialize
+            -> Action -- ^ the resulting type cast field value for the tags list
+mkTagsField tags = Many [toField $ PGArray $ nub tags, Plain "::text[]"]

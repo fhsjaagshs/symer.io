@@ -14,10 +14,11 @@ module Blog.Postgres
   makePostgresPool,
   destroyPostgresPool,
   withPostgres,
+  postgresMigrate,
   -- * Performing Queries
   postgresQuery,
   postgresExec,
-  maybeQuery
+  onlyQuery
 )
 where
 
@@ -59,12 +60,9 @@ instance WebAppState Postgres where
 -- the host is set to @localhost@.
 makePostgresPool :: IO (Pool Connection)
 makePostgresPool = do
+  putStrLn "Initializing PostgreSQL connection pool"
   pool <- createPool (appEnvIO >>= connectPostgreSQL . connString) close 2 5.0 5
-  withResource pool $ \pg -> void $ withTransaction pg $ do
-    void $ execute_ pg "SET client_min_messages=WARNING;"
-    void $ runMigration $ MigrationContext MigrationInitialization True pg
-    void $ execute_ pg "SET client_min_messages=NOTICE;"
-    runMigration $ MigrationContext (MigrationFile "blog.sql" "migrations/blog.sql") True pg
+  withResource pool postgresMigrate
   return pool
   where
   connString "production" = "" -- postgres config loaded *only* from env vars
@@ -77,6 +75,14 @@ destroyPostgresPool = destroyAllResources
 -- |"lift" a function into the connection pool.
 withPostgres :: (Connection -> IO b) -> PostgresActionM b
 withPostgres f = getState >>= \(Postgres p) -> liftIO $ withResource p f
+
+-- |Run DB migrations
+postgresMigrate :: Connection -> IO ()
+postgresMigrate pg = void $ withTransaction pg $ do
+  void $ execute_ pg "SET client_min_messages=WARNING;"
+  void $ runMigration $ MigrationContext MigrationInitialization True pg
+  void $ execute_ pg "SET client_min_messages=NOTICE;"
+  runMigration $ MigrationContext (MigrationFile "blog.sql" "migrations/blog.sql") True pg
     
 -- |Make a PostgreSQL query & return parameters.
 postgresQuery :: (FromRow a, ToRow b) => String -- ^ query
@@ -96,6 +102,6 @@ stringToQuery = Query . toByteString . Utf8.fromString
 -- |Make a query return a maybe value. Useful if you're updating a
 -- single row and want to get a single column from the updated row
 -- using @RETURNING@.
-maybeQuery :: PostgresActionM [Only a] -- ^ query action
-           -> PostgresActionM (Maybe a)
-maybeQuery res = (listToMaybe . map fromOnly) <$> res
+onlyQuery :: PostgresActionM [Only a] -- ^ query action
+          -> PostgresActionM (Maybe a)
+onlyQuery res = fmap fromOnly . listToMaybe <$> res

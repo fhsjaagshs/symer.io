@@ -34,10 +34,7 @@ data Comment = Comment {
   commentTimestamp :: UTCTime, -- ^ when the comment was made
   commentBody :: Text, -- ^ the comment itself
   commentChildren :: [Comment] -- ^ replies to the comment
-} deriving (Show)
-
-instance Eq Comment where
-  a == b = commentID a == commentID b
+} deriving (Eq,Show)
 
 instance ToJSON Comment where
  toJSON (Comment cid _ postId email dname ts body children) =
@@ -71,18 +68,19 @@ nestComments cmnts = map (f antiroots) roots
     roots = filter (isNothing . commentParentID) cmnts
     antiroots = filter (isJust . commentParentID) cmnts
     f [] a = a
-    f (x:xs) a = f xs (addHierarchical a x)
+    f (x:xs) a = f xs $! addHierarchical a x
     modifyChildren n g = n { commentChildren = (g $ commentChildren n) }
     isParent p c = maybe False ((==) (commentID p)) (commentParentID c)
-    addHierarchical a c
-      | isParent a c = modifyChildren a ((:) c)
-      | otherwise = modifyChildren a (map (\a' -> addHierarchical a' c))
+    addHierarchical a c = modifyChildren a $! if isParent a c
+                            then ((:) c)
+                            else (map $ \a' -> addHierarchical a' c)
 
 -- | Get a post's comments
 getCommentsForPost :: Integer -- ^ post id
                    -> PostgresActionM [Comment]
 getCommentsForPost pid = nestComments <$> postgresQuery "SELECT * FROM comments WHERE postId=?" [pid]
 
+-- TODO: have this take a 'Comment', switching 'commentID' to a @Maybe Integer@
 -- |Insert a comment into the database
 insertComment :: Maybe Integer -- ^ parent comment id
               -> Integer -- ^ post id
