@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE OverloadedStrings, FlexibleInstances #-}
 
 {-|
 Module      : Blog.HTML
@@ -83,7 +83,7 @@ postDetail user pst@(Post _ title _ _ tags _ _) = docTypeHtml $ do
     renderHeader user True Nothing
     renderPost False user Nothing pst
     renderScript "/assets/js/comments.js"
-      
+
 postsByTag :: (Maybe User) -> Text -> [Post] -> Integer -> Html
 postsByTag user tag posts pageNum = docTypeHtml $ do
   H.head $ do
@@ -94,52 +94,53 @@ postsByTag user tag posts pageNum = docTypeHtml $ do
     renderHeader user True Nothing
     mapM_ (renderPost True user (Just tag)) (take postsPerPage posts)
     renderPageControls pageNum (length posts > postsPerPage)
-      
+    
 postEditor :: Maybe Post -> Html
-postEditor post = docTypeHtml $ do
+postEditor Nothing = renderEditor Nothing "" "" [] True
+postEditor (Just (Post pid t bdy _ tg d _)) = renderEditor (Just pid) t bdy tg d
+
+renderEditor :: Maybe Integer -> T.Text -> T.Text -> [T.Text] -> Bool -> Html
+renderEditor pid title body tags draft = docTypeHtml $ do
   H.head $ do
-    H.title $ toHtml $ maybe "New Post" postTitle post
+    H.title $ toHtml $ maybe "New Post" (const title) pid
     renderMeta "robots" "noindex, nofollow"
     renderStylesheet "/assets/css/editor.css"
     renderStylesheet "/assets/css/wordlist.css"
     pageAttributes
   H.body $ do
     renderHeader Nothing False Nothing
-
-    H.form ! id "post-form" ! action "/posts" ! method "POST" $ do
-      when (isJust post) $ input  ! type_ "hidden" ! name "id"    ! value (toValue $ postID $ fromJust post)
-      input    ! id "input-tags"  ! type_ "hidden" ! name "tags"  ! value (toValue $ T.intercalate "," tags)
-      input    ! id "title-field" ! type_ "text"   ! name "title" ! value (textValue ptitle) ! placeholder "Post title" 
-      textarea ! id "editor" ! A.form "post-form"  ! name "body"  ! customAttribute "post-id" (stringValue $ show pid) $ H.text pbody
-  
-      H.label ! A.id "checkbox" ! customAttribute "for" "public-checkbox" $ do
-        if not isDraft then checkbox ! A.checked "" else checkbox
-        toHtml $ ("Public" :: String)
-        
-      input ! id "save-button" ! class_ "button" ! type_ "submit" ! value "Save"
-
-    when (isJust post) $ do
-      H.form ! id "delete-form" ! action "/posts" ! method "POST" $ do
-        input ! type_ "hidden" ! name "id"     ! value (toValue $ postID $ fromJust post)
-        input ! type_ "hidden" ! name "method" ! value "DELETE"
-        input ! id "delete-button" ! class_ "button" ! type_ "submit" ! value "Delete"
-      
+    upsertForm pid
+    deleteForm pid
     renderScript "/assets/js/wordlist-pure.js"
     script $ mconcat [
-      "var editor = document.getElementById('editor');",
-      "var taginput = document.getElementById('input-tags');",
-      "editor.parentNode.insertBefore((new WordList(taginput)).div, editor.nextSibling);"
-      ]
+      "var e=document.getElementById('editor');",
+      "var i=document.getElementById('input-tags');",
+      "e.parentNode.insertBefore((new WordList(i)).div,e.nextSibling);"]
   where
-    -- html
-    checkbox = input ! type_ "checkbox" ! id "public-checkbox" ! A.form "post-form" ! name "draft" ! value "f"
-    -- values
-    ptitle = maybe "" postTitle post
-    pbody = maybe "" postBody post
-    pid = maybe (-1) postID post
-    tags = maybe [] postTags post
-    isDraft = maybe True postDraft post
+    deleteForm Nothing = return ()
+    deleteForm (Just pid') = do
+      H.form ! id "delete-form" ! action "/posts" ! method "POST" $ do
+        input ! type_ "hidden" ! name "id"     ! value (toValue pid')
+        input ! type_ "hidden" ! name "method" ! value "DELETE"
+        input ! id "delete-button" ! class_ "button" ! type_ "submit" ! value "Delete"
+    upsertForm pid' = H.form ! id "post-form" ! action "/posts" ! method "POST" $ f pid'
+      where
+        f (Just pid'') = do
+          input ! type_ "hidden" ! name "id" ! value (toValue pid'')
+          f Nothing
+        f Nothing = do
+          input    ! id "input-tags"  ! type_ "hidden" ! name "tags"  ! value (toValue . T.intercalate "," $ tags)
+          input    ! id "title-field" ! type_ "text"   ! name "title" ! value (toValue title) ! placeholder "Post title" 
+          textarea ! id "editor" ! A.form "post-form"  ! name "body" $ toHtml body
     
+          H.label ! id "checkbox" ! for "public" $ do
+            if draft
+              then input ! type_ "checkbox" ! id "public" ! A.form "post-form" ! name "draft" ! value (toValue draft)
+              else input ! type_ "checkbox" ! id "public" ! A.form "post-form" ! name "draft" ! value (toValue draft) ! A.checked ""
+            toHtml $ ("Public" :: String)
+            
+          input ! id "save-button" ! class_ "button" ! type_ "submit" ! value "Save"
+       
 login :: Maybe Text -> Html
 login merrmsg = docTypeHtml $ do
   H.head $ do
@@ -155,7 +156,7 @@ login merrmsg = docTypeHtml $ do
       renderTextField False "username" ! placeholder "Username"
       renderTextField True "password" ! placeholder "Password"
       input ! id "submit" ! class_ "button" ! type_ "submit" ! value "Login"
-    
+
 internalError :: Text -> Html
 internalError err = docTypeHtml $ do
   H.head $ do
@@ -186,42 +187,37 @@ renderPost :: Bool -- ^ Whether or not to truncate the post body
            -> Maybe Text -- ^ The currently selected tag
            -> Post -- ^ The post to render
            -> Html
-renderPost isShort user tag (Post pid title body ts tags _ author) = do
+renderPost short user tag (Post pid title body ts tags _ (User aid _ adn _)) = do
   div ! class_ "post" $ do
     div ! class_ "post-header" $ do
       div ! class_ "post-headerbox" $ do
         a ! href postURL $ do
-          h1 ! class_ "post-title" ! A.id (stringValue $ show pid) $ toHtml title
-        h4 ! class_ "post-subtitle" $ toHtml subtitle
-      div ! class_ "post-headerbox" $ do
-        mapM_ taglink tags
-      when canEdit renderEditButton
-    div ! class_ "post-content" $ if isShort
-      then do
-        renderDoc . truncateMarkdown 500 . markdown def $ body
-        a ! class_ "read-more" ! href postURL $ "read more..."
-      else toHtml $ markdown def body
+          h1 ! class_ "post-title"
+             ! id (toValue pid)
+             $ toHtml title
+        h4 ! class_ "post-subtitle" $ toHtml $ subtitle
+      div ! class_ "post-headerbox" $ mapM_ taglink tags
+      when (maybe False ((== aid) . userUID) user) $ do
+        a ! class_ "post-edit-button"
+          ! rel "nofollow"
+          ! href (toValue $ "/posts/" ++ show pid ++ "/edit")
+          $ "edit"
+    div ! class_ "post-content" $ renderContent short
   where
     -- values
-    editURL = stringValue $ mconcat ["/posts/", show pid, "/edit"]
-    postURL = stringValue $ "/posts/" ++ show pid
-    canEdit = isJust user && author == (fromJust user)
-    timeFormat = "%-m • %-e • %-y | %l:%M %p %Z"
-    subtitle = mconcat [formatDate ts, " | ", userDisplayName author]
-    renderEditButton = a ! class_ "post-edit-button"
-                         ! href editURL
-                         ! rel "nofollow"
-                         $ "edit"
+    postURL = toValue $ "/posts/" ++ show pid
+    timeFormat = "%-m • %-e • %-y | %l:%M %p %Z | " ++ (T.unpack adn)
+    subtitle = formatTime defaultTimeLocale timeFormat ts
     -- functions
-    formatDate = T.pack . formatTime defaultTimeLocale timeFormat
-    taglink t = a ! class_ (stringValue $ cls tag)
+    taglink t = a ! class_ (if maybe False ((==) t . TL.toStrict) tag
+                              then "taglink selected-tag"
+                              else "taglink")
                   ! href (toValue $ T.append "/posts/by/tag/" t)
                   $ toHtml t
-      where
-        cls Nothing = "taglink"
-        cls (Just selectedTag)
-          | (TL.toStrict selectedTag) == t = "taglink selected-tag"
-          | otherwise = "taglink"
+    renderContent False = toHtml $ markdown def body
+    renderContent True  = do
+      renderDoc . truncateMarkdown 500 . markdown def $ body
+      a ! class_ "read-more" ! href postURL $ "read more..."
 
 -- |Default keywords.
 keywords :: [T.Text]
@@ -237,6 +233,7 @@ pageAttributes = do
   renderMeta "viewport" "width=device-width,initial-scale=1"
   link ! rel "icon" ! type_ "image/png" ! href "/assets/images/favicon.png"
   meta ! httpEquiv "Content-Type" ! content "text/html; charset=UTF-8"
+  renderStylesheet "https://fonts.googleapis.com/css?family=Oxygen:400,300"
   renderStylesheet "/assets/css/blog.css"
 
 -- |Render the page header. Contains things like the "about" information,
