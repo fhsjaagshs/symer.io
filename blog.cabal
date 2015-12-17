@@ -36,4 +36,5 @@ executable blog
                      cheapskate,
                      blaze-builder,
                      blaze-html,
-                     webapp
+                     webapp,
+                     niagra >= 0.0.2

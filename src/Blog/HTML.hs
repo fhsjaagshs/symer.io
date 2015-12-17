@@ -30,6 +30,7 @@ where
 import Blog.User
 import Blog.Post
 import Blog.HTML.Common
+import Blog.HTML.CSS as CSS
 import Blog.Util.Markdown
 
 import qualified Data.Text as T
@@ -47,6 +48,7 @@ import Data.Time.Format
 import Prelude as P hiding (head,div,id)
 import qualified Text.Blaze.Html5 as H (title,body,head)
 import Text.Blaze.Html5 as H hiding (style,param,map,title,body,head)
+import qualified Text.Blaze.Html5 as H (style)
 import Text.Blaze.Html5.Attributes as A hiding (title)
 
 root :: (Maybe User) -> [Post] -> Integer -> Html
@@ -104,7 +106,7 @@ renderEditor pid title body tags draft = docTypeHtml $ do
   H.head $ do
     H.title $ toHtml $ maybe "New Post" (const title) pid
     renderMeta "robots" "noindex, nofollow"
-    renderStylesheet "/assets/css/editor.css"
+    H.style $ toHtml CSS.editor
     renderStylesheet "/assets/css/wordlist.css"
     pageAttributes
   H.body $ do
@@ -234,7 +236,7 @@ pageAttributes = do
   link ! rel "icon" ! type_ "image/png" ! href "/assets/images/favicon.png"
   meta ! httpEquiv "Content-Type" ! content "text/html; charset=UTF-8"
   renderStylesheet "https://fonts.googleapis.com/css?family=Oxygen:400,300"
-  renderStylesheet "/assets/css/blog.css"
+  H.style $ toHtml CSS.blog
 
 -- |Render the page header. Contains things like the "about" information,
 -- the admin controls, etc
