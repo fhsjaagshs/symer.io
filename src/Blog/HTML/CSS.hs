@@ -4,13 +4,14 @@ module Blog.HTML.CSS
 (
   blog,
   comments,
-  editor
+  editor,
+  wordlist
 )
 where
 
 import Data.Niagra
 import Data.Text.Lazy (Text)
-import Prelude hiding (not,div)
+import Prelude hiding (not,div,span)
 import Data.Monoid
 
 blog :: Text
@@ -292,3 +293,33 @@ editor = css' $ do
       "text-align"       .= "center"
       "vertical-align"   .= "middle"
     after <||> hover <> hover ? "background-color" .= "#7DC9AC"
+  
+wordlist :: Text
+wordlist = css' $ do
+  cls "wordlist-view" ? do
+    "max-width" .= "700px"
+    "margin"    .= "30px"
+    "width"     .= "auto"
+    "*" ? "font-size" .= "20px" -- Change this to change the size of the wordlist.
+    input ? do
+      "width"            .= "80px"
+      "padding"          .= "10px"
+      "margin"           .= "5px 0px"
+      "vertical-align"   .= "middle"
+      "border"           .= "none"
+      "color"            .= "#F0F0F0"
+      "background-color" .= "#545454"
+    
+  cls "wordlist-item" ? do
+    "background-color" .= "#80B9B4"
+    "color"            .= "#F0F0F0"
+    "display"          .= "inline-block"
+    "margin-right"     .= "10px"
+    "padding"          .= "10px"
+    "vertical-align"   .= "middle"
+    "margin-top"       .= "5px"
+    "margin-bottom"    .= "5px"
+    span <||> after ? do
+      "content"     .= "'\\00D7'"
+      "margin-left" .= "5px"
+      "cursor"      .= "pointer"

@@ -12,6 +12,7 @@ import Blog.Post
 import Blog.Comment
 import Blog.Web.Auth
 import qualified Blog.HTML as HTML
+import qualified Blog.HTML.CSS as CSS
 
 import Web.App.Assets
 
@@ -27,6 +28,7 @@ import qualified Crypto.BCrypt as BCrypt
 import Data.String
 import qualified Data.Text.Encoding as T
 import qualified Data.Text.Lazy as TL
+import qualified Data.Text.Lazy.Encoding as TL
 
 import qualified Text.Blaze.Html.Renderer.Text as R (renderHtml)
 
@@ -125,10 +127,17 @@ app = do
       Just comment -> Scotty.json $ comment
 
   get "/posts/:id/comments.json" $ param "id" >>= getCommentsForPost >>= Scotty.json
+  get "/assets/css/blog.css" $ cssFile CSS.blog
+  get "/assets/css/comments.css" $ cssFile CSS.comments
+  get "/assets/css/editor.css" $ cssFile CSS.editor
+  get "/assets/css/wordlist.css" $ cssFile CSS.wordlist
   get (regex "/assets/(.*)") $ param "1" >>= loadAsset
 
   defaultHandler $ renderHtml . HTML.internalError
   notFound $ renderHtml $ HTML.notFound
+  
+cssFile :: TL.Text -> PostgresActionM ()
+cssFile c = Scotty.raw (TL.encodeUtf8 c) >> Scotty.setHeader "Content-Type" "text/css"
   
 postPosts :: PostgresActionM ()
 postPosts = authenticate >>= handleAuth
