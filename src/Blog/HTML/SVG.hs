@@ -15,6 +15,7 @@ goButton = docTypeSvg ! version "1.1" ! width "100px" ! height "40px" $ do
     m 20 20 >> l 0 0 >> l 80 0 >> l 100 20 >> l 80 40 >> l 0 40 >> l 20 20 >> z)
   text_ ! x "33" ! y "28" ! fontFamily "Gill Sans" ! fontSize "25" ! fontWeight "normal" ! fill "#FFFFFF" $ "GO"
       
+-- TODO: Cut width in half
 phillySkyline :: Svg
 phillySkyline = docTypeSvg ! version "1.1" ! width "600px" ! height "400px" $ do
   rect ! fill "#675F5F" ! x "247" ! y "80" ! width "11" ! height "40"

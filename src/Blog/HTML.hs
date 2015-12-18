@@ -31,6 +31,7 @@ import Blog.User
 import Blog.Post
 import Blog.HTML.Common
 import Blog.HTML.CSS as CSS
+import Blog.HTML.SVG as SVG
 import Blog.Util.Markdown
 
 import qualified Data.Text as T
@@ -247,6 +248,7 @@ renderHeader :: (Maybe User) -- ^ the authenticated user
 renderHeader user showAbout ttl = do
   div ! class_ (stringValue $ "header" ++ (if not showAbout then " nopadding" else "")) $ do
     a ! href "/" $ do
+      -- TODO: Inline SVG
       img ! src "/assets/images/philly_skyline.svg" ! width "300" ! height "200"
       
     when showAbout $ do
