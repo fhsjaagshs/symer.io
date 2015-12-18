@@ -13,6 +13,7 @@ import Blog.Comment
 import Blog.Web.Auth
 import qualified Blog.HTML as HTML
 import qualified Blog.HTML.CSS as CSS
+import qualified Blog.HTML.SVG as SVG
 
 import Web.App.Assets
 
@@ -31,6 +32,8 @@ import qualified Data.Text.Lazy as TL
 import qualified Data.Text.Lazy.Encoding as TL
 
 import qualified Text.Blaze.Html.Renderer.Text as R (renderHtml)
+import Text.Blaze.Svg11 (Svg)
+import qualified Text.Blaze.Svg.Renderer.Utf8 as SR (renderSvg)
 
 -- TODO features:
 -- Comment-optional posts
@@ -131,6 +134,8 @@ app = do
   get "/assets/css/comments.css" $ cssFile CSS.comments
   get "/assets/css/editor.css" $ cssFile CSS.editor
   get "/assets/css/wordlist.css" $ cssFile CSS.wordlist
+  get "/assets/images/gobutton.svg" $ svgFile SVG.goButton
+  get "/assets/images/philly_skyline.svg" $ svgFile SVG.phillySkyline
   get (regex "/assets/(.*)") $ param "1" >>= loadAsset
 
   defaultHandler $ renderHtml . HTML.internalError
@@ -138,6 +143,9 @@ app = do
   
 cssFile :: TL.Text -> PostgresActionM ()
 cssFile c = Scotty.raw (TL.encodeUtf8 c) >> Scotty.setHeader "Content-Type" "text/css"
+
+svgFile :: Svg -> PostgresActionM ()
+svgFile s = Scotty.raw (SR.renderSvg s) >> Scotty.setHeader "Content-Type" "image/svg+xml"
   
 postPosts :: PostgresActionM ()
 postPosts = authenticate >>= handleAuth
