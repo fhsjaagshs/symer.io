@@ -249,11 +249,12 @@ renderHeader user showAbout ttl = do
   div ! class_ (stringValue $ "header" ++ (if not showAbout then " nopadding" else "")) $ do
     a ! href "/" $ do
       -- TODO: Inline SVG
-      img ! src "/assets/images/philly_skyline.svg" ! width "300" ! height "200"
+      SVG.phillySkyline
+      -- img ! src "/assets/images/philly_skyline.svg" ! width "300" ! height "170"
       
     when showAbout $ do
       h1 ! class_ "title" ! A.id "name-title" $ "Nate Symer"
-      h3 ! class_ "subtitle" $ "Software Engineer & Designer"
+      h3 ! class_ "subtitle" $ "Develops artisinal software"
       h3 ! class_ "tagline" $ "nate@symer.io • 856-419-7654"
       
     renderTitle ttl

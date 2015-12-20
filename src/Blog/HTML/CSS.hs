@@ -16,6 +16,13 @@ import Data.Monoid
 
 blog :: Text
 blog = css' $ do
+  fontFace $ do
+    "font-family" .= "futura-book"
+    "src" .= "url('/assets/fonts/futura-book.eot') format('eot'),"
+             <> "url('/assets/fonts/futura-book.woff2') format('woff2'),"
+             <> "url('/assets/fonts/futura-book.woff') format('woff'),"
+             <> "url('/assets/fonts/futura-book.ttf') format('truetype')"
+  
   body ? do
     "background"  .= "#F0F0F0"
     "font-family" .= "helvetica, sans-serif"
@@ -37,18 +44,18 @@ blog = css' $ do
     "color"           .= "#876e71"
     cls "taglink" ? do
       cls "selected-tag" ? "background-color" .= "white"
-      "color"         .= "gray"
-      "display"       .= "inline-block"
-      "margin"        .= "5px"
-      "padding"       .= "0.4em 0.6em 0.4em 0.6em"
-      "border-radius" .= "1em"
-      "border"        .= "0.1em solid white"
       hover ? do
         "color"            .= "#888"
         "background-color" .= "#ddd"
       active ? do
         "color"            .= "#888"
         "background-color" .= "white"
+      "color"         .= "gray"
+      "display"       .= "inline-block"
+      "margin"        .= "5px"
+      "padding"       .= ".4em .6em .4em .6em"
+      "border-radius" .= "1em"
+      "border"        .= ".1em solid white"
     -- cls "read-more" ? do
       -- TODO: colors
       
@@ -58,10 +65,10 @@ blog = css' $ do
   not pre .>. code ? do
     "border"     .= "1px solid #C9C6C6"
     "background" .= "#F2EDED"
-    "padding"    .= "0 0.2em 0 0.2em"
+    "padding"    .= "0 .2em 0 .2em"
 
   pre ? do
-    "padding"    .= "0.1em 0.4em 0.1em 0.4em"
+    "padding"    .= ".1em .4em .1em .4em"
     "overflow"   .= "auto"
     "width"      .= "93%"
     "border"     .= "1px solid #C9C6C6"
@@ -71,22 +78,24 @@ blog = css' $ do
     p ? "display" .= "inline"
     "border-left" .= "5px solid #eab05b"
     "margin"      .= "1.5em 10px"
-    "padding"     .= "0.5em 10px"
+    "padding"     .= ".5em 10px"
       
   cls "title" ? do
     "font-size"   .= "50px"
     "margin"      .= "5px"
-    "font-family" .= "'Oxygen',helvetica,sans-serif"
+    "font-family" .= "futura-book,helvetica,sans-serif"
   
   cls "subtitle" ? do
     "font-size"   .= "20px"
     "margin"      .= "10px"
-    "font-family" .= "'Oxygen Light',helvetica,sans-serif"
+    "font-family" .= "futura-book,helvetica,sans-serif"
+    "font-weight" .= "lighter"
     
   cls "tagline" ? do
     "font-size"   .= "15px"
     "margin"      .= "10px"
-    "font-family" .= "'Oxygen Light',helvetica,sans-serif"
+    "font-family" .= "futura-book,helvetica,sans-serif"
+    "font-weight" .= "lighter"
     
   ident "name-title" ? do
     "color" .= "#b15d42"
@@ -116,7 +125,7 @@ blog = css' $ do
     hover ? "color" .= "#94e1c8"
     active ? "color" .= "white"
     "font-size" .= "30px"
-    "font-family" .= "'Oxygen',sans-serif"
+    "font-family" .= "futura-book,sans-serif"
     "color" .= "#80B9B4"
     "margin" .= "0px"
     
@@ -241,7 +250,7 @@ editor = css' $ do
     "outline"     .= "none"
     
   ident "title-field" ? do
-    "font-family"      .= "'Oxygen',sans-serif"
+    "font-family"      .= "futura-book,sans-serif"
     "width"            .= "calc(100% - 50px)"
     "text-align"       .= "center"
     "margin"           .= "25px 0px"
