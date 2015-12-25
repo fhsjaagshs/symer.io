@@ -108,7 +108,7 @@ renderEditor pid title body tags draft = docTypeHtml $ do
     H.title $ toHtml $ maybe "New Post" (const title) pid
     renderMeta "robots" "noindex, nofollow"
     H.style $ toHtml CSS.editor
-    renderStylesheet "/assets/css/wordlist.css"
+    H.style $ toHtml CSS.wordlist
     pageAttributes
   H.body $ do
     renderHeader Nothing False Nothing
@@ -209,7 +209,7 @@ renderPost short user tag (Post pid title body ts tags _ (User aid _ adn _)) = d
   where
     -- values
     postURL = toValue $ "/posts/" ++ show pid
-    timeFormat = "%-m • %-e • %-y | %l:%M %p %Z | " ++ (T.unpack adn)
+    timeFormat = "%-m • %-e • %-y " ++ (T.unpack adn)
     subtitle = formatTime defaultTimeLocale timeFormat ts
     -- functions
     taglink t = a ! class_ (if maybe False ((==) t . TL.toStrict) tag
@@ -236,7 +236,6 @@ pageAttributes = do
   renderMeta "viewport" "width=device-width,initial-scale=1"
   link ! rel "icon" ! type_ "image/png" ! href "/assets/images/favicon.png"
   meta ! httpEquiv "Content-Type" ! content "text/html; charset=UTF-8"
-  renderStylesheet "https://fonts.googleapis.com/css?family=Oxygen:400,300"
   H.style $ toHtml CSS.blog
 
 -- |Render the page header. Contains things like the "about" information,
@@ -247,14 +246,11 @@ renderHeader :: (Maybe User) -- ^ the authenticated user
              -> Html
 renderHeader user showAbout ttl = do
   div ! class_ (stringValue $ "header" ++ (if not showAbout then " nopadding" else "")) $ do
-    a ! href "/" $ do
-      -- TODO: Inline SVG
-      SVG.phillySkyline
-      -- img ! src "/assets/images/philly_skyline.svg" ! width "300" ! height "170"
+    a ! href "/" $ SVG.phillySkyline
       
     when showAbout $ do
-      h1 ! class_ "title" ! A.id "name-title" $ "Nate Symer"
-      h3 ! class_ "subtitle" $ "Develops artisinal software"
+      h1 ! class_ "title" ! A.id "name-title" $ "NATE SYMER"
+      h3 ! class_ "subtitle" $ "artisinal software development"
       h3 ! class_ "tagline" $ "nate@symer.io • 856-419-7654"
       
     renderTitle ttl

@@ -132,8 +132,8 @@ app = do
   get "/posts/:id/comments.json" $ param "id" >>= getCommentsForPost >>= Scotty.json
   get "/assets/css/blog.css" $ cssFile CSS.blog
   get "/assets/css/comments.css" $ cssFile CSS.comments
-  get "/assets/css/editor.css" $ cssFile CSS.editor
-  get "/assets/css/wordlist.css" $ cssFile CSS.wordlist
+  -- get "/assets/css/editor.css" $ cssFile CSS.editor
+  -- get "/assets/css/wordlist.css" $ cssFile CSS.wordlist
   get "/assets/images/gobutton.svg" $ svgFile SVG.goButton
   get "/assets/images/philly_skyline.svg" $ svgFile SVG.phillySkyline
   get (regex "/assets/(.*)") $ param "1" >>= loadAsset
