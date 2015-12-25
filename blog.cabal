@@ -38,4 +38,4 @@ executable blog
                      blaze-html,
                      blaze-svg,
                      webapp,
-                     niagra >= 0.0.2
+                     niagra >= 0.2.0
