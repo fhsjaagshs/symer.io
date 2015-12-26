@@ -55,10 +55,10 @@ import Text.Blaze.Html5.Attributes as A hiding (title)
 root :: (Maybe User) -> [Post] -> Integer -> Html
 root user posts pageNumber = docTypeHtml $ do
   H.head $ do
+    pageAttributes
     H.title "Nate Symer"
     renderMeta "description" "Nate Symer website & blog. Nate is a software engineer & designer."
     renderMeta "keywords" $ toValue $ T.intercalate ", " keywords
-    pageAttributes
   H.body $ do
     renderHeader user True Nothing
     mapM_ (renderPost True user Nothing) (take postsPerPage posts)
@@ -67,9 +67,9 @@ root user posts pageNumber = docTypeHtml $ do
 drafts :: (Maybe User) -> [Post] -> Integer -> Html
 drafts user posts pageNumber = docTypeHtml $ do
   H.head $ do
+    pageAttributes
     H.title "Drafts"
     renderMeta "robots" "noindex, nofollow"
-    pageAttributes
   H.body $ do
     renderHeader user False (Just "Drafts")
     mapM_ (renderPost True user Nothing) (take postsPerPage posts)
@@ -78,10 +78,10 @@ drafts user posts pageNumber = docTypeHtml $ do
 postDetail :: (Maybe User) -> Post -> Html
 postDetail user pst@(Post _ title _ _ tags _ _) = docTypeHtml $ do
   H.head $ do
+    pageAttributes
     H.title $ toHtml title
     renderMeta "keywords" $ toValue $ T.intercalate ", " $ tags ++ keywords
     renderMeta "description" $ toValue $ postDescription pst
-    pageAttributes
   H.body $ do
     renderHeader user True Nothing
     renderPost False user Nothing pst
@@ -90,9 +90,9 @@ postDetail user pst@(Post _ title _ _ tags _ _) = docTypeHtml $ do
 postsByTag :: (Maybe User) -> Text -> [Post] -> Integer -> Html
 postsByTag user tag posts pageNum = docTypeHtml $ do
   H.head $ do
+    pageAttributes
     H.title $ toHtml tag
     renderMeta "robots" "noindex, nofollow"
-    pageAttributes
   H.body $ do
     renderHeader user True Nothing
     mapM_ (renderPost True user (Just tag)) (take postsPerPage posts)
@@ -105,11 +105,11 @@ postEditor (Just (Post pid t bdy _ tg d _)) = renderEditor (Just pid) t bdy tg d
 renderEditor :: Maybe Integer -> T.Text -> T.Text -> [T.Text] -> Bool -> Html
 renderEditor pid title body tags draft = docTypeHtml $ do
   H.head $ do
+    pageAttributes
     H.title $ toHtml $ maybe "New Post" (const title) pid
     renderMeta "robots" "noindex, nofollow"
     H.style $ toHtml CSS.editor
     H.style $ toHtml CSS.wordlist
-    pageAttributes
   H.body $ do
     renderHeader Nothing False Nothing
     upsertForm pid
@@ -147,9 +147,9 @@ renderEditor pid title body tags draft = docTypeHtml $ do
 login :: Maybe Text -> Html
 login merrmsg = docTypeHtml $ do
   H.head $ do
+    pageAttributes
     H.title "Login"
     renderMeta "robots" "noindex, nofollow"
-    pageAttributes
   H.body $ do
     renderHeader Nothing False Nothing
     h1 ! class_ "title" $ "Login"
@@ -163,9 +163,9 @@ login merrmsg = docTypeHtml $ do
 internalError :: Text -> Html
 internalError err = docTypeHtml $ do
   H.head $ do
+    pageAttributes
     H.title "Internal Error"
     renderMeta "robots" "noindex, nofollow"
-    pageAttributes
   H.body $ do
     renderHeader Nothing True Nothing
     h1 ! class_ "title" $ "Something happened..."
@@ -175,9 +175,9 @@ internalError err = docTypeHtml $ do
 notFound :: Html
 notFound = docTypeHtml $ do
   H.head $ do
+    pageAttributes
     H.title "Not Found"
     renderMeta "robots" "noindex, nofollow"
-    pageAttributes
   H.body $ do
     renderHeader Nothing True Nothing
     h1 ! class_ "title" $ "Oh fudge!"
@@ -209,7 +209,7 @@ renderPost short user tag (Post pid title body ts tags _ (User aid _ adn _)) = d
   where
     -- values
     postURL = toValue $ "/posts/" ++ show pid
-    timeFormat = "%-m • %-e • %-y " ++ (T.unpack adn)
+    timeFormat = "%-m • %-e • %-y  " ++ (T.unpack adn)
     subtitle = formatTime defaultTimeLocale timeFormat ts
     -- functions
     taglink t = a ! class_ (if maybe False ((==) t . TL.toStrict) tag

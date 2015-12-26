@@ -35,17 +35,16 @@ blog = css' $ do
   useFont "lato-regular" "/assets/fonts/lato/regular"
   
   body ? do
-    "text-align" .= "center"
+    textAlign  "center"
     color      (hex 0x333)
     background (hex 0xF0F0F0)
     maxWidth   (px 700)
     margin     [px 20, auto]
   
   cls "header" ? do
-    not (cls "nopadding") ? do
-      not lastChild ? do
-        marginBottom (px 80)
-        display      "block"
+    not (cls "nopadding") <||> not lastChild ? do
+      marginBottom (px 80)
+      display      "block"
   
   a ? do
     hover  ? color (hex 0x9F8E90)
@@ -66,6 +65,7 @@ blog = css' $ do
       borderRadius (em 1)
       margin       (px 5)
       padding      [em' 0.4, em' 0.6]
+      font         (px 16) ["lato-regular", "sans-serif"]
       
     -- cls "read-more" ? do
       -- TODO: colors
@@ -115,8 +115,8 @@ blog = css' $ do
     margin (px 20)
 
   cls "post" ? do
-    "text-align" .= "left"
-    margin [px 0, px 10, px 25, px 10]
+    textAlign "left"
+    margin    [px 0, px 10, px 25, px 10]
   
   cls "post-header" ? do
     marginBottom (px 10)
@@ -148,7 +148,7 @@ blog = css' $ do
     display   "block"
 
   cls "button" ? do
-    hover ? "box-shadow" .= "inset 0px 3px gray"
+    hover ? boxShadow ["inset", px 0, px 3, "gray"]--  "box-shadow" .= "inset 0px 3px gray"
     active ? background [hex 0xC9BCA0]
     "text-decoration" .= "none"
     display    "inline-block"
@@ -162,17 +162,17 @@ blog = css' $ do
 
   input ! "textfield" ? do
     "type" |=| "text" <> "type" |=| "password" ? do
-      font (px 18) ["sans-serif"]
-      "text-align" .= "center"
-      "box-shadow" .= "none"
       "transition" .= "border 0.3s"
+      boxShadow    none
+      font         (px 18) ["sans-serif"]
+      textAlign    "center"
       display      "block"
       borderStyle  none
       borderBottom [px 2, "solid", hex 0xC9C9C9]
       padding      (px 10)
       margin       [px 20, auto]
       focus ? do
-        "outline" .= "none"
+        outline      none
         borderBottom [px 2, "solid", hex 0x969696]
   
   textarea ! "textarea" ? do
@@ -186,13 +186,13 @@ blog = css' $ do
     padding       [px 8, px 8, px 8, px 10]
     verticalAlign "middle"
     display       "inline-block"
-    "resize"  .= "none"
-    "outline" .= "none"
+    outline       none
+    "resize" .= "none"
     
 comments :: Text
 comments = css' $ do
   cls "comment" ? do
-    "text-align" .= "left"
+    textAlign  "left"
     position   "relative"
     padding    (px 10)
     background (hex 0xEAEAEA)
@@ -209,7 +209,7 @@ comments = css' $ do
   cls "comment-name" ? marginTop (px 0)
   
   div ? do
-    cls "editor" ? "text-align" .= "left"
+    cls "editor" ? textAlign "left"
     cls "gobutton" ? do
       active ? opacity 0.5
       display    "block"
@@ -232,9 +232,10 @@ comments = css' $ do
     
 editor :: Text
 editor = css' $ do
+  useFont "lato-regular" "/assets/fonts/lato/regular"
   ident "editor" ? do
     "resize"  .= "none"
-    "outline" .= "none"
+    outline    none
     border     none
     background (hex 0x3d3d3d)
     color      (hex 0xc8c8c8)
@@ -245,10 +246,10 @@ editor = css' $ do
     width      (calc OpSub (perc 100) (px 36))
     
   ident "title-field" ? do
-    "text-align" .= "center"
-    "outline"    .= "none"
+    outline      none
+    textAlign    "center"
     border       none
-    font         (pt 30) ["futura-book","sans-serif"]
+    font         (pt 30) ["ostrich-semibold","sans-serif"]
     width        (calc OpSub (perc 100) (px 50))
     color        (hex 0x787878)
     background   (v "transparent")
@@ -267,10 +268,10 @@ editor = css' $ do
     display       "block"
     verticalAlign "middle"
     margin        (px 20)
-    font          (px 20) ["sans-serif"]
+    font          (px 20) ["lato-regular", "sans-serif"]
     
   input <||> "type" |=| "checkbox" ? do
-    "outline" .= "none"
+    outline       none
     border        none
     borderRadius  (perc 15)
     cursor        "pointer"
@@ -281,7 +282,7 @@ editor = css' $ do
     margin        [px 0, px 5, px 0, px 0]
     verticalAlign "middle"
     checked <||> after ? do
-      "text-align" .= "center"
+      textAlign     "center"
       display       "block"
       verticalAlign "middle"
       content       "\\2713"
@@ -296,7 +297,7 @@ editor = css' $ do
 wordlist :: Text
 wordlist = css' $ do
   cls "wordlist-view" ? do
-    "*" ? fontSize (px 20) -- Change this to change the size of the wordlist.
+    "*" ? font (px 20) ["lato-regular","sans-serif"] -- font size dictates wordlist height
     margin   (px 30)
     maxWidth (px 700)
     width    auto
