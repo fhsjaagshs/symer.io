@@ -18,7 +18,7 @@ import qualified Blog.HTML.SVG as SVG
 import Web.App.Assets
 
 import Data.Maybe
-       
+    
 import Control.Monad
 
 import Web.Scotty.Trans as Scotty
@@ -156,10 +156,11 @@ postPosts = authenticate >>= handleAuth
     handleParams user ps = handleMethod user ps (lookup "method" ps) (read . TL.unpack <$> lookup "id" ps)
     handleMethod user _ (Just "DELETE") (Just pid) = deletePost user pid >>= handleDelete
     handleMethod user ps _ pid = upsertPost pid title bdy tags draft user >>= handleUpsert
-      where title = maybe "" TL.toStrict                        $ lookup "title" ps
-            bdy   = maybe "" TL.toStrict                        $ lookup "body" ps
+      where title = maybe "" (TL.toStrict . uncrlf)             $ lookup "title" ps
+            bdy   = maybe "" (TL.toStrict . uncrlf)             $ lookup "body" ps
             tags  = maybe [] (map TL.toStrict . TL.splitOn ",") $ lookup "tags" ps
             draft = maybe True truthy                           $ lookup "draft" ps
+            uncrlf = TL.replace "\r\n" "\n"
     handleUpsert Nothing = status $ Status 400 "Missing required parameters"
     handleUpsert (Just postId) = do
       status $ Status 302 ""

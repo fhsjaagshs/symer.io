@@ -217,7 +217,7 @@ renderPost short user tag (Post pid title body ts tags _ (User aid _ adn _)) = d
                               else "taglink")
                   ! href (toValue $ T.append "/posts/by/tag/" t)
                   $ toHtml t
-    renderContent False = toHtml $ markdown def body
+    renderContent False = renderDoc $ markdown def body
     renderContent True  = do
       renderDoc . truncateMarkdown 500 . markdown def $ body
       a ! class_ "read-more" ! href postURL $ "read more..."

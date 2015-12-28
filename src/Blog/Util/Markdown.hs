@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE OverloadedStrings, UnboxedTuples #-}
 
 module Blog.Util.Markdown
 (
