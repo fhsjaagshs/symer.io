@@ -18,7 +18,7 @@ import qualified Blog.HTML.SVG as SVG
 import Web.App.Assets
 
 import Data.Maybe
-    
+ 
 import Control.Monad
 
 import Web.Scotty.Trans as Scotty
@@ -26,7 +26,6 @@ import Network.HTTP.Types.Status (Status(..))
 
 import qualified Crypto.BCrypt as BCrypt
 
-import Data.String
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
 import qualified Data.Text.Lazy as TL
@@ -159,7 +158,7 @@ postPosts = authenticate >>= handleAuth
       where title = maybe "" (TL.toStrict . uncrlf)             $ lookup "title" ps
             bdy   = maybe "" (TL.toStrict . uncrlf)             $ lookup "body" ps
             tags  = maybe [] (map TL.toStrict . TL.splitOn ",") $ lookup "tags" ps
-            draft = maybe True truthy                           $ lookup "draft" ps
+            draft = maybe True (/= "on")                        $ lookup "draft" ps
             uncrlf = TL.replace "\r\n" "\n"
     handleUpsert Nothing = status $ Status 400 "Missing required parameters"
     handleUpsert (Just postId) = do
@@ -173,13 +172,6 @@ postPosts = authenticate >>= handleAuth
 -- setCacheControl = Scotty.setHeader "Cache-Control" ccontrol
 --   where
 --     ccontrol = "public,max-age=3600,s-max-age=3600,no-cache,must-revalidate,proxy-revalidate,no-transform"
-
-truthy :: (Eq a, IsString a) => a -> Bool
-truthy "t" = True
-truthy "y" = True
-truthy "true" = True
-truthy "True" = True
-truthy _ = False
 
 getPageNumber :: (ScottyError e, Monad m) => ActionT e m Integer
 getPageNumber = maybe 0 (read . TL.unpack) . lookup "page" <$> params

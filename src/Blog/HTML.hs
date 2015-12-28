@@ -138,8 +138,8 @@ renderEditor pid title body tags draft = docTypeHtml $ do
     
           H.label ! id "checkbox" ! for "public" $ do
             if draft
-              then input ! type_ "checkbox" ! id "public" ! A.form "post-form" ! name "draft" ! value (toValue draft)
-              else input ! type_ "checkbox" ! id "public" ! A.form "post-form" ! name "draft" ! value (toValue draft) ! A.checked ""
+              then input ! type_ "checkbox" ! id "public" ! A.form "post-form" ! name "draft"
+              else input ! type_ "checkbox" ! id "public" ! A.form "post-form" ! name "draft" ! A.checked ""
             toHtml $ ("Public" :: String)
             
           input ! id "save-button" ! class_ "button" ! type_ "submit" ! value "Save"
