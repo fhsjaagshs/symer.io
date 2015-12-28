@@ -10,8 +10,7 @@ module Blog.HTML.CSS
 where
 
 import Data.Niagra
-import Data.Text.Lazy (Text)
-import Data.Text.Lazy.Builder
+import Data.Text (Text)
 import Prelude hiding (not,div,span,lex)
 import Data.Monoid
 
@@ -137,10 +136,10 @@ blog = css' $ do
   cls "post-subtitle" ? do
     margin [px 10, px 0, px 0, px 0]
     font   (px 20) ["ostrich-bold","sans-serif"]
-    color (hex 0x717171)
+    color  (hex 0x717171)
     
-  cls "post-content" .>. "*" ? do
-    font (pt 16) ["lato-regular","sans-serif"] -- TODO: use Lato
+  cls "post-content" ? do
+    font       (pt 14) ["lato-regular","sans-serif"] -- TODO: use Lato
     lineHeight (perc 135)
     
   cls "post-edit-button" ? do
