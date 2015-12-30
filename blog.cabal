@@ -37,5 +37,5 @@ executable blog
                      blaze-builder,
                      blaze-html,
                      blaze-svg,
-                     webapp,
+                     webapp >= 0.1.2,
                      niagra >= 0.2.0
