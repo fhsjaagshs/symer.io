@@ -7,9 +7,12 @@ module Blog.User
 )
 where
 
-import Blog.Postgres
+import Blog.AppState
 
+import Control.Monad.IO.Class
 import Control.Applicative
+
+import Web.App
 
 import Data.Maybe
 import Data.Text (Text)
@@ -87,6 +90,6 @@ parseUserRow = eitherResult . A.parse user
             p ')' = False
             p _ = True
 
-getUser :: Text -> PostgresActionM (Maybe User)
+getUser :: (MonadIO m) => Text -> RouteT AppState m (Maybe User)
 getUser username = listToMaybe <$> postgresQuery q [username]
   where q = "SELECT * FROM users WHERE username=? LIMIT 1"

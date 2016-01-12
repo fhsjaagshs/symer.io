@@ -10,46 +10,45 @@ module Blog.Web.Auth
 )
 where
   
-import Blog.Postgres
+import Web.App
+  
+import Blog.AppState
 import Blog.User
-import Web.App.Cookie
+import Blog.Web.Cookie
 
-import qualified Data.ByteString.Lazy.Char8 as BL
-import qualified Data.Text.Lazy as TL
-import qualified Data.Text.Lazy.Encoding as TL
+import Control.Monad.IO.Class
+
+import qualified Data.ByteString.Char8 as B
 import qualified Data.HashMap.Strict as H (lookup)
 
 import Data.Maybe
 import System.Random
-import Web.Scotty.Trans as Scotty
-import Control.Monad.IO.Class (liftIO)
 
-accessToken :: PostgresActionM (Maybe String)
-accessToken = f <$> Scotty.header "Cookie"
+accessToken :: (WebAppState s, MonadIO m) => RouteT s m (Maybe String)
+accessToken = f <$> header "Cookie"
   where
-    f = maybe Nothing (g . parseCookie . BL.toStrict . TL.encodeUtf8)
+    f = maybe Nothing (g . parseCookie)
     g = maybe Nothing (H.lookup "token" . cookiePairs)
 
-authenticate :: PostgresActionM (Maybe User)
-authenticate = getAuthenticatedUser >>= f
-  where f Nothing = redirect "/login?err=Login%20required%2E"
-        f v = return v
+authenticate :: (MonadIO m) => RouteT AppState m User
+authenticate = getAuthenticatedUser >>= maybe onNothing return
+  where onNothing = redirect "/login?err=Login%20required%2E" >> (return $ User 0 "" "" "")
 
-getAuthenticatedUser :: PostgresActionM (Maybe User)
+getAuthenticatedUser :: (MonadIO m) => RouteT AppState m (Maybe User)
 getAuthenticatedUser = accessToken >>= f
   where f (Just t) = listToMaybe <$> postgresQuery sql [t]
         f Nothing = return Nothing
         sql = "SELECT u.* FROM users u, auth a WHERE a.token=? AND a.user_id=u.id LIMIT 1"
 
-setAuthenticatedUser :: User -> PostgresActionM ()
+setAuthenticatedUser :: (MonadIO m) => User -> RouteT AppState m ()
 setAuthenticatedUser (User uid _ _ _) = do
-  token <- liftIO $ TL.pack . take 15 . curry randomRs 'a' 'z' <$> newStdGen
+  token <- liftIO $ B.pack . take 15 . curry randomRs 'a' 'z' <$> newStdGen
   postgresExec "INSERT INTO auth (token,user_id) VALUES (?,?)" (token, uid)
-  Scotty.addHeader "Set-Cookie" $ mconcat ["token=", token, "; HttpOnly; Secure"] -- this screws up pre warp-3.1.4
+  addHeader "Set-Cookie" $ mconcat ["token=", token, "; HttpOnly; Secure"] -- this screws up pre warp-3.1.4
 
-deleteAuth :: PostgresActionM ()
+deleteAuth :: (MonadIO m) => RouteT AppState m ()
 deleteAuth = accessToken >>= f
   where f Nothing = return ()
         f (Just token) = do
           postgresExec "DELETE FROM auth WHERE token=?" [token :: String]
-          Scotty.addHeader "Set-Cookie" "token=deleted; max-age=-1"
+          addHeader "Set-Cookie" "token=deleted; max-age=-1"

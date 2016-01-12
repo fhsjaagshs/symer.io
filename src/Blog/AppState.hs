@@ -4,12 +4,10 @@
 -- cd /deploy/ssl/
 -- sudo psql "sslmode=verify-ca host=db.symer.io dbname=blog port=5432 sslrootcert=root.crt sslcert=server.crt sslkey=server.key user=symerdotio"
 
-module Blog.Postgres 
+module Blog.AppState
 (
   -- * Types
-  Postgres(..),
-  PostgresScottyM,
-  PostgresActionM,
+  AppState(..),
   -- * Connecting and Disconnecting
   makePostgresPool,
   destroyPostgresPool,
@@ -23,15 +21,14 @@ module Blog.Postgres
 where
 
 import Web.App
+import Blog.FileCache
 import Blog.Util.Env
 
 import Control.Monad
 import Control.Monad.IO.Class
+import qualified Control.Monad.State.Class as S
 
 import Data.Maybe
-
-import Data.Text.Lazy (Text)
-import Web.Scotty.Trans (ActionT, ScottyT)
 
 import Data.Pool
 import Database.PostgreSQL.Simple.Types
@@ -41,17 +38,16 @@ import Database.PostgreSQL.Simple.Migration as PG.Migration
 import           Blaze.ByteString.Builder (toByteString)
 import qualified Blaze.ByteString.Builder.Char.Utf8 as Utf8
 
--- conveniences
-type PostgresScottyM a = ScottyT Text (WebAppM Postgres) a
-type PostgresActionM a = ActionT Text (WebAppM Postgres) a
-
-data Postgres = Postgres {
-  postgresPool :: Pool Connection
+data AppState = AppState {
+  appStatePool :: Pool Connection,
+  appStateCache :: FileCache
 }
 
-instance WebAppState Postgres where
-  initState = Postgres <$> makePostgresPool
-  destroyState (Postgres pool) = destroyPostgresPool pool
+instance WebAppState AppState where
+  initState = AppState <$> makePostgresPool <*> newFileCache "assets/"
+  destroyState (AppState pool cache) = do
+    destroyPostgresPool pool
+    teardownFileCache cache
   
 -- |Create a pool that pools PostgreSQL connections.
 -- Configure connections via LibPQ environment variables.
@@ -71,10 +67,6 @@ makePostgresPool = do
 -- |Empty a postgres connection pool.
 destroyPostgresPool :: Pool Connection -> IO ()
 destroyPostgresPool = destroyAllResources
-    
--- |"lift" a function into the connection pool.
-withPostgres :: (Connection -> IO b) -> PostgresActionM b
-withPostgres f = getState >>= \(Postgres p) -> liftIO $ withResource p f
 
 -- |Run DB migrations
 postgresMigrate :: Connection -> IO ()
@@ -83,17 +75,25 @@ postgresMigrate pg = void $ withTransaction pg $ do
   void $ runMigration $ MigrationContext MigrationInitialization True pg
   void $ execute_ pg "SET client_min_messages=NOTICE;"
   runMigration $ MigrationContext (MigrationFile "blog.sql" "migrations/blog.sql") True pg
+  
+-- |"lift" a function into the connection pool.
+withPostgres :: (MonadIO m)
+             => (Connection -> IO b) -- ^ function that given a 'Connection' creates an 'IO' action
+             -> RouteT AppState m b
+withPostgres f = S.get >>= \(AppState p _) -> liftIO $ withResource p f
     
 -- |Make a PostgreSQL query & return parameters.
-postgresQuery :: (FromRow a, ToRow b) => String -- ^ query
-                                      -> b -- ^ parameters
-                                      -> PostgresActionM [a] -- ^ returned rows
+postgresQuery :: (FromRow a, ToRow b, MonadIO m)
+              => String -- ^ query
+              -> b -- ^ parameters
+              -> RouteT AppState m [a] -- ^ returned rows
 postgresQuery q ps = withPostgres $ \pg -> query pg (stringToQuery q) ps
   
 -- |Make a PostgreSQL query & don't return parameters.
-postgresExec :: (ToRow a) => String -- query
-                          -> a -- parameters
-                          -> PostgresActionM ()
+postgresExec :: (MonadIO m, ToRow a)
+             => String -- query
+             -> a -- parameters
+             -> RouteT AppState m ()
 postgresExec q ps = withPostgres $ \pg -> void $ execute pg (stringToQuery q) ps
 
 stringToQuery :: String -> Query
@@ -102,6 +102,7 @@ stringToQuery = Query . toByteString . Utf8.fromString
 -- |Make a query return a maybe value. Useful if you're updating a
 -- single row and want to get a single column from the updated row
 -- using @RETURNING@.
-onlyQuery :: PostgresActionM [Only a] -- ^ query action
-          -> PostgresActionM (Maybe a)
+onlyQuery :: (MonadIO m)
+          => RouteT AppState m [Only a] -- ^ query action
+          -> RouteT AppState m (Maybe a)
 onlyQuery res = fmap fromOnly . listToMaybe <$> res

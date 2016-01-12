@@ -7,7 +7,7 @@ module Main
 where
 
 import Blog.App
-import Blog.Postgres (postgresMigrate)
+import Blog.AppState (postgresMigrate)
 import Blog.Util.DumpDatabase
 import Web.App
 import Options.Applicative
@@ -26,7 +26,7 @@ data Util = Password String
           | MigrateDB String
 
 main :: IO ()
-main = webappMain app "Nathaniel Symer's blog." (Just parseUtil) handleUtil
+main = webappMainIO app "Nathaniel Symer's blog." (Just parseUtil) handleUtil
 
 parseUtil :: Parser Util
 parseUtil = subparser $ (mkcmd "password" "Hash a password" parsePassword) <>
@@ -35,15 +35,12 @@ parseUtil = subparser $ (mkcmd "password" "Hash a password" parsePassword) <>
                         (mkcmd "migrate-db" "Migrate database" parseMigrateDB)
   where
     parsePassword = Password <$> (strArgument $ metavar "PASSWORD" <> help "password to hash")
-    parseDumpDB = DumpDB
-                  <$> (strOption $ long "output" <> short 'o' <> metavar "FILEPATH" <> help "dump JSON into FILEPATH.")
-                  <*> connstr
-    parseLoadDB = LoadDB
-                  <$> (strOption $ long "input" <> short 'i' <> metavar "FILEPATH" <> help "load JSON from FILEPATH.")
-                  <*> connstr
+    parseDumpDB = DumpDB <$> mkOpt "output" 'o' "FILEPATH" "dump JSON into FILEPATH." <*> connstr
+    parseLoadDB = LoadDB <$> mkOpt "input" 'i' "FILEPATH" "load JSON from FILEPATH." <*> connstr
     parseMigrateDB = MigrateDB <$> connstr
-    connstr = (strOption $ long "connstr" <> short 'c' <> value "" <> metavar "CONNSTR" <> help "connect to Postgres at CONNSTR.")
+    connstr = strOption $ long "connstr" <> short 'c' <> value "" <> metavar "CONNSTR" <> help "connect to Postgres at CONNSTR."
     mkcmd cmd desc p = command cmd $ info (helper <*> p) $ progDesc desc
+    mkOpt l s mv h = strOption $ long l <> short s <> metavar mv <> help h
     
 handleUtil :: Util -> IO ()
 handleUtil (Password s) = hsh s >>= maybe (return ()) putStrLn

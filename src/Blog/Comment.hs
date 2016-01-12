@@ -10,7 +10,11 @@ module Blog.Comment
 )
 where
   
-import Blog.Postgres
+import Web.App
+
+import Blog.AppState
+
+import Control.Monad.IO.Class
   
 import Data.Maybe
 import Data.Time.Clock
@@ -37,13 +41,13 @@ data Comment = Comment {
 } deriving (Eq,Show)
 
 instance ToJSON Comment where
- toJSON (Comment cid _ postId email dname ts body children) =
+ toJSON (Comment cid _ postId email dname ts bdy children) =
     Aeson.object ["id" .= cid,
                   "post_id" .= postId,
                   "email" .= email,
                   "display_name" .= dname,
                   "timestamp" .= ts,
-                  "body" .= (renderHtml $ renderDoc $ markdown def body),
+                  "body" .= (renderHtml $ renderDoc $ markdown def bdy),
                   "children" .= map toJSON children]
 
 instance FromRow Comment where
@@ -76,17 +80,19 @@ nestComments cmnts = map (f antiroots) roots
                             else (map $ \a' -> addHierarchical a' c)
 
 -- | Get a post's comments
-getCommentsForPost :: Integer -- ^ post id
-                   -> PostgresActionM [Comment]
+getCommentsForPost :: (MonadIO m)
+                   => Integer -- ^ post id
+                   -> RouteT AppState m [Comment]
 getCommentsForPost pid = nestComments <$> postgresQuery "SELECT * FROM comments WHERE postId=?" [pid]
 
 -- TODO: have this take a 'Comment', switching 'commentID' to a @Maybe Integer@
 -- |Insert a comment into the database
-insertComment :: Maybe Integer -- ^ parent comment id
+insertComment :: (MonadIO m)
+              => Maybe Integer -- ^ parent comment id
               -> Integer -- ^ post id
               -> Text -- ^ email
               -> Text -- ^ display name
               -> Text -- ^ body
-              -> PostgresActionM (Maybe Comment) -- ^ the inserted comment
+              -> RouteT AppState m (Maybe Comment) -- ^ the inserted comment
 insertComment (Just parentId) i e dn b = listToMaybe <$> postgresQuery "INSERT INTO comments (parentId,postId,email,displayName,body) VALUES (?,?,?,?,?) RETURNING *" (parentId, i, e, dn, b)
 insertComment Nothing         i e dn b = listToMaybe <$> postgresQuery "INSERT INTO comments (postId,email,displayName,body) VALUES (?,?,?,?) RETURNING *" (i, e, dn, b)

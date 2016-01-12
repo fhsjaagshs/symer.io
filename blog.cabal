@@ -15,6 +15,7 @@ executable blog
   hs-source-dirs:    src
   ghc-options:       -threaded -Wall -O3
   build-depends:     base,
+                     mtl,
                      transformers,
                      containers,
                      unordered-containers,
@@ -27,8 +28,7 @@ executable blog
                      aeson,
                      attoparsec,
                      http-types,
-                     wai,
-                     scotty,
+                     wai == 3.0.5.0,
                      resource-pool,
                      postgresql-simple,
                      postgresql-simple-migration,
@@ -38,4 +38,16 @@ executable blog
                      blaze-html,
                      blaze-svg,
                      webapp >= 0.1.2,
-                     niagra >= 0.2.0
+                     niagra >= 0.2.0,
+                     
+                     mime-types,
+                     css-text,
+                     hjsmin,
+                     fsnotify,
+                     directory,
+                     filepath,
+                     hashtables,
+                     zlib,
+                     cryptohash,
+                     
+                     data-default

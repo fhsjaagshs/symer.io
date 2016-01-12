@@ -64,15 +64,15 @@ root user posts pageNumber = docTypeHtml $ do
     mapM_ (renderPost True user Nothing) (take postsPerPage posts)
     renderPageControls pageNumber (length posts > postsPerPage)
 
-drafts :: (Maybe User) -> [Post] -> Integer -> Html
+drafts :: User -> [Post] -> Integer -> Html
 drafts user posts pageNumber = docTypeHtml $ do
   H.head $ do
     pageAttributes
     H.title "Drafts"
     renderMeta "robots" "noindex, nofollow"
   H.body $ do
-    renderHeader user False (Just "Drafts")
-    mapM_ (renderPost True user Nothing) (take postsPerPage posts)
+    renderHeader (Just user) False (Just "Drafts")
+    mapM_ (renderPost True (Just user) Nothing) (take postsPerPage posts)
     renderPageControls pageNumber (length posts > postsPerPage)
   
 postDetail :: (Maybe User) -> Post -> Html

@@ -8,7 +8,6 @@ module Blog.Util.Env
 )
 where
 
-import Web.Scotty.Trans (ActionT, ScottyError)
 import Data.Maybe
 
 import System.Environment
@@ -19,24 +18,24 @@ import Control.Monad.IO.Class
 appEnvIO :: IO String
 appEnvIO = fromMaybe "development" <$> lookupEnv "ENV"
 
-appEnv :: (ScottyError e, MonadIO m) => ActionT e m String
+appEnv :: (MonadIO m) => m String
 appEnv = liftIO $ appEnvIO
 
-production :: (ScottyError e, MonadIO m) => ActionT e m () -> ActionT e m ()
+production :: (MonadIO m) => m () -> m ()
 production = whenEnv "production"
   
-development :: (ScottyError e, MonadIO m) => ActionT e m () -> ActionT e m ()
+development :: (MonadIO m) => m () -> m ()
 development = whenEnv "development"
 
-nonProduction :: (ScottyError e, MonadIO m) => ActionT e m () -> ActionT e m ()
+nonProduction :: (MonadIO m) => m () -> m ()
 nonProduction = whenEnvNot "production"
   
-whenEnv :: (ScottyError e, MonadIO m) => String -> ActionT e m () -> ActionT e m ()
+whenEnv :: (MonadIO m) => String -> m () -> m ()
 whenEnv env action = do
   e <- appEnv
   when (e == env) action
   
-whenEnvNot :: (ScottyError e, MonadIO m) => String -> ActionT e m () -> ActionT e m ()
+whenEnvNot :: (MonadIO m) => String -> m () -> m ()
 whenEnvNot env action = do
   e <- appEnv
   when (e /= env) action
