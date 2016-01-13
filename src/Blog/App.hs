@@ -62,7 +62,7 @@ app = do
   get "/drafts"                             $ getPageDrafts
   post "/posts"                             $ postPosts
   get "/posts/new"                          $ authenticate >> (renderHtml $ HTML.postEditor Nothing)
-  get (captured "/posts/:id")               $ getPagePostById 
+  get (captured "/posts/:id")               $ getPagePostById
   get (captured "/posts/by/tag/:tag")       $ getPagePostsByTag
   get (captured "/posts/:id/edit")          $ getPageEditor
   post (captured "/posts/:id/comments")     $ postComments
