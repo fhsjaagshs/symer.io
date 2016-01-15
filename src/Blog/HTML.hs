@@ -34,6 +34,10 @@ import Blog.HTML.CSS as CSS
 import Blog.HTML.SVG as SVG
 import Blog.Util.Markdown
 
+import Web.App.Stream
+
+import Data.Niagra (css')
+
 import qualified Data.Text as T
 import Data.Text.Lazy (Text)
 import qualified Data.Text.Lazy as TL
@@ -51,6 +55,10 @@ import qualified Text.Blaze.Html5 as H (title,body,head)
 import Text.Blaze.Html5 as H hiding (style,param,map,title,body,head)
 import qualified Text.Blaze.Html5 as H (style)
 import Text.Blaze.Html5.Attributes as A hiding (title)
+import Text.Blaze.Renderer.Utf8
+
+instance ToStream Html where
+  stream = stream . renderMarkupBuilder
 
 root :: (Maybe User) -> [Post] -> Integer -> Html
 root user posts pageNumber = docTypeHtml $ do
@@ -74,7 +82,7 @@ drafts user posts pageNumber = docTypeHtml $ do
     renderHeader (Just user) False (Just "Drafts")
     mapM_ (renderPost True (Just user) Nothing) (take postsPerPage posts)
     renderPageControls pageNumber (length posts > postsPerPage)
-  
+
 postDetail :: (Maybe User) -> Post -> Html
 postDetail user pst@(Post _ title _ _ tags _ _) = docTypeHtml $ do
   H.head $ do
@@ -108,8 +116,8 @@ renderEditor pid title body tags draft = docTypeHtml $ do
     pageAttributes
     H.title $ toHtml $ maybe "New Post" (const title) pid
     renderMeta "robots" "noindex, nofollow"
-    H.style $ toHtml CSS.editor
-    H.style $ toHtml CSS.wordlist
+    H.style $ toHtml $ css' CSS.editor
+    H.style $ toHtml $ css' CSS.wordlist
   H.body $ do
     renderHeader Nothing False Nothing
     upsertForm pid
@@ -236,7 +244,7 @@ pageAttributes = do
   renderMeta "viewport" "width=device-width,initial-scale=1"
   link ! rel "icon" ! type_ "image/png" ! href "/assets/images/favicon.png"
   meta ! httpEquiv "Content-Type" ! content "text/html; charset=UTF-8"
-  H.style $ toHtml CSS.blog
+  H.style $ toHtml $ css' CSS.blog
 
 -- |Render the page header. Contains things like the "about" information,
 -- the admin controls, etc

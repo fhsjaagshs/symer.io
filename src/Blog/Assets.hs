@@ -40,9 +40,6 @@ import qualified Data.Text.Encoding as T
 import qualified Data.Text.Lazy.Encoding as TL
 import qualified Data.Text.Lazy.Builder as TL
 
-import Blaze.ByteString.Builder
-import Blaze.ByteString.Builder.Char.Utf8
-
 import qualified Text.CSS.Parse as CSS (parseNestedBlocks)
 import qualified Text.CSS.Render as CSS (renderNestedBlocks)
 import qualified Text.Jasmine as JS (minifym)
@@ -56,9 +53,9 @@ loadAsset assetsPath = do
   if not exists
     then do
       status status404
-      writeBody "File "
-      writeBody $ fromString relPath
-      writeBody " does not exist."
+      writeBodyBytes "File "
+      writeBody relPath
+      writeBodyBytes " does not exist."
     else S.get >>= loadFromCache . appStateCache
   where
     mimetype = defaultMimeLookup . T.pack . takeFileName $ assetsPath
@@ -66,7 +63,7 @@ loadAsset assetsPath = do
     loadFromCache cache = (liftIO $ FC.lookup cache assetsPath) >>= f cache
     f _     (Just (Left err)) = do
       status status500
-      writeBody $ fromString err
+      writeBody err
     f _     (Just (Right (cached, md5))) = do
       addHeader "Content-Type" $ mimetype <> "; charset=utf-8"
       addHeader "Vary" "Accept-Encoding"
@@ -76,7 +73,7 @@ loadAsset assetsPath = do
         h True = status status304
         h False = do
           addHeader "ETag" md5
-          writeBody $ fromByteString cached
+          writeBody cached
     f cache Nothing = do
       void $ liftIO $ FC.register' cache assetsPath $ g mimetype
       loadFromCache cache

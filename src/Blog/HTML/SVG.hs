@@ -2,10 +2,12 @@
 module Blog.HTML.SVG
 (
   goButton,
-  phillySkyline
+  phillySkyline,
+  -- * Exported Types
+  Svg
 )
 where
-  
+
 import Text.Blaze.Svg11
 import Text.Blaze.Svg11.Attributes hiding (path,z)
 

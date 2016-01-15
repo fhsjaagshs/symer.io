@@ -18,10 +18,10 @@ import qualified Blog.HTML.SVG as SVG
 
 import Web.App
 import Network.HTTP.Types.Status
--- import Network.HTTP.Types.URI
-import Blaze.ByteString.Builder.Char.Utf8
+import Network.Wai.Middleware.AddHeaders
 
 import Data.Maybe
+import Data.Niagra (NiagraT(..),css)
  
 import Control.Monad
 import Control.Monad.IO.Class
@@ -31,11 +31,7 @@ import qualified Crypto.BCrypt as BCrypt
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
 import qualified Data.Text.Lazy as TL
--- import qualified Data.Text.Lazy.Encoding as TL
 import qualified Data.ByteString.Char8 as B
-
-import Text.Blaze.Svg11 (Svg)
-import qualified Text.Blaze.Html.Renderer.Text as R (renderHtml)
 
 -- TODO features:
 -- Comment-optional posts
@@ -45,37 +41,39 @@ import qualified Text.Blaze.Html.Renderer.Text as R (renderHtml)
 -- Links in comments *** nofollow them
 -- search
 
--- TODO internals:
--- figure out compression better
-
 -- Miscellaneous Ideas:
 -- 1. 'Top 5' tags map in side bar?
 
 --------------------------------------------------------------------------------
 
-app :: WebAppT AppState IO ()
-app = do
-  get "/"                                   $ getRoot
-  get "/login"                              $ getLogin
-  get "/logout"                             $ deleteAuth >> redirect "/"
-  post "/login"                             $ postLogin
-  get "/drafts"                             $ getPageDrafts
-  post "/posts"                             $ postPosts
-  get "/posts/new"                          $ authenticate >> (renderHtml $ HTML.postEditor Nothing)
-  get (captured "/posts/:id")               $ getPagePostById
-  get (captured "/posts/by/tag/:tag")       $ getPagePostsByTag
-  get (captured "/posts/:id/edit")          $ getPageEditor
-  post (captured "/posts/:id/comments")     $ postComments
-  get (captured "/posts/:id/comments.json") $ param "id" >>= getCommentsForPost >>= writeJSON
-  get "/assets/css/blog.css"                $ cssFile CSS.blog
-  get "/assets/css/comments.css"            $ cssFile CSS.comments
-  get "/assets/css/editor.css"              $ cssFile CSS.editor
-  get "/assets/css/wordlist.css"            $ cssFile CSS.wordlist
-  get "/assets/images/gobutton.svg"         $ svgFile SVG.goButton
-  get "/assets/images/philly_skyline.svg"   $ svgFile SVG.phillySkyline
-  get (regex "/assets/(.*)")                $ param "1" >>= loadAsset
-  matchAll                                  $ renderHtml $ HTML.notFound
-  
+app :: WebApp AppState IO
+app = mconcat [
+  middleware $ addHeaders [("Cache-Control",ccontrol)],
+  get  "/" getRoot,
+  get  "/login" getLogin,
+  get  "/logout" $ deleteAuth >> redirect "/",
+  post "/login" postLogin,
+  get  "/drafts" getPageDrafts,
+  post "/posts" postPosts,
+  get  "/posts/new" $ authenticate >> (renderHtml $ HTML.postEditor Nothing),
+  get  "/posts/:id" getPagePostById,
+  get  "/posts/by/tag/:tag" getPagePostsByTag,
+  get  "/posts/:id/edit" getPageEditor,
+  post "/posts/:id/comments" postComments,
+  get  "/posts/:id/comments.json" $ param "id" >>= getCommentsForPost >>= writeJSON,
+  get  "/assets/css/blog.css"                $ cssFile CSS.blog,
+  get  "/assets/css/comments.css"            $ cssFile CSS.comments,
+  get  "/assets/css/editor.css"              $ cssFile CSS.editor,
+  get  "/assets/css/wordlist.css"            $ cssFile CSS.wordlist,
+  get  "/assets/images/gobutton.svg"         $ svgFile SVG.goButton,
+  get  "/assets/images/philly_skyline.svg"   $ svgFile SVG.phillySkyline,
+  get  (regex "/assets/(.*)")                $ param "1" >>= loadAsset,
+  get  "/favicon.png"
+  matchAll $ renderHtml $ HTML.notFound
+  ]
+  where
+    ccontrol = "public,max-age=3600,s-max-age=3600,no-cache,must-revalidate,proxy-revalidate,no-transform"
+
 {- Route functions -}
 
 getRoot :: (MonadIO m) => RouteT AppState m ()
@@ -86,8 +84,9 @@ getRoot = renderHtmlM $ HTML.root <$> getAuthenticatedUser
 getPageDrafts :: (MonadIO m) => RouteT AppState m ()
 getPageDrafts = do
   user <- authenticate
-  renderHtmlM $ HTML.drafts user <$> (getPageNumber >>= getDrafts user)
-                                 <*> getPageNumber
+  pg <- getPageNumber
+  drafts <- getDrafts user pg
+  renderHtml $ HTML.drafts user drafts pg
 
 postLogin :: (MonadIO m) => RouteT AppState m ()
 postLogin = param "username" >>= getUser >>= f
@@ -98,7 +97,7 @@ postLogin = param "username" >>= getUser >>= f
       if BCrypt.validatePassword (T.encodeUtf8 phash) pPassword
         then do
           setAuthenticatedUser user
-          params >>= redirect . maybe "/" (fromMaybe "/") . lookup "redirect"
+          maybeParam "lookup" >>= redirect . fromMaybe "/"
         else redirect "/login?err=Invalid%20password%2E"
         
 getLogin :: (MonadIO m) => RouteT AppState m ()
@@ -120,7 +119,7 @@ postPosts = do
       case pid of
         Nothing -> do
           status status404
-          writeBody "Failed to find post to delete."
+          writeBodyBytes "Failed to find post to delete."
         Just _ -> redirect "/"
     handleMethod user _ pid = do
       (title :: T.Text) <- (maybe "" $ T.decodeUtf8 . uncrlf) <$> maybeParam "title"
@@ -131,7 +130,7 @@ postPosts = do
       case p of
         Nothing -> do
           status status400
-          writeBody "Missing required parameters"
+          writeBodyBytes "Missing required parameters"
         Just p' -> redirect $ B.pack $ "/posts/" ++ show p'
       where uncrlf = B.foldl f B.empty
               where f bs '\n' = if B.last bs == '\r' then B.init bs else f bs '\n'
@@ -149,13 +148,12 @@ getPagePostById = param "id" >>= getPost >>= f
         else renderHtml $ HTML.postDetail maybeUser pst
       
 getPagePostsByTag :: (MonadIO m) => RouteT AppState m ()
-getPagePostsByTag = renderHtmlM $ HTML.postsByTag <$> getAuthenticatedUser
-                                                  <*> (TL.fromStrict <$> param "tag")
-                                                  <*> (do
-                                                    pn <- getPageNumber
-                                                    tg <- param "tag"
-                                                    getPostsByTag tg pn)
-                                                  <*> getPageNumber
+getPagePostsByTag = do
+  tag <- param "tag"
+  pg <- getPageNumber
+  user <- getAuthenticatedUser
+  posts <- getPostsByTag tag pg
+  renderHtml $ HTML.postsByTag user (TL.fromStrict tag) posts pg
                                              
 postComments :: (MonadIO m) => RouteT AppState m ()
 postComments = doInsert >>= maybe errorOut writeJSON
@@ -167,7 +165,7 @@ postComments = doInsert >>= maybe errorOut writeJSON
       dn <- param "display_name"
       b <- param "body"
       insertComment p i e dn b
-    errorOut = status status500 >> writeBody "Failed to insert comment."
+    errorOut = status status500 >> writeBodyBytes "Failed to insert comment."
   
 getPageEditor :: (MonadIO m) => RouteT AppState m ()
 getPageEditor = do
@@ -175,17 +173,12 @@ getPageEditor = do
   param "id" >>= getPost >>= maybe next (renderHtml . HTML.postEditor . Just)
   
 {- Helper Functions -}
-  
--- setCacheControl :: ActionT e WebM ()
--- setCacheControl = Scotty.setHeader "Cache-Control" ccontrol
---   where
---     ccontrol = "public,max-age=3600,s-max-age=3600,no-cache,must-revalidate,proxy-revalidate,no-transform"
 
-cssFile :: (MonadIO m) => T.Text -> RouteT AppState m ()
-cssFile c = writeBody (fromText c) >> addHeader "Content-Type" "text/css"
+cssFile :: (MonadIO m) => NiagraT (RouteT AppState m) () -> RouteT AppState m ()
+cssFile c = (css c >>= writeBody) >> addHeader "Content-Type" "text/css"
 
-svgFile :: (MonadIO m) => Svg -> RouteT AppState m ()
-svgFile s = writeBody (fromLazyText $ R.renderHtml s) >> addHeader "Content-Type" "image/svg+xml"
+svgFile :: (MonadIO m) => SVG.Svg -> RouteT AppState m ()
+svgFile s = writeBody s >> addHeader "Content-Type" "image/svg+xml"
 
 getPageNumber :: (WebAppState s, MonadIO m) => RouteT s m Integer
 getPageNumber = fromMaybe 0 <$> maybeParam "page"
@@ -196,4 +189,4 @@ renderHtmlM act = act >>= renderHtml
 renderHtml :: (WebAppState s, Monad m) => HTML.Html -> RouteT s m ()
 renderHtml html = do
   addHeader "Content-Type" "text/html"
-  writeBody $ fromLazyText $ R.renderHtml html
+  writeBody html

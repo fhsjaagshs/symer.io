@@ -10,7 +10,6 @@ module Blog.HTML.CSS
 where
 
 import Data.Niagra
-import Data.Text (Text)
 import Prelude hiding (not,div,span,lex)
 import Data.Monoid
 
@@ -27,8 +26,8 @@ useFont name pth = fontFace $ do
 
 {- Stylesheets -}
 
-blog :: Text
-blog = css' $ do
+blog :: (Monad m) => NiagraT m ()
+blog = do
   useFont "ostrich-bold" "/assets/fonts/ostrichproper/bold"
   useFont "ostrich-semibold" "/assets/fonts/ostrichproper/semibold"
   useFont "lato-regular" "/assets/fonts/lato/regular"
@@ -188,8 +187,8 @@ blog = css' $ do
     outline       none
     "resize" .= "none"
     
-comments :: Text
-comments = css' $ do
+comments :: (Monad m) => NiagraT m ()
+comments = do
   cls "comment" ? do
     textAlign  "left"
     position   "relative"
@@ -229,8 +228,8 @@ comments = css' $ do
     width   (perc 40)
     display "block"
     
-editor :: Text
-editor = css' $ do
+editor :: (Monad m) => NiagraT m ()
+editor = do
   useFont "lato-regular" "/assets/fonts/lato/regular"
   ident "editor" ? do
     "resize"  .= "none"
@@ -293,8 +292,8 @@ editor = css' $ do
       fontSize      (px 20)
     after <||> hover <> hover ? background (hex 0x7DC9AC)
   
-wordlist :: Text
-wordlist = css' $ do
+wordlist :: (Monad m) => NiagraT m ()
+wordlist = do
   cls "wordlist-view" ? do
     "*" ? font (px 20) ["lato-regular","sans-serif"] -- font size dictates wordlist height
     margin   (px 30)

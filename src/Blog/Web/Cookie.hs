@@ -16,12 +16,16 @@ module Blog.Web.Cookie
   -- * Data Structures
   Cookie(..),
   -- * Cookie Parsing
-  parseCookie
+  parseCookie,
+  getCookies
 )
 where
+  
+import Web.App
 
 import Control.Applicative
 import Data.Default
+import Data.Maybe
 import Data.Char
 import Data.Time.Format
 import Data.Time.Clock (UTCTime)
@@ -64,3 +68,9 @@ parseCookie = fmap (lx def) . maybeResult . flip feed "" . parse pairs -- @flip 
     attr = map toLower <$> many' letter_ascii
     val = option "" $ "=" *> q *> many' letter_ascii <* q
     q = "\"" <|> "'" <|> pure "" -- RFC 6265 states that cookies' values can be quoted
+    
+getCookies :: (WebAppState s, Monad m) => RouteT s m [Cookie]
+getCookies = f <$> headers
+  where f = catMaybes . map parseCookie . fltr
+        fltr = map snd . foldl (\a p@(h,_) -> if h == "Cookie" then a ++ [p] else a) []
+    
