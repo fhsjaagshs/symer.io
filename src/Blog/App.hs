@@ -48,28 +48,27 @@ import qualified Data.ByteString.Char8 as B
 
 app :: WebApp AppState IO
 app = mconcat [
-  middleware $ addHeaders [("Cache-Control",ccontrol)],
-  get  "/" getRoot,
-  get  "/login" getLogin,
-  get  "/logout" $ deleteAuth >> redirect "/",
-  post "/login" postLogin,
-  get  "/drafts" getPageDrafts,
-  post "/posts" postPosts,
-  get  "/posts/new" $ authenticate >> (renderHtml $ HTML.postEditor Nothing),
-  get  "/posts/:id" getPagePostById,
-  get  "/posts/by/tag/:tag" getPagePostsByTag,
-  get  "/posts/:id/edit" getPageEditor,
-  post "/posts/:id/comments" postComments,
-  get  "/posts/:id/comments.json" $ param "id" >>= getCommentsForPost >>= writeJSON,
-  get  "/assets/css/blog.css"                $ cssFile CSS.blog,
-  get  "/assets/css/comments.css"            $ cssFile CSS.comments,
-  get  "/assets/css/editor.css"              $ cssFile CSS.editor,
-  get  "/assets/css/wordlist.css"            $ cssFile CSS.wordlist,
-  get  "/assets/images/gobutton.svg"         $ svgFile SVG.goButton,
-  get  "/assets/images/philly_skyline.svg"   $ svgFile SVG.phillySkyline,
-  get  (regex "/assets/(.*)")                $ param "1" >>= loadAsset,
-  get  "/favicon.png"
-  matchAll $ renderHtml $ HTML.notFound
+  middleware                               $ addHeaders [("Cache-Control",ccontrol)],
+  get  "/"                                 getRoot,
+  get  "/login"                            getLogin,
+  get  "/logout"                           $ deleteAuth >> redirect "/",
+  post "/login"                            postLogin,
+  get  "/drafts"                           getPageDrafts,
+  post "/posts"                            postPosts,
+  get  "/posts/new"                        $ authenticate >> (renderHtml $ HTML.postEditor Nothing),
+  get  "/posts/:id"                        getPagePostById,
+  get  "/posts/by/tag/:tag"                getPagePostsByTag,
+  get  "/posts/:id/edit"                   getPageEditor,
+  post "/posts/:id/comments"               postComments,
+  get  "/posts/:id/comments.json"          $ param "id" >>= getCommentsForPost >>= writeJSON,
+  get  "/assets/css/blog.css"              $ cssFile CSS.blog,
+  get  "/assets/css/comments.css"          $ cssFile CSS.comments,
+  get  "/assets/css/editor.css"            $ cssFile CSS.editor,
+  get  "/assets/css/wordlist.css"          $ cssFile CSS.wordlist,
+  get  "/assets/images/gobutton.svg"       $ svgFile SVG.goButton,
+  get  "/assets/images/philly_skyline.svg" $ svgFile SVG.phillySkyline,
+  get  (regex "/assets/(.*)")              $ param "1" >>= loadAsset,
+  matchAll                                 $ renderHtml $ HTML.notFound
   ]
   where
     ccontrol = "public,max-age=3600,s-max-age=3600,no-cache,must-revalidate,proxy-revalidate,no-transform"
@@ -111,9 +110,8 @@ postPosts = do
   u <- authenticate
   m <- maybeParam "method"
   i <- maybeParam "id"
-  handleMethod u m i
+  handleMethod u (m :: Maybe B.ByteString) i
   where
-    handleMethod :: (MonadIO m) => User -> Maybe String -> Maybe Integer -> RouteT AppState m ()
     handleMethod user (Just "DELETE") (Just p) = do
       pid <- deletePost user p
       case pid of
@@ -122,10 +120,10 @@ postPosts = do
           writeBodyBytes "Failed to find post to delete."
         Just _ -> redirect "/"
     handleMethod user _ pid = do
-      (title :: T.Text) <- (maybe "" $ T.decodeUtf8 . uncrlf) <$> maybeParam "title"
-      bdy <- (maybe "" $ T.decodeUtf8 . uncrlf) <$> maybeParam "body"
-      tags <- (maybe [] $ map T.decodeUtf8 . B.split ',') <$> maybeParam "tags"
-      draft <- (maybe True (/= ("on" :: T.Text))) <$> maybeParam "draft"
+      title <- (maybe "" $ T.decodeUtf8 . uncrlf) <$> maybeParam "title"
+      bdy   <- (maybe "" $ T.decodeUtf8 . uncrlf) <$> maybeParam "body"
+      tags  <- (maybe [] $ T.splitOn ",")         <$> maybeParam "tags"
+      draft <- (maybe True not)                   <$> maybeParam "draft"
       p <- upsertPost pid title bdy tags draft user
       case p of
         Nothing -> do
@@ -135,13 +133,11 @@ postPosts = do
       where uncrlf = B.foldl f B.empty
               where f bs '\n' = if B.last bs == '\r' then B.init bs else f bs '\n'
                     f bs c = B.snoc bs c
-            --uncrlfT = TL.replace "\r\n" "\n"
             
 getPagePostById :: (MonadIO m) => RouteT AppState m ()
-getPagePostById = param "id" >>= getPost >>= f
+getPagePostById = param "id" >>= getPost >>= maybe (redirect "/notfound") f
   where
-    f Nothing = redirect "/notfound"
-    f (Just pst@(Post _ _ _ _ _ draft author)) = do
+    f pst@(Post _ _ _ _ _ draft author) = do
       maybeUser <- getAuthenticatedUser
       if draft && (maybe True (/= author) maybeUser)
         then redirect "/notfound"
@@ -168,9 +164,8 @@ postComments = doInsert >>= maybe errorOut writeJSON
     errorOut = status status500 >> writeBodyBytes "Failed to insert comment."
   
 getPageEditor :: (MonadIO m) => RouteT AppState m ()
-getPageEditor = do
-  void $ authenticate
-  param "id" >>= getPost >>= maybe next (renderHtml . HTML.postEditor . Just)
+getPageEditor = authenticate >> param "id" >>= getPost >>= f
+  where f = maybe next (renderHtml . HTML.postEditor . Just)
   
 {- Helper Functions -}
 
@@ -187,6 +182,4 @@ renderHtmlM :: (WebAppState s, Monad m) => RouteT s m HTML.Html -> RouteT s m ()
 renderHtmlM act = act >>= renderHtml
 
 renderHtml :: (WebAppState s, Monad m) => HTML.Html -> RouteT s m ()
-renderHtml html = do
-  addHeader "Content-Type" "text/html"
-  writeBody html
+renderHtml html = addHeader "Content-Type" "text/html" >> writeBody html
