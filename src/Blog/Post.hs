@@ -7,6 +7,7 @@ module Blog.Post
   -- * Post Representations
   postDescription,
   -- * Queries
+  isOnLastPage,
   upsertPost,
   getPostsByTag,
   getPosts,
@@ -36,7 +37,7 @@ import Data.List (nub)
 
 import Database.PostgreSQL.Simple.FromRow (FromRow(..),field)
 import Database.PostgreSQL.Simple.ToField -- (toField)
-import Database.PostgreSQL.Simple.Types (PGArray(..))
+import Database.PostgreSQL.Simple.Types (PGArray(..),Only(..))
 
 -- |Represents a post - a row from the view @v_posts@.
 data Post = Post {
@@ -50,7 +51,9 @@ data Post = Post {
 } deriving (Eq, Show)
 
 instance FromRow Post where -- as selected from v_posts or v_drafts
-  fromRow = Post <$> field <*> field <*> field <*> field <*> (fmap fromPGArray field) <*> field <*> field
+  fromRow = Post <$> field <*> field <*> field <*> field <*> (fmap fromPGArray field) <*> field <*> fromRow-- field
+
+-- TODO: tags table & use_tag(text) function
 
 -- |Get an SEO-ready description from a post.
 postDescription :: Post -> Text
@@ -59,6 +62,11 @@ postDescription = T.take 150 . stripMarkdown . markdown def . postBody
 -- |Number of posts to return per page.
 postsPerPage :: Int
 postsPerPage = 10
+
+-- |Determine if a post is on the last page
+isOnLastPage :: (MonadIO m) => Integer -> RouteT AppState m Bool
+isOnLastPage = fmap (maybe True (<= postsPerPage)) . onlyQuery . postgresQuery sql . Only
+  where sql = "SELECT count(*) FROM posts WHERE posts.id > ?"
 
 -- TODO: use postgresql-simple's fold function instead of loading all posts into memory
 

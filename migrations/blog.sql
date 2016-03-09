@@ -30,9 +30,15 @@ CREATE TABLE auth (
   user_id bigint REFERENCES users(id) NOT NULL
 );
 
-CREATE VIEW v_posts_all AS SELECT p.id,p.title,p.body,p.timestamp,p.tags,p.draft,u as user FROM posts p,users u WHERE u.id=p.author_id;
-CREATE VIEW v_posts AS SELECT * FROM v_posts_all WHERE draft='f'::bool;
-CREATE VIEW v_drafts AS SELECT * FROM v_posts_all WHERE draft='t'::bool;
+CREATE VIEW v_posts_all AS
+  SELECT p.id,p.title,p.body,p.timestamp,p.tags,p.draft,
+         u.id as author_id,u.username,u.display_name,u.password_hash
+  FROM posts p
+  INNER JOIN users u
+  ON p.author_id=u.id;
+
+CREATE VIEW v_posts AS SELECT * FROM v_posts_all WHERE draft IS FALSE;
+CREATE VIEW v_drafts AS SELECT * FROM v_posts_all WHERE draft IS TRUE;
 
 CREATE INDEX i_posts_not_drafts ON posts(draft) WHERE draft IS FALSE;
 CREATE INDEX i_posts_drafts ON posts(draft) WHERE draft IS TRUE;
