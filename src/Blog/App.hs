@@ -141,7 +141,7 @@ getPagePostById = param "id" >>= getPost >>= maybe (redirect "/notfound") f
       if draft && (maybe True (/= author) maybeUser)
         then redirect "/notfound"
         else renderHtml $ HTML.postDetail maybeUser pst
-      
+
 getPagePostsByTag :: (MonadIO m) => RouteT AppState m ()
 getPagePostsByTag = do
   tag <- param "tag"

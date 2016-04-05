@@ -45,12 +45,13 @@ data Post = Post {
   postTags :: [Text], -- ^ a post's tags
   postDraft :: !Bool, -- ^ if the post is a draft
   postAuthor :: User -- ^ the user who wrote the post
-} deriving (Eq, Show)
+} deriving (Show)
+
+instance Eq Post where
+  (Post a _ _ _ _ _ _) == (Post b _ _ _ _ _ _) = a == b
 
 instance FromRow Post where -- as selected from v_posts or v_drafts
   fromRow = Post <$> field <*> field <*> field <*> field <*> (fmap fromPGArray field) <*> field <*> fromRow
-
--- TODO: tags table & use_tag(text) function
 
 -- |Get an SEO-ready description from a post.
 postDescription :: Post -> Text

@@ -7,6 +7,8 @@ module Blog.Util.DumpDatabase
   dumpDB
 )
 where
+  
+-- TODO: update this!
 
 import Data.Time.Clock (UTCTime)
 import Data.Text (Text)

@@ -28,7 +28,10 @@ data User = User {
   userUID :: !Integer,
   userUsername :: Text,
   userPasswordHash :: Text
-} deriving (Eq,Show)
+} deriving (Show)
+
+instance Eq User where
+  (User a _ _) == (User b _ _) = a == b
 
 instance FromRow User where
   fromRow = numFieldsRemaining >>= f
