@@ -1,11 +1,11 @@
 name:                blog
-version:             0.1.0
-synopsis:            The software behind the blog at blog.symer.io
-homepage:            http://blog.symer.io
+version:             0.2.0
+synopsis:            The software behind the blog at symer.io
+homepage:            https://symer.io/
 license:             MIT
 author:              Nathaniel
 maintainer:          nate@symer.io
-category:            Web  
+category:            Web
 build-type:          Simple
 cabal-version:       >=1.8
 data-dir:            assets
@@ -49,6 +49,4 @@ executable blog
                      filepath,
                      hashtables,
                      zlib,
-                     cryptohash,
-                     
-                     data-default
+                     cryptohash

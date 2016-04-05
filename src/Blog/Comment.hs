@@ -33,33 +33,21 @@ data Comment = Comment {
   commentID :: !Integer, -- ^ the comment's id
   commentParentID :: Maybe Integer, -- ^ the id of the comment's parent comment
   commentPostID :: !Integer, -- ^ the id of the post the comment is on
-  commentEmail :: Text, -- ^ the email of the commenter
-  commentDisplayName :: Text, -- ^ the display name of the commenter
-  commentTimestamp :: UTCTime, -- ^ when the comment was made
   commentBody :: Text, -- ^ the comment itself
+  commentTimestamp :: UTCTime, -- ^ when the comment was made
   commentChildren :: [Comment] -- ^ replies to the comment
 } deriving (Eq,Show)
 
 instance ToJSON Comment where
- toJSON (Comment cid _ postId email dname ts bdy children) =
+ toJSON (Comment cid _ postId bdy ts children) =
     Aeson.object ["id" .= cid,
                   "post_id" .= postId,
-                  "email" .= email,
-                  "display_name" .= dname,
                   "timestamp" .= ts,
                   "body" .= (renderHtml $ renderDoc $ markdown def bdy),
                   "children" .= map toJSON children]
 
 instance FromRow Comment where
-  fromRow = Comment
-    <$> field
-    <*> field
-    <*> field
-    <*> field
-    <*> field
-    <*> field
-    <*> field
-    <*> return []
+  fromRow = Comment <$> field <*> field <*> field <*> field <*> field <*> return []
 
 -- TODO: add strictness ($!)
 -- TODO: fix children ordering (it's reverse)
@@ -83,16 +71,12 @@ nestComments cmnts = map (f antiroots) roots
 getCommentsForPost :: (MonadIO m)
                    => Integer -- ^ post id
                    -> RouteT AppState m [Comment]
-getCommentsForPost pid = nestComments <$> postgresQuery "SELECT * FROM comments WHERE postId=?" [pid]
+getCommentsForPost pid = nestComments <$> postgresQuery "SELECT * FROM comment_t WHERE PostID=?" [pid]
 
--- TODO: have this take a 'Comment', switching 'commentID' to a @Maybe Integer@
 -- |Insert a comment into the database
 insertComment :: (MonadIO m)
               => Maybe Integer -- ^ parent comment id
               -> Integer -- ^ post id
-              -> Text -- ^ email
-              -> Text -- ^ display name
               -> Text -- ^ body
               -> RouteT AppState m (Maybe Comment) -- ^ the inserted comment
-insertComment (Just parentId) i e dn b = listToMaybe <$> postgresQuery "INSERT INTO comments (parentId,postId,email,displayName,body) VALUES (?,?,?,?,?) RETURNING *" (parentId, i, e, dn, b)
-insertComment Nothing         i e dn b = listToMaybe <$> postgresQuery "INSERT INTO comments (postId,email,displayName,body) VALUES (?,?,?,?) RETURNING *" (i, e, dn, b)
+insertComment parent i b = listToMaybe <$> postgresQuery "INSERT INTO comment_t (CommentParentID,PostID,CommentBody) VALUES (?,?,?) RETURNING *" (parent,i,b)

@@ -23,19 +23,17 @@ import Blog.User
 import Blog.Util.Markdown
 import Blog.AppState
 
-import Web.App
-
 import Control.Monad.IO.Class
-
-import Cheapskate
 
 import Data.Maybe (listToMaybe)
 import Data.Text (Text)
 import qualified Data.Text as T (take)
 import Data.Time.Clock (UTCTime)
 
+import Web.App
+import Cheapskate
 import Database.PostgreSQL.Simple.FromRow (FromRow(..),field)
-import Database.PostgreSQL.Simple.ToField -- (toField)
+import Database.PostgreSQL.Simple.ToField
 import Database.PostgreSQL.Simple.Types (PGArray(..),Only(..))
 
 -- |Represents a post - a row from the view @v_posts@.

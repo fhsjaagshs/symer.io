@@ -1,5 +1,7 @@
 "use strict";
 
+// TODO: update so that the comment representation matches the DB representation (ie, remove username)
+
 var postId = +document.getElementsByClassName('post-title')[0].id;
 
 /*

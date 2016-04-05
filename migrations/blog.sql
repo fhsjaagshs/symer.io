@@ -34,7 +34,7 @@ CREATE TABLE post_tag_t (
 CREATE TABLE comment_t (
   CommentID BIGSERIAL PRIMARY KEY,
   CommentParentID BIGINT REFERENCES comment_t(CommentID) ON DELETE CASCADE,
-  PostID BIGINT NOT NULL REFERENCES post_t(PostID),
+  PostID BIGINT NOT NULL REFERENCES post_t(PostID) ON DELETE CASCADE,
   CommentBody TEXT NOT NULL,
   CommentCreatedAt TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp()
 );

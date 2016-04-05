@@ -9,7 +9,6 @@ where
 import Blog.User
 import Blog.Post
 import Blog.Comment
-import Blog.Web.Auth
 import Blog.Assets
 import Blog.AppState
 import qualified Blog.HTML as HTML
@@ -157,10 +156,8 @@ postComments = doInsert >>= maybe errorOut writeJSON
     doInsert = do
       p <- maybeParam "parent_id"
       i <- param "i"
-      e <- param "email"
-      dn <- param "display_name"
       b <- param "body"
-      insertComment p i e dn b
+      insertComment p i b
     errorOut = status status500 >> writeBodyBytes "Failed to insert comment."
   
 getPageEditor :: (MonadIO m) => RouteT AppState m ()
