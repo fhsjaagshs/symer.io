@@ -21,9 +21,7 @@ executable blog
                      unordered-containers,
                      text,
                      bytestring,
-                     base16-bytestring,
                      time,
-                     random,
                      bcrypt,
                      aeson,
                      attoparsec,
@@ -42,6 +40,7 @@ executable blog
                      webapp >= 0.2.0,
                      niagra >= 0.2.0,
                      
+                     base16-bytestring,
                      mime-types,
                      css-text,
                      hjsmin,

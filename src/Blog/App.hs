@@ -91,7 +91,7 @@ postLogin :: (MonadIO m) => RouteT AppState m ()
 postLogin = param "username" >>= getUser >>= f
   where
     f Nothing = redirect "/login?err=Username%20does%20not%20exist%2E"
-    f (Just user@(User _ _ _ phash)) = do
+    f (Just user@(User _ _ phash)) = do
       pPassword <- T.encodeUtf8 <$> param "password"
       if BCrypt.validatePassword (T.encodeUtf8 phash) pPassword
         then do

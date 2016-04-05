@@ -24,22 +24,22 @@ import Database.PostgreSQL.Simple.ToRow as PG.ToRow
 data User = User {
   userUID :: !Integer,
   userUsername :: Text,
-  userDisplayName :: Text,
   userPasswordHash :: Text
 } deriving (Eq,Show)
 
 instance ToJSON User where
   toJSON User{..} = Aeson.object ["id" .= userUID,
                                   "username" .= userUsername,
-                                  "display_name" .= userDisplayName,
                                   "password_hash" .= userPasswordHash]
 
 instance FromRow User where
-  fromRow = User <$> field <*> field <*> field <*> field
+  fromRow = numFieldsRemaining >>= f
+    where f 2 = User <$> field <*> field <*> (return "") -- for security
+          f _ = User <$> field <*> field <*> field
   
 instance ToRow User where
-  toRow (User i u d ph) = [toField i, toField u, toField d, toField ph]
+  toRow (User i u ph) = [toField i, toField u, toField ph]
 
 getUser :: (MonadIO m) => Text -> RouteT AppState m (Maybe User)
 getUser username = listToMaybe <$> postgresQuery q [username]
-  where q = "SELECT * FROM users WHERE username=? LIMIT 1"
+  where q = "SELECT * FROM user_t WHERE UserName=? LIMIT 1"

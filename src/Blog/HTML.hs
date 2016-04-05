@@ -198,7 +198,7 @@ renderPost :: Bool -- ^ Whether or not to truncate the post body
            -> Maybe Text -- ^ The currently selected tag
            -> Post -- ^ The post to render
            -> Html
-renderPost short user tag (Post pid title body ts tags _ (User aid _ adn _)) = do
+renderPost short user tag (Post pid title body ts tags _ (User aid aun _)) = do
   div ! class_ "post" $ do
     div ! class_ "post-header" $ do
       div ! class_ "post-headerbox" $ do
@@ -217,7 +217,7 @@ renderPost short user tag (Post pid title body ts tags _ (User aid _ adn _)) = d
   where
     -- values
     postURL = toValue $ "/posts/" ++ show pid
-    timeFormat = "%-m • %-e • %-y  " ++ (T.unpack adn)
+    timeFormat = "%-m • %-e • %-y  " ++ (T.unpack aun)
     subtitle = formatTime defaultTimeLocale timeFormat ts
     -- functions
     taglink t = a ! class_ (if maybe False ((==) t . TL.toStrict) tag
@@ -266,7 +266,7 @@ renderHeader user showAbout ttl = do
   where
     renderTitle v = maybe (return ()) (h1 ! class_ "title") v
     renderControls Nothing = return ()
-    renderControls (Just (User _ uname _ _)) = do
+    renderControls (Just (User _ uname _)) = do
       renderButton ! href "/logout"    $ "Log Out"
       renderButton ! href "/posts/new" $ "New Post"
       renderButton ! href "/drafts"    $ "Drafts"

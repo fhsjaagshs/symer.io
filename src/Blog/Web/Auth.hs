@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE OverloadedStrings, ScopedTypeVariables #-}
 
 module Blog.Web.Auth
 (
@@ -23,31 +23,32 @@ import qualified Data.ByteString.Char8 as B
 import qualified Data.HashMap.Strict as H (lookup)
 
 import Data.Maybe
-import System.Random
 
-accessToken :: (WebAppState s, MonadIO m) => RouteT s m (Maybe String)
-accessToken = g . f <$> getCookies
+accessToken :: (WebAppState s, MonadIO m) => RouteT s m (Maybe Integer)
+accessToken = fmap read . listToMaybe . f <$> getCookies
   where f = catMaybes . map (H.lookup "token" . cookiePairs)
-        g [] = Nothing
-        g (x:_) = Just x
 
 authenticate :: (MonadIO m) => RouteT AppState m User
 authenticate = getAuthenticatedUser >>= maybe onNothing return
-  where onNothing = redirect "/login?err=Login%20required%2E" >> (return $ User 0 "" "" "")
+  where onNothing = redirect "/login?err=Login%20required%2E" >> (return $ User 0 "" "")
 
 getAuthenticatedUser :: (MonadIO m) => RouteT AppState m (Maybe User)
 getAuthenticatedUser = accessToken >>= maybe (return Nothing) f
-  where f t = listToMaybe <$> postgresQuery sql [t]
-        sql = "SELECT u.* FROM users u, auth a WHERE a.token=? AND a.user_id=u.id LIMIT 1"
+  where f t = (listToMaybe <$> postgresQuery sql [t])
+        sql = "SELECT u.* FROM user_t u INNER JOIN session_t s ON s.UserID=u.UserID WHERE s.SessionID=? LIMIT 1"
 
 setAuthenticatedUser :: (MonadIO m) => User -> RouteT AppState m ()
-setAuthenticatedUser (User uid _ _ _) = do
-  token <- liftIO $ B.pack . take 15 . curry randomRs 'a' 'z' <$> newStdGen
-  postgresExec "INSERT INTO auth (token,user_id) VALUES (?,?)" (token, uid)
-  addHeader "Set-Cookie" $ "token=" <> token <> ";expires=Fri, 31 Dec 9999 23:59:59 GMT;HttpOnly;Secure"
+setAuthenticatedUser (User uid _ _) = do
+  (token :: Maybe Integer) <- onlyQuery $ postgresQuery "INSERT INTO session_t (UserID) VALUES (?) RETURNING SessionID" [uid]
+  case token of
+    Just v -> do
+      liftIO $ putStr "setting token: "
+      liftIO $ print v
+      addHeader "Set-Cookie" $ "token=" <> (B.pack $ show v) <> ";expires=Fri, 31 Dec 9999 23:59:59 GMT;"-- HttpOnly;Secure"
+    Nothing -> return ()
 
 deleteAuth :: (MonadIO m) => RouteT AppState m ()
 deleteAuth = accessToken >>= maybe (return ()) f
   where f token = do
-          postgresExec "DELETE FROM auth WHERE token=?" [token :: String]
+          postgresExec "DELETE FROM session_t WHERE SessionID=?" [token]
           addHeader "Set-Cookie" "token=deleted;max-age=-1"

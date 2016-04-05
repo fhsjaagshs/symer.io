@@ -66,7 +66,8 @@ parseCookie = fmap (lx def) . maybeResult . flip feed "" . parse pairs -- @flip 
     pairs = (:) <$> pair <*> (many' $ ";" *> skipSpace *> pair)
     pair = (,) <$> attr <*> val
     attr = map toLower <$> many' letter_ascii
-    val = option "" $ "=" *> q *> many' letter_ascii <* q
+    val = option "" $ "=" *> q *> many' token <* q
+    token = satisfy $ \v -> (isAlpha_ascii v) || (A.isDigit v)-- (v `elem` "!#$%&'*+-.^`_|~")
     q = "\"" <|> "'" <|> pure "" -- RFC 6265 states that cookies' values can be quoted
     
 getCookies :: (WebAppState s, Monad m) => RouteT s m [Cookie]
