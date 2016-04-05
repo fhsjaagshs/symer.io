@@ -36,7 +36,10 @@ data Comment = Comment {
   commentBody :: Text, -- ^ the comment itself
   commentTimestamp :: UTCTime, -- ^ when the comment was made
   commentChildren :: [Comment] -- ^ replies to the comment
-} deriving (Eq,Show)
+} deriving (Show) -- TODO: ord instance
+
+instance Eq Comment where
+  (Comment a _ _ _ _ _) == (Comment b _ _ _ _ _) = a == b
 
 instance ToJSON Comment where
  toJSON (Comment cid _ postId bdy ts children) =
@@ -53,7 +56,7 @@ instance FromRow Comment where
 -- TODO: fix children ordering (it's reverse)
 -- TODO: make sure comment ordering doesn't affect nesting (this func
 --       works only if @cmnts@ is in posted order due to the nature
---       of how comments & replies are posted)
+--       of how comments & replies are posted) (Ord instance)
 nestComments :: [Comment] -> [Comment]
 nestComments cmnts = map (f antiroots) roots
   where
