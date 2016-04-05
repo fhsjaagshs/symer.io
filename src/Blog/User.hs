@@ -12,7 +12,6 @@ module Blog.User
 where
 
 import Blog.AppState
-import Blog.Cookie
 
 import Web.App
 import Database.PostgreSQL.Simple.FromRow
@@ -23,6 +22,7 @@ import Data.Maybe
 import Data.Text (Text)
 import Data.Monoid
 import qualified Data.ByteString.Char8 as B
+import Data.Attoparsec.ByteString.Char8 as A
 
 data User = User {
   userUID :: !Integer,
@@ -43,7 +43,8 @@ getUser username = listToMaybe <$> postgresQuery q [username]
   where q = "SELECT * FROM user_t WHERE UserName=? LIMIT 1"
   
 accessToken :: (WebAppState s, MonadIO m) => RouteT s m (Maybe Integer)
-accessToken = fmap read . lookup "token" <$> getCookies
+accessToken = (\v -> v >>= f) <$> header "Cookie"-- fmap read . lookup "token" <$> getCookies
+  where f = fmap read . maybeResult . flip feed "" . parse ("token=" *> many' digit)
 
 authenticate :: (MonadIO m) => RouteT AppState m User
 authenticate = getAuthenticatedUser >>= maybe onNothing return
