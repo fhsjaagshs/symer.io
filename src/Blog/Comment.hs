@@ -2,30 +2,25 @@
 
 module Blog.Comment
 (
-  -- * Types
   Comment(..),
-  -- * Comment Creation
   getCommentsForPost,
   insertComment
 )
 where
-  
+
 import Web.App
 
 import Blog.AppState
+import Blog.Util.Markdown
 
 import Control.Monad.IO.Class
-  
+
 import Data.Maybe
 import Data.Time.Clock
 import Data.Text (Text)
-import Data.Aeson as Aeson
 import Data.Bool
-import Data.List
 
-import Cheapskate
-import Cheapskate.Html
-import Text.Blaze.Html.Renderer.Text (renderHtml)
+import Data.Aeson
 import Database.PostgreSQL.Simple.FromRow
 
 -- |Data structure representing a comment on a post. Never use the
@@ -37,34 +32,35 @@ data Comment = Comment {
   commentPostID :: !Integer, -- ^ the id of the post the comment is on
   commentBody :: Text, -- ^ the comment itself
   commentTimestamp :: UTCTime, -- ^ when the comment was made
-  commentChildren :: [Comment] -- ^ replies to the comment
-} deriving (Show) -- TODO: ord instance
+  commentChildren :: [Comment] -- ^ replies to the comment; empty until @nestComments@ is used
+} deriving (Show)
 
 instance Eq Comment where
   (Comment a _ _ _ _ _) == (Comment b _ _ _ _ _) = a == b
 
 instance ToJSON Comment where
- toJSON (Comment cid _ postId bdy ts children) =
-    Aeson.object ["id" .= cid,
-                  "post_id" .= postId,
-                  "timestamp" .= ts,
-                  "body" .= (renderHtml $ renderDoc $ markdown def bdy),
-                  "children" .= map toJSON children]
+ toJSON (Comment cid _ postId bdy ts children) = object
+   ["id" .= cid,
+    "post_id" .= postId,
+    "timestamp" .= ts,
+    "body" .= (renderMarkdown $ parseMarkdown bdy),
+    "children" .= map toJSON children]
 
 instance FromRow Comment where
   fromRow = Comment <$> field <*> field <*> field <*> field <*> field <*> return []
 
--- TODO ensure comment ordering doesn't affect nesting (this func
---      works only if @cmnts@ is in posted order due to the nature
---      of how comments & replies are posted) (Ord instance)
+-- |Nest comments based on @commentParentID@.
 nestComments :: [Comment] -> [Comment]
-nestComments cmnts = map f roots
+nestComments = f []
   where
-    (roots,children) = partition (isNothing . commentParentID) cmnts
-    f a = foldr addHiercl a children
-    isParent p c = maybe False ((==) (commentID p)) $ commentParentID c
-    addHiercl c a = modifyChildren a $ bool (map $ addHiercl c) ((:) c) $ isParent a c
-    modifyChildren n g = n { commentChildren = g $ commentChildren n }
+    f rs [] = rs
+    f rs (x:xs)
+      | isNothing $ commentParentID x = f (rs ++ [x]) xs
+      | otherwise = f (map (insert x) rs) (map (insert x) xs)
+      where
+        isParent p c = maybe False ((==) (commentID p)) $ commentParentID c
+        insert c a = modifyChildren a $ bool (map $ insert c) (++ [c]) $ isParent a c
+        modifyChildren n g = n { commentChildren = g $ commentChildren n }
     
 -- | Get a post's comments
 getCommentsForPost :: (MonadIO m)

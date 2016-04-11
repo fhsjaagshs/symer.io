@@ -4,7 +4,8 @@ module Blog.Util.Markdown
 (
   stripMarkdown,
   truncateMarkdown,
-  parseMarkdown
+  parseMarkdown,
+  renderMarkdown
 )
 where
 
@@ -15,15 +16,22 @@ where
   truncateMarkdown -> truncates markdown based on length of rendered text
 -}
 
-import Cheapskate
 import Data.Text (Text)
 import qualified Data.Text as T
+import qualified Data.Text.Lazy as TL
 import Data.Sequence (Seq, (|>))
 import qualified Data.Sequence as S
 import qualified Data.Foldable as F
 
+import Cheapskate
+import Cheapskate.Html
+import Text.Blaze.Html.Renderer.Text (renderHtml)
+
 parseMarkdown :: Text -> Doc
 parseMarkdown = markdown def
+
+renderMarkdown :: Doc -> Text
+renderMarkdown = TL.toStrict . renderHtml . renderDoc
 
 stripMarkdown :: Doc -> Text
 stripMarkdown (Doc _ blocks) = F.fold $ fmap blockToText blocks
