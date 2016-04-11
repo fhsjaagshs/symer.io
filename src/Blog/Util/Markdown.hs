@@ -3,10 +3,11 @@
 module Blog.Util.Markdown
 (
   stripMarkdown,
-  truncateMarkdown
+  truncateMarkdown,
+  parseMarkdown
 )
 where
-  
+
 {-
   Intelligently manhandle markdown
 
@@ -20,6 +21,9 @@ import qualified Data.Text as T
 import Data.Sequence (Seq, (|>))
 import qualified Data.Sequence as S
 import qualified Data.Foldable as F
+
+parseMarkdown :: Text -> Doc
+parseMarkdown = markdown def
 
 stripMarkdown :: Doc -> Text
 stripMarkdown (Doc _ blocks) = F.fold $ fmap blockToText blocks

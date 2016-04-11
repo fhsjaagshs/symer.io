@@ -20,6 +20,8 @@ import Data.Maybe
 import Data.Time.Clock
 import Data.Text (Text)
 import Data.Aeson as Aeson
+import Data.Bool
+import Data.List
 
 import Cheapskate
 import Cheapskate.Html
@@ -52,24 +54,18 @@ instance ToJSON Comment where
 instance FromRow Comment where
   fromRow = Comment <$> field <*> field <*> field <*> field <*> field <*> return []
 
--- TODO: add strictness ($!)
--- TODO: fix children ordering (it's reverse)
--- TODO: make sure comment ordering doesn't affect nesting (this func
---       works only if @cmnts@ is in posted order due to the nature
---       of how comments & replies are posted) (Ord instance)
+-- TODO ensure comment ordering doesn't affect nesting (this func
+--      works only if @cmnts@ is in posted order due to the nature
+--      of how comments & replies are posted) (Ord instance)
 nestComments :: [Comment] -> [Comment]
-nestComments cmnts = map (f antiroots) roots
+nestComments cmnts = map f roots
   where
-    roots = filter (isNothing . commentParentID) cmnts
-    antiroots = filter (isJust . commentParentID) cmnts
-    f [] a = a
-    f (x:xs) a = f xs $! addHierarchical a x
-    modifyChildren n g = n { commentChildren = (g $ commentChildren n) }
-    isParent p c = maybe False ((==) (commentID p)) (commentParentID c)
-    addHierarchical a c = modifyChildren a $! if isParent a c
-                            then ((:) c)
-                            else (map $ \a' -> addHierarchical a' c)
-
+    (roots,children) = partition (isNothing . commentParentID) cmnts
+    f a = foldr addHiercl a children
+    isParent p c = maybe False ((==) (commentID p)) $ commentParentID c
+    addHiercl c a = modifyChildren a $ bool (map $ addHiercl c) ((:) c) $ isParent a c
+    modifyChildren n g = n { commentChildren = g $ commentChildren n }
+    
 -- | Get a post's comments
 getCommentsForPost :: (MonadIO m)
                    => Integer -- ^ post id

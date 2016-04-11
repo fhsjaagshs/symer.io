@@ -54,6 +54,11 @@ CREATE TABLE visit_t (
   VisitUserAgent TEXT -- User-Agent
 );
 
+create index posts_id on post_t(PostID);
+create index tags_id on tag_t(TagID);
+create index post_tags_tagid ON post_tag_t(TagID);
+create index post_tags_postid ON post_tag_t(PostID);
+
 CREATE VIEW v_weighted_tag AS
   SELECT t.TagID,t.TagValue,count(pt.PostID) as TagCount
   FROM tag_t t
@@ -65,8 +70,12 @@ CREATE VIEW v_posts_all AS
   SELECT p.PostID,p.PostTitle,p.PostBody,p.PostCreatedAt,
          (
            SELECT array_agg(t.tagvalue)
-           FROM tag_t t INNER JOIN post_tag_t pt ON pt.TagID=t.TagID
-           WHERE pt.postid=p.PostId
+           FROM tag_t t
+           WHERE EXISTS (
+             SELECT *
+             FROM post_tag_t pt
+             where pt.TagID=t.TagID AND pt.postid=p.PostId
+           )
          ) as tags,
          p.PostIsDraft,u.UserID,u.UserName
   FROM post_t p

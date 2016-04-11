@@ -203,9 +203,7 @@ comments = do
       bottom     (px 0)
       left       (px 0)
       background (v "gray")
-      
-  cls "comment-name" ? marginTop (px 0)
-  
+
   div ? do
     cls "editor" ? textAlign "left"
     cls "gobutton" ? do
@@ -221,12 +219,6 @@ comments = do
     focus ? borderLeft [px 2, "solid", hex 0x80B9B4]
     width  (perc 95)
     height (px 200)
-    
-  input ! "comment-field" ! "textfield" ? do
-    focus ? borderBottom [px 2, "solid", hex 0x80B9B4]
-    margin  (px 10)
-    width   (perc 40)
-    display "block"
     
 editor :: (Monad m) => NiagraT m ()
 editor = do

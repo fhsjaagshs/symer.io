@@ -22,7 +22,6 @@ where
 
 import Web.App
 import Blog.FileCache
-import Blog.Util.Env
 
 import Control.Monad
 import Control.Monad.IO.Class
@@ -37,6 +36,8 @@ import Database.PostgreSQL.Simple.Migration as PG.Migration
 
 import           Blaze.ByteString.Builder (toByteString)
 import qualified Blaze.ByteString.Builder.Char.Utf8 as Utf8
+
+import System.Environment
 
 data AppState = AppState {
   appStatePool :: Pool Connection,
@@ -57,12 +58,13 @@ instance WebAppState AppState where
 makePostgresPool :: IO (Pool Connection)
 makePostgresPool = do
   putStrLn "Initializing PostgreSQL connection pool"
-  pool <- createPool (appEnvIO >>= connectPostgreSQL . connString) close 2 5.0 5
+  env <- lookupEnv "ENV"
+  pool <- createPool (connectPostgreSQL $ connString env) close 2 5.0 5
   withResource pool postgresMigrate
   return pool
   where
-  connString "production" = "" -- postgres config loaded *only* from env vars
-  connString _            = "dbname='blog' host='localhost'"
+  connString (Just "production") = "" -- postgres config loaded *only* from env vars
+  connString _                   = "dbname='blog' host='localhost'"
   
 -- |Empty a postgres connection pool.
 destroyPostgresPool :: Pool Connection -> IO ()

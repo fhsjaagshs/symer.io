@@ -24,7 +24,6 @@ executable blog
                      time,
                      bcrypt,
                      aeson,
-                     attoparsec,
                      http-types,
                      wai,
                      wai-extra,

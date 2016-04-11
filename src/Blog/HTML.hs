@@ -29,6 +29,7 @@ where
   
 import Blog.User
 import Blog.Post
+import Blog.Comment
 import Blog.HTML.Common
 import Blog.HTML.CSS as CSS
 import Blog.HTML.SVG as SVG
@@ -43,6 +44,8 @@ import Data.Text.Lazy (Text)
 import qualified Data.Text.Lazy as TL
 
 import Data.Maybe
+import Data.Monoid
+import Data.String
 import Control.Monad
 
 import Cheapskate
@@ -83,17 +86,30 @@ drafts user posts pageNumber = docTypeHtml $ do
     mapM_ (renderPost True (Just user) Nothing) (take postsPerPage posts)
     renderPageControls pageNumber (length posts > postsPerPage)
 
-postDetail :: (Maybe User) -> Post -> Html
-postDetail user pst@(Post _ title _ _ tags _ _) = docTypeHtml $ do
+postDetail :: (Maybe User) -> Post -> [Comment] -> Html
+postDetail user pst@(Post pid title _ _ tags _ _) commnts = docTypeHtml $ do
   H.head $ do
     pageAttributes
     H.title $ toHtml title
+    H.style $ toHtml $ css' CSS.comments
     renderMeta "keywords" $ toValue $ T.intercalate ", " $ tags ++ keywords
     renderMeta "description" $ toValue $ postDescription pst
   H.body $ do
     renderHeader user True Nothing
     renderPost False user Nothing pst
-    renderScript "/assets/js/comments.js"
+    commentEditor pid Nothing False
+    mapM_ (renderComment 0) commnts
+    where
+      replyOffset = 50
+      renderComment depth (Comment cid _ _ body _ children) = do
+        H.div
+          ! class_ "comment"
+          ! customAttribute "cid" (fromString $ show cid)
+          ! style (fromString $ "margin-left:" <> (show (depth*replyOffset)) <> "px;") $ do
+            H.p ! class_ "comment-body" $ toHtml body
+          -- TODO: button
+          -- H.a ! class_ "button" $ "Reply"
+        mapM_ (renderComment $ depth + 1) children
 
 postsByTag :: (Maybe User) -> Text -> [Post] -> Integer -> Html
 postsByTag user tag posts pageNum = docTypeHtml $ do
@@ -106,6 +122,20 @@ postsByTag user tag posts pageNum = docTypeHtml $ do
     mapM_ (renderPost True user (Just tag)) (take postsPerPage posts)
     renderPageControls pageNum (length posts > postsPerPage)
     
+commentEditor :: Integer -> Maybe Integer -> Bool -> Html
+commentEditor postid parentid ishidden = do
+  containerDiv $ do
+    submitForm $ do
+      when (isJust parentid) $ do
+        input ! type_ "hidden" ! name "parent_id" ! value (fromString $ show postid)
+      textarea ! A.form formname ! name "body" ! class_ "comment-textarea textarea" ! placeholder "Write a comment" $ ""
+      input ! class_ "gobutton" ! type_ "submit" ! value "Save"
+  where
+    containerDiv = div ! class_ "editor"
+                       ! style (fromString $ "text-align:center;display:" <> if ishidden then "none" else "block")
+    submitForm = H.form ! id formname ! action (fromString $ "/posts/" <> (show postid) <> "/comments") ! method "POST"
+    formname = fromString $ "form" <> (show postid) <> fromMaybe "" (show <$> parentid)
+
 postEditor :: Maybe Post -> Html
 postEditor Nothing = renderEditor Nothing "" "" [] True
 postEditor (Just (Post pid t bdy _ tg d _)) = renderEditor (Just pid) t bdy tg d
@@ -229,7 +259,7 @@ renderPost short user tag (Post pid title body ts tags _ (User aid aun _)) = do
     renderContent True  = do
       renderDoc . truncateMarkdown 500 . markdown def $ body
       a ! class_ "read-more" ! href postURL $ "read more..."
-
+      
 -- |Default keywords.
 keywords :: [T.Text]
 {-# INLINE keywords #-}

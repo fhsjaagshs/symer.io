@@ -21,8 +21,8 @@ import Control.Monad.IO.Class
 import Data.Maybe
 import Data.Text (Text)
 import Data.Monoid
+import Data.Char
 import qualified Data.ByteString.Char8 as B
-import Data.Attoparsec.ByteString.Char8 as A
 
 data User = User {
   userUID :: !Integer,
@@ -41,10 +41,13 @@ instance FromRow User where
 getUser :: (MonadIO m) => Text -> RouteT AppState m (Maybe User)
 getUser username = listToMaybe <$> postgresQuery q [username]
   where q = "SELECT * FROM user_t WHERE UserName=? LIMIT 1"
-  
+
 accessToken :: (WebAppState s, MonadIO m) => RouteT s m (Maybe Integer)
-accessToken = (\v -> v >>= f) <$> header "Cookie"-- fmap read . lookup "token" <$> getCookies
-  where f = fmap read . maybeResult . flip feed "" . parse ("token=" *> many' digit)
+accessToken = (>>= f) <$> header "Cookie"
+  where f bs
+          | B.isPrefixOf "token=" bs = 
+            Just $ read $ B.unpack $ B.takeWhile isDigit $ B.drop 6 bs
+          | otherwise = Nothing
 
 authenticate :: (MonadIO m) => RouteT AppState m User
 authenticate = getAuthenticatedUser >>= maybe onNothing return
@@ -52,7 +55,7 @@ authenticate = getAuthenticatedUser >>= maybe onNothing return
 
 getAuthenticatedUser :: (MonadIO m) => RouteT AppState m (Maybe User)
 getAuthenticatedUser = accessToken >>= maybe (return Nothing) f
-  where f t = (listToMaybe <$> postgresQuery sql [t])
+  where f t = fmap listToMaybe $ postgresQuery sql [t]
         sql = "SELECT u.* FROM user_t u INNER JOIN session_t s ON s.UserID=u.UserID WHERE s.SessionID=? LIMIT 1"
 
 setAuthenticatedUser :: (MonadIO m) => User -> RouteT AppState m ()

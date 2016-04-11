@@ -42,6 +42,7 @@ import qualified Data.ByteString.Char8 as B
 
 -- Miscellaneous Ideas:
 -- 1. 'Top 5' tags map in side bar?
+-- 2. JSON API
 
 --------------------------------------------------------------------------------
 
@@ -59,7 +60,8 @@ app = mconcat [
   get  "/posts/by/tag/:tag"                getPagePostsByTag,
   get  "/posts/:id/edit"                   getPageEditor,
   post "/posts/:id/comments"               postComments,
-  get  "/posts/:id/comments.json"          $ param "id" >>= getCommentsForPost >>= writeJSON,
+  -- post "/posts/:id/comments.json"          postCommentsJSON,
+  -- get  "/posts/:id/comments.json"          $ param "id" >>= getCommentsForPost >>= writeJSON,
   get  "/assets/css/blog.css"              $ cssFile CSS.blog,
   get  "/assets/css/comments.css"          $ cssFile CSS.comments,
   get  "/assets/css/editor.css"            $ cssFile CSS.editor,
@@ -136,12 +138,12 @@ postPosts = do
 getPagePostById :: (MonadIO m) => RouteT AppState m ()
 getPagePostById = param "id" >>= getPost >>= maybe (redirect "/notfound") f
   where
-    f pst@(Post _ _ _ _ _ draft author) = do
+    f pst@(Post pid _ _ _ _ draft author) = do
       maybeUser <- getAuthenticatedUser
       if draft && (maybe True (/= author) maybeUser)
         then redirect "/notfound"
-        else renderHtml $ HTML.postDetail maybeUser pst
-
+        else getCommentsForPost pid >>= renderHtml . HTML.postDetail maybeUser pst
+        
 getPagePostsByTag :: (MonadIO m) => RouteT AppState m ()
 getPagePostsByTag = do
   tag <- param "tag"
@@ -149,16 +151,28 @@ getPagePostsByTag = do
   user <- getAuthenticatedUser
   posts <- getPostsByTag tag pg
   renderHtml $ HTML.postsByTag user (TL.fromStrict tag) posts pg
-                                             
+  
 postComments :: (MonadIO m) => RouteT AppState m ()
-postComments = doInsert >>= maybe errorOut writeJSON
+postComments = doInsert >>= maybe errorOut (const (param "id" >>= redirectPost))
   where
     doInsert = do
       p <- maybeParam "parent_id"
-      i <- param "i"
+      i <- param "id"
       b <- param "body"
       insertComment p i b
+    redirectPost :: (MonadIO m) => Integer -> RouteT AppState m ()
+    redirectPost = redirect . B.pack . mappend "/posts/" . show
     errorOut = status status500 >> writeBodyBytes "Failed to insert comment."
+                                             
+-- postCommentsJSON :: (MonadIO m) => RouteT AppState m ()
+-- postCommentsJSON = doInsert >>= maybe errorOut writeJSON
+--   where
+--     doInsert = do
+--       p <- maybeParam "parent_id"
+--       i <- param "id"
+--       b <- param "body"
+--       insertComment p i b
+--     errorOut = status status500 >> writeBodyBytes "Failed to insert comment."
   
 getPageEditor :: (MonadIO m) => RouteT AppState m ()
 getPageEditor = authenticate >> param "id" >>= getPost >>= f
