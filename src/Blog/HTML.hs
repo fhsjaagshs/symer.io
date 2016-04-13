@@ -97,18 +97,19 @@ postDetail user pst@(Post pid title _ _ tags _ _) commnts = docTypeHtml $ do
   H.body $ do
     renderHeader user True Nothing
     renderPost False user Nothing pst
-    commentEditor pid Nothing False
+    commentEditor pid Nothing
     mapM_ (renderComment 0) commnts
     where
       replyOffset = 50
       renderComment depth (Comment cid _ _ body _ children) = do
         H.div
           ! class_ "comment"
-          ! customAttribute "cid" (fromString $ show cid)
+          ! A.id "" customAttribute "cid" (fromString $ show cid)
           ! style (fromString $ "margin-left:" <> (show (depth*replyOffset)) <> "px;") $ do
             H.p ! class_ "comment-body" $ toHtml body
-          -- TODO: button
-          -- H.a ! class_ "button" $ "Reply"
+            H.details $ do
+              H.summary "Reply"
+              commentEditor pid (Just cid)
         mapM_ (renderComment $ depth + 1) children
 
 postsByTag :: (Maybe User) -> Text -> [Post] -> Integer -> Html
@@ -122,17 +123,17 @@ postsByTag user tag posts pageNum = docTypeHtml $ do
     mapM_ (renderPost True user (Just tag)) (take postsPerPage posts)
     renderPageControls pageNum (length posts > postsPerPage)
     
-commentEditor :: Integer -> Maybe Integer -> Bool -> Html
-commentEditor postid parentid ishidden = do
+commentEditor :: Integer -> Maybe Integer -> Html
+commentEditor postid parentid = do
   containerDiv $ do
     submitForm $ do
       when (isJust parentid) $ do
-        input ! type_ "hidden" ! name "parent_id" ! value (fromString $ show postid)
+        input ! type_ "hidden" ! name "parent_id" ! value (fromString $ show $ fromJust parentid)
       textarea ! A.form formname ! name "body" ! class_ "comment-textarea textarea" ! placeholder "Write a comment" $ ""
-      input ! class_ "gobutton" ! type_ "submit" ! value "Save"
+      input ! class_ "gobutton" ! type_ "submit" ! value ""
   where
     containerDiv = div ! class_ "editor"
-                       ! style (fromString $ "text-align:center;display:" <> if ishidden then "none" else "block")
+                       ! style (fromString $ "text-align:center;display:block")
     submitForm = H.form ! id formname ! action (fromString $ "/posts/" <> (show postid) <> "/comments") ! method "POST"
     formname = fromString $ "form" <> (show postid) <> fromMaybe "" (show <$> parentid)
 

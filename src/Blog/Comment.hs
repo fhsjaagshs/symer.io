@@ -54,12 +54,11 @@ nestComments :: [Comment] -> [Comment]
 nestComments = f []
   where
     f rs [] = rs
-    f rs (x:xs)
-      | isNothing $ commentParentID x = f (rs ++ [x]) xs
-      | otherwise = f (map (insert x) rs) (map (insert x) xs)
+    f rs (x@(Comment _ Nothing _ _ _ _):xs) = f (rs ++ [x]) xs
+    f rs (x:xs) = f (map (insert x) rs) (map (insert x) xs)
       where
-        isParent p c = maybe False ((==) (commentID p)) $ commentParentID c
         insert c a = modifyChildren a $ bool (map $ insert c) (++ [c]) $ isParent a c
+        isParent p c = maybe False ((==) (commentID p)) $ commentParentID c
         modifyChildren n g = n { commentChildren = g $ commentChildren n }
     
 -- | Get a post's comments
