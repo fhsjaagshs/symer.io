@@ -57,9 +57,9 @@ nestComments = f []
     f rs (x@(Comment _ Nothing _ _ _ _):xs) = f (rs ++ [x]) xs
     f rs (x:xs) = f (map (insert x) rs) (map (insert x) xs)
       where
-        insert c a = modifyChildren a $ bool (map $ insert c) (++ [c]) $ isParent a c
-        isParent p c = maybe False ((==) (commentID p)) $ commentParentID c
+        isParent p = maybe False ((==) (commentID p)) . commentParentID
         modifyChildren n g = n { commentChildren = g $ commentChildren n }
+        insert c a = modifyChildren a $ bool (map $ insert c) (++ [c]) $ isParent a c
     
 -- | Get a post's comments
 getCommentsForPost :: (MonadIO m)

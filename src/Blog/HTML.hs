@@ -104,7 +104,7 @@ postDetail user pst@(Post pid title _ _ tags _ _) commnts = docTypeHtml $ do
       renderComment depth (Comment cid _ _ body _ children) = do
         H.div
           ! class_ "comment"
-          ! A.id "" customAttribute "cid" (fromString $ show cid)
+          ! A.id (fromString $ "comment" <> show cid)
           ! style (fromString $ "margin-left:" <> (show (depth*replyOffset)) <> "px;") $ do
             H.p ! class_ "comment-body" $ toHtml body
             H.details $ do
@@ -112,18 +112,7 @@ postDetail user pst@(Post pid title _ _ tags _ _) commnts = docTypeHtml $ do
               commentEditor pid (Just cid)
         mapM_ (renderComment $ depth + 1) children
 
-postsByTag :: (Maybe User) -> Text -> [Post] -> Integer -> Html
-postsByTag user tag posts pageNum = docTypeHtml $ do
-  H.head $ do
-    pageAttributes
-    H.title $ toHtml tag
-    renderMeta "robots" "noindex, nofollow"
-  H.body $ do
-    renderHeader user True Nothing
-    mapM_ (renderPost True user (Just tag)) (take postsPerPage posts)
-    renderPageControls pageNum (length posts > postsPerPage)
-    
-commentEditor :: Integer -> Maybe Integer -> Html
+commentEditor :: (Show a, Integral a) => a -> Maybe a -> Html
 commentEditor postid parentid = do
   containerDiv $ do
     submitForm $ do
@@ -137,6 +126,17 @@ commentEditor postid parentid = do
     submitForm = H.form ! id formname ! action (fromString $ "/posts/" <> (show postid) <> "/comments") ! method "POST"
     formname = fromString $ "form" <> (show postid) <> fromMaybe "" (show <$> parentid)
 
+postsByTag :: (Maybe User) -> Text -> [Post] -> Integer -> Html
+postsByTag user tag posts pageNum = docTypeHtml $ do
+  H.head $ do
+    pageAttributes
+    H.title $ toHtml tag
+    renderMeta "robots" "noindex, nofollow"
+  H.body $ do
+    renderHeader user True Nothing
+    mapM_ (renderPost True user (Just tag)) (take postsPerPage posts)
+    renderPageControls pageNum (length posts > postsPerPage)
+    
 postEditor :: Maybe Post -> Html
 postEditor Nothing = renderEditor Nothing "" "" [] True
 postEditor (Just (Post pid t bdy _ tg d _)) = renderEditor (Just pid) t bdy tg d

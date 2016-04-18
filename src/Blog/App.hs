@@ -161,7 +161,7 @@ postComments = doInsert >>= maybe errorOut (const (param "id" >>= redirectPost))
       b <- param "body"
       insertComment p i b
     redirectPost :: (MonadIO m) => Integer -> RouteT AppState m ()
-    redirectPost = redirect . B.pack . mappend "/posts/" . show
+    redirectPost pid = redirect $ B.pack $ "/posts/" ++ show pid ++ "#comment<comment_id>"
     errorOut = status status500 >> writeBodyBytes "Failed to insert comment."
                                              
 -- postCommentsJSON :: (MonadIO m) => RouteT AppState m ()

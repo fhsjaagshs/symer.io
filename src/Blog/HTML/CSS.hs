@@ -227,6 +227,9 @@ comments = do
   "summary" ? do
     outline none
     
+  "details" ? do
+    cursor "pointer"
+    
 editor :: (Monad m) => NiagraT m ()
 editor = do
   useFont "lato-regular" "/assets/fonts/lato/regular"
