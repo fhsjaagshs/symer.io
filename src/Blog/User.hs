@@ -19,6 +19,7 @@ import Database.PostgreSQL.Simple.FromRow
 import Control.Monad.IO.Class
 
 import Data.Maybe
+import Data.Bool
 import Data.Text (Text)
 import Data.Monoid
 import Text.Read
