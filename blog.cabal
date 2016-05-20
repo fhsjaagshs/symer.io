@@ -42,6 +42,7 @@ executable blog
                      
                      base16-bytestring,
                      mime-types,
+                     network-uri,
                      css-text,
                      hjsmin,
                      fsnotify,
