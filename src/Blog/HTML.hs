@@ -61,7 +61,7 @@ import Text.Blaze.Html5.Attributes as A hiding (title)
 import Text.Blaze.Renderer.Utf8
 
 instance ToStream Html where
-  stream = stream . renderMarkupBuilder
+  stream f = stream f . renderMarkupBuilder
 
 root :: (Maybe User) -> [Post] -> Integer -> Html
 root user posts pageNumber = docTypeHtml $ do

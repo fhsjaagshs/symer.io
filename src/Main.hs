@@ -26,7 +26,7 @@ data Util = Password String
           | MigrateDB String
 
 main :: IO ()
-main = webappMainIO app "Nathaniel Symer's blog." (Just parseUtil) handleUtil
+main = webappMainIO app (Just parseUtil) handleUtil
 
 parseUtil :: Parser Util
 parseUtil = subparser $ (mkcmd "password" "Hash a password" parsePassword) <>
