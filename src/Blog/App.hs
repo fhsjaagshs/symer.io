@@ -49,6 +49,8 @@ import qualified Data.ByteString.Char8 as B
 app :: WebApp AppState IO
 app = mconcat [
   middleware                               $ addHeaders [("Cache-Control",ccontrol)],
+  middleware                               $ forceSSL 443,
+  middleware                               $ gzip 1400,
   get  "/"                                 getRoot,
   get  "/login"                            getLogin,
   get  "/logout"                           $ deleteAuth >> redirect "/",
