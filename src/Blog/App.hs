@@ -121,10 +121,10 @@ postPosts = do
           writeBodyBytes "Failed to find post to delete."
         Just _ -> redirect "/"
     handleMethod user _ pid = do
-      title <- (maybe "" $ T.decodeUtf8 . uncrlf) <$> maybeParam "title"
-      bdy   <- (maybe "" $ T.decodeUtf8 . uncrlf) <$> maybeParam "body"
-      tags  <- (maybe [] $ T.splitOn ",")         <$> maybeParam "tags"
-      draft <- (maybe True not)                   <$> maybeParam "draft"
+      title <- (maybe "" $ T.decodeUtf8 . uncrlf)  <$> maybeParam "title"
+      bdy   <- (maybe "" $ T.decodeUtf8 . uncrlf)  <$> maybeParam "body"
+      tags  <- (maybe [] $ T.splitOn ",")          <$> maybeParam "tags"
+      draft <- (maybe True not)                    <$> maybeParam "draft"
       p <- upsertPost pid title bdy tags draft user
       case p of
         Nothing -> do
@@ -132,8 +132,9 @@ postPosts = do
           writeBodyBytes "Missing required parameters"
         Just p' -> redirect $ B.pack $ "/posts/" ++ show p'
       where uncrlf = B.foldl f B.empty
-              where f bs '\n' = if B.last bs == '\r' then B.init bs else f bs '\n'
-                    f bs c = B.snoc bs c
+              where f bs c
+                      | c == '\n' && B.last bs == '\r' = B.snoc (B.init bs) '\n'
+                      | otherwise = B.snoc bs c
             
 getPagePostById :: (MonadIO m) => RouteT AppState m ()
 getPagePostById = param "id" >>= getPost >>= maybe (redirect "/notfound") f
@@ -153,26 +154,16 @@ getPagePostsByTag = do
   renderHtml $ HTML.postsByTag user (TL.fromStrict tag) posts pg
   
 postComments :: (MonadIO m) => RouteT AppState m ()
-postComments = doInsert >>= maybe errorOut (const (param "id" >>= redirectPost))
+postComments = doInsert >>= maybe errorOut (\c -> (param "id" >>= redirectPost (commentID c)))
   where
     doInsert = do
       p <- maybeParam "parent_id"
       i <- param "id"
       b <- param "body"
       insertComment p i b
-    redirectPost :: (MonadIO m) => Integer -> RouteT AppState m ()
-    redirectPost pid = redirect $ B.pack $ "/posts/" ++ show pid ++ "#comment<comment_id>"
+    redirectPost :: (MonadIO m) => Integer -> Integer -> RouteT AppState m ()
+    redirectPost cid pid = redirect $ B.pack $ "/posts/" ++ show pid ++ "#comment" ++ show cid
     errorOut = status status500 >> writeBodyBytes "Failed to insert comment."
-                                             
--- postCommentsJSON :: (MonadIO m) => RouteT AppState m ()
--- postCommentsJSON = doInsert >>= maybe errorOut writeJSON
---   where
---     doInsert = do
---       p <- maybeParam "parent_id"
---       i <- param "id"
---       b <- param "body"
---       insertComment p i b
---     errorOut = status status500 >> writeBodyBytes "Failed to insert comment."
   
 getPageEditor :: (MonadIO m) => RouteT AppState m ()
 getPageEditor = authenticate >> param "id" >>= getPost >>= f

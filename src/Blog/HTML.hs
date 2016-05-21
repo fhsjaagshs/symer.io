@@ -161,7 +161,7 @@ renderEditor pid title body tags draft = docTypeHtml $ do
   where
     deleteForm Nothing = return ()
     deleteForm (Just pid') = do
-      H.form ! id "delete-form" ! action "/posts" ! method "POST" $ do
+      H.form ! id "delete-form" ! enctype "text/plain" ! action "/posts" ! method "POST" $ do
         input ! type_ "hidden" ! name "id"     ! value (toValue pid')
         input ! type_ "hidden" ! name "method" ! value "DELETE"
         input ! id "delete-button" ! class_ "button" ! type_ "submit" ! value "Delete"
