@@ -289,7 +289,7 @@ renderHeader user showAbout ttl = do
       
     when showAbout $ do
       h1 ! class_ "title" ! A.id "name-title" $ "NATE SYMER"
-      h3 ! class_ "subtitle" $ "artisinal software development"
+      h3 ! class_ "subtitle" $ "artisanal software development"
       h3 ! class_ "tagline" $ "nate@symer.io • 856-419-7654"
       
     renderTitle ttl
