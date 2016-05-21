@@ -15,7 +15,7 @@ import qualified Blog.HTML as HTML
 import qualified Blog.HTML.CSS as CSS
 import qualified Blog.HTML.SVG as SVG
 
-import Web.App hiding (forceSSL)
+import Web.App
 import Network.HTTP.Types.Status
 import Network.Wai.Middleware.AddHeaders
 import Network.Wai.Middleware.ForceSSL
