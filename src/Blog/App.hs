@@ -15,15 +15,19 @@ import qualified Blog.HTML as HTML
 import qualified Blog.HTML.CSS as CSS
 import qualified Blog.HTML.SVG as SVG
 
-import Web.App
+import Web.App hiding (forceSSL)
 import Network.HTTP.Types.Status
 import Network.Wai.Middleware.AddHeaders
+import Network.Wai.Middleware.ForceSSL
 
 import Data.Maybe
 import Data.Niagra (NiagraT(..),css)
  
 import Control.Monad
 import Control.Monad.IO.Class
+
+import System.IO.Unsafe
+import System.Environment
 
 import qualified Crypto.BCrypt as BCrypt
 
@@ -50,6 +54,7 @@ app :: WebApp AppState IO
 app = mconcat [
   middleware                               $ addHeaders [("Cache-Control",ccontrol)],
   middleware                               $ gzip 1400,
+  forceSSLMiddleware,
   get  "/"                                 getRoot,
   get  "/login"                            getLogin,
   get  "/logout"                           $ deleteAuth >> redirect "/",
@@ -61,8 +66,6 @@ app = mconcat [
   get  "/posts/by/tag/:tag"                getPagePostsByTag,
   get  "/posts/:id/edit"                   getPageEditor,
   post "/posts/:id/comments"               postComments,
-  -- post "/posts/:id/comments.json"          postCommentsJSON,
-  -- get  "/posts/:id/comments.json"          $ param "id" >>= getCommentsForPost >>= writeJSON,
   get  "/assets/css/blog.css"              $ cssFile CSS.blog,
   get  "/assets/css/comments.css"          $ cssFile CSS.comments,
   get  "/assets/css/editor.css"            $ cssFile CSS.editor,
@@ -74,7 +77,8 @@ app = mconcat [
   ]
   where
     ccontrol = "public,max-age=3600,s-max-age=3600,no-cache,must-revalidate,proxy-revalidate,no-transform"
-
+    forceSSLMiddleware = if (environment == (Just "production")) then middleware forceSSL else mempty
+    environment = unsafePerformIO $ lookupEnv "ENV"
 {- Route functions -}
 
 getRoot :: (MonadIO m) => RouteT AppState m ()
