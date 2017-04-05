@@ -25,7 +25,6 @@ import Blog.FileCache
 
 import Control.Monad
 import Control.Monad.IO.Class
-import qualified Control.Monad.State.Class as S
 
 import Data.Maybe
 import Data.Bool
@@ -109,7 +108,7 @@ postgresMigrate pg = void $ withTransaction pg $ do
 withPostgres :: (MonadIO m)
              => (Connection -> IO b) -- ^ function that given a 'Connection' creates an 'IO' action
              -> RouteT AppState m b
-withPostgres f = S.get >>= \(AppState p _) -> liftIO $ withResource p f
+withPostgres f = getState >>= \(AppState p _) -> liftIO $ withResource p f
     
 -- |Make a PostgreSQL query & return parameters.
 postgresQuery :: (FromRow a, ToRow b, MonadIO m)

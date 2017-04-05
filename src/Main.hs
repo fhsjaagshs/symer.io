@@ -13,6 +13,13 @@ import Options.Applicative
 import qualified Data.ByteString.Char8 as B (pack,unpack)
 import Crypto.BCrypt (hashPasswordUsingPolicy,HashingPolicy(..))
 import Database.PostgreSQL.Simple (connectPostgreSQL,close)
+import System.Environment
+
+import Data.Monoid
+
+import Network.Wai.Middleware.AddHeaders
+import Network.Wai.Middleware.ForceSSL
+import Network.Wai.Middleware.Gzip
 
 -- Setup:
 -- ensure your executable is setuid & owned by root:
@@ -23,7 +30,11 @@ data Util = Password String
           | MigrateDB String
 
 main :: IO ()
-main = webappMainIO app (Just parseUtil) handleUtil
+main = do
+  env <- lookupEnv "ENV"
+  let middleware = [gzip def, addHeaders [("Cache-Control",ccontrol)], if env == (Just "production") then forceSSL else id]
+  webappMainIO app middleware (Just parseUtil) handleUtil
+  where ccontrol = "public,max-age=3600,s-max-age=3600,no-cache,must-revalidate,proxy-revalidate,no-transform"
 
 parseUtil :: Parser Util
 parseUtil = subparser $ (mkcmd "password" "Hash a password" parsePassword) <>

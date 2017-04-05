@@ -17,8 +17,6 @@ import qualified Blog.HTML.SVG as SVG
 
 import Web.App
 import Network.HTTP.Types.Status
-import Network.Wai.Middleware.AddHeaders
-import Network.Wai.Middleware.ForceSSL
 
 import Data.Maybe
 import Data.Niagra (NiagraT(..),css)
@@ -50,11 +48,8 @@ import qualified Data.ByteString.Char8 as B
 
 --------------------------------------------------------------------------------
 
-app :: WebApp AppState IO
-app = mconcat [
-  middleware                               $ addHeaders [("Cache-Control",ccontrol)],
-  middleware                               $ gzip 1400,
-  forceSSLMiddleware,
+app :: [Route AppState IO]
+app = [
   get  "/"                                 getRoot,
   get  "/login"                            getLogin,
   get  "/logout"                           $ deleteAuth >> redirect "/",
@@ -75,10 +70,7 @@ app = mconcat [
   get  (regex "/assets/(.*)")              $ param "1" >>= loadAsset,
   matchAll                                 $ renderHtml $ HTML.notFound
   ]
-  where
-    ccontrol = "public,max-age=3600,s-max-age=3600,no-cache,must-revalidate,proxy-revalidate,no-transform"
-    forceSSLMiddleware = if (environment == (Just "production")) then middleware forceSSL else mempty
-    environment = unsafePerformIO $ lookupEnv "ENV"
+
 {- Route functions -}
 
 getRoot :: (MonadIO m) => RouteT AppState m ()
@@ -121,9 +113,7 @@ postPosts = do
     handleMethod user (Just "DELETE") (Just p) = do
       pid <- deletePost user p
       case pid of
-        Nothing -> do
-          status status404
-          writeBodyBytes "Failed to find post to delete."
+        Nothing -> status status404
         Just _ -> redirect "/"
     handleMethod user _ pid = do
       title <- (maybe "" $ T.decodeUtf8 . uncrlf)  <$> maybeParam "title"
@@ -132,9 +122,7 @@ postPosts = do
       draft <- (maybe True not)                    <$> maybeParam "draft"
       p <- upsertPost pid title bdy tags draft user
       case p of
-        Nothing -> do
-          status status400
-          writeBodyBytes "Missing required parameters"
+        Nothing -> status status400
         Just p' -> redirect $ B.pack $ "/posts/" ++ show p'
       where uncrlf = B.foldl f B.empty
               where f bs c
@@ -159,16 +147,14 @@ getPagePostsByTag = do
   renderHtml $ HTML.postsByTag user (TL.fromStrict tag) posts pg
   
 postComments :: (MonadIO m) => RouteT AppState m ()
-postComments = doInsert >>= maybe errorOut (\c -> (param "id" >>= redirectPost (commentID c)))
+postComments = doInsert >>= maybe (status status500) (\c -> (param "id" >>= redirectPost (commentID c)))
   where
-    doInsert = do
-      p <- maybeParam "parent_id"
-      i <- param "id"
-      b <- param "body"
-      insertComment p i b
+    doInsert = join $ insertComment
+                      <$> maybeParam "parent_id"
+                      <*> param "id"
+                      <*> param "body"
     redirectPost :: (MonadIO m) => Integer -> Integer -> RouteT AppState m ()
     redirectPost cid pid = redirect $ B.pack $ "/posts/" ++ show pid ++ "#comment" ++ show cid
-    errorOut = status status500 >> writeBodyBytes "Failed to insert comment."
   
 getPageEditor :: (MonadIO m) => RouteT AppState m ()
 getPageEditor = authenticate >> param "id" >>= getPost >>= f

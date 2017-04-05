@@ -30,7 +30,6 @@ import System.Directory
 
 import Control.Monad
 import Control.Monad.IO.Class
-import Control.Monad.State.Class as S
 
 import Data.Monoid
 
@@ -51,12 +50,8 @@ loadAsset :: (MonadIO m)
 loadAsset assetsPath = do
   exists <- liftIO $ doesFileExist relPath
   if not exists
-    then do
-      status status404
-      writeBodyBytes "File "
-      writeBody relPath
-      writeBodyBytes " does not exist."
-    else S.get >>= loadFromCache . appStateCache
+    then status status404
+    else getState >>= loadFromCache . appStateCache
   where
     mimetype = defaultMimeLookup . T.pack . takeFileName $ assetsPath
     relPath = "assets/" <> assetsPath
