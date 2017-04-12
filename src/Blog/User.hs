@@ -63,7 +63,9 @@ setAuthenticatedUser :: (MonadIO m) => User -> RouteT AppState m ()
 setAuthenticatedUser (User uid _ _) = do
   (token :: Maybe Integer) <- onlyQuery $ postgresQuery "INSERT INTO session_t (UserID) VALUES (?) RETURNING SessionID" [uid]
   case token of
-    Just v -> addHeader "Set-Cookie" $ "token=" <> (B.pack $ show v) <> ";expires=Fri, 31 Dec 9999 23:59:59 GMT;HttpOnly;Secure"
+    Just v -> do
+      opts <- bool "" ";Secure" <$> isTLS
+      addHeader "Set-Cookie" $ "token=" <> (B.pack $ show v) <> ";expires=Fri, 31 Dec 9999 23:59:59 GMT;HttpOnly" <> opts
     Nothing -> return ()
 
 deleteAuth :: (MonadIO m) => RouteT AppState m ()

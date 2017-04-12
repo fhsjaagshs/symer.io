@@ -98,11 +98,11 @@ destroyPostgresPool = destroyAllResources
 
 -- |Run DB migrations
 postgresMigrate :: Connection -> IO ()
-postgresMigrate pg = void $ withTransaction pg $ do
+postgresMigrate pg = withTransaction pg $ do
   void $ execute_ pg "SET client_min_messages=WARNING;"
   void $ runMigration $ MigrationContext MigrationInitialization True pg
+  void $ runMigration $ MigrationContext (MigrationFile "blog.sql" "migrations/blog.sql") True pg
   void $ execute_ pg "SET client_min_messages=NOTICE;"
-  runMigration $ MigrationContext (MigrationFile "blog.sql" "migrations/blog.sql") True pg
   
 -- |"lift" a function into the connection pool.
 withPostgres :: (MonadIO m)
