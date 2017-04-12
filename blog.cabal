@@ -37,7 +37,7 @@ executable blog
                      blaze-html,
                      blaze-svg,
                      blaze-markup,
-                     webapp >= 0.4.0,
+                     webapp >= 0.4.1,
                      niagra >= 0.2.0,
                      base16-bytestring,
                      mime-types,

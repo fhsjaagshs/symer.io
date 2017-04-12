@@ -24,9 +24,6 @@ import Data.Niagra (NiagraT(..),css)
 import Control.Monad
 import Control.Monad.IO.Class
 
-import System.IO.Unsafe
-import System.Environment
-
 import qualified Crypto.BCrypt as BCrypt
 
 import qualified Data.Text as T
