@@ -91,7 +91,7 @@ postLogin = param "username" >>= getUser >>= f
       if BCrypt.validatePassword (T.encodeUtf8 phash) pPassword
         then do
           setAuthenticatedUser user
-          maybeParam "lookup" >>= redirect . fromMaybe "/"
+          redirect "/"
         else redirect "/login?err=Invalid%20password%2E"
         
 getLogin :: (MonadIO m) => RouteT AppState m ()
