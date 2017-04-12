@@ -39,7 +39,6 @@ executable blog
                      blaze-markup,
                      webapp >= 0.4.0,
                      niagra >= 0.2.0,
-                     
                      base16-bytestring,
                      mime-types,
                      network-uri,
