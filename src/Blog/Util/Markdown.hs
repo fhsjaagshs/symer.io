@@ -75,11 +75,8 @@ truncateMarkdown len (Doc o bs) = Doc o $ loop len (F.toList bs) S.empty
     lenBlock (HtmlBlock htmlText) = T.length htmlText
     lenBlock HRule = 0
 
-    -- FIXME: doesn't match all cases (missing @loop (I# _) (_:_) _@)
-    --        This may be a GHC bug.
     loop :: Int -> [Block] -> Seq Block -> Seq Block
     loop _    []     accum = accum
-    loop 0    _      accum = accum
     loop rlen (x:xs) accum
-      | lenBlock x < rlen = loop (rlen-(lenBlock x)) xs (accum |> x)
-      | lenBlock x > rlen = accum |> x
+      | lenBlock x <= rlen = loop (rlen-(lenBlock x)) xs (accum |> x)
+      | otherwise = accum |> x

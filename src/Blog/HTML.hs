@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedStrings, FlexibleInstances #-}
+{-# OPTIONS_GHC -Wno-orphans -Wno-type-defaults #-}
 
 {-|
 Module      : Blog.HTML

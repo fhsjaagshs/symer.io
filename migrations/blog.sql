@@ -23,7 +23,7 @@ CREATE TABLE IF NOT EXISTS tag_t (
   TagValue TEXT NOT NULL UNIQUE
 );
 
-CREATE INDEX IF NOT EXISTS tag_t_tagvalue ON tag_t USING hash (TagValue);
+CREATE INDEX IF NOT EXISTS tag_t_tagvalue ON tag_t USING spgist (TagValue);
 
 CREATE TABLE IF NOT EXISTS post_tag_t (
   PostTagID BIGSERIAL PRIMARY KEY,
@@ -52,6 +52,7 @@ CREATE TABLE IF NOT EXISTS visit_t (
   VisitForwarded TEXT, -- Forwarded
   VisitReferrer TEXT, -- Referrer
   VisitUserAgent TEXT -- User-Agent
+  -- TODO: IP address?
 );
 
 CREATE INDEX IF NOT EXISTS posts_id         ON post_t(PostID);
@@ -68,7 +69,7 @@ CREATE OR REPLACE VIEW v_weighted_tag AS
   
 CREATE OR REPLACE VIEW v_posts_all AS
   SELECT p.PostID,p.PostTitle,p.PostBody,p.PostCreatedAt,
-         (
+         coalesce((
            SELECT array_agg(t.tagvalue)
            FROM tag_t t
            WHERE EXISTS (
@@ -76,7 +77,7 @@ CREATE OR REPLACE VIEW v_posts_all AS
              FROM post_tag_t pt
              where pt.TagID=t.TagID AND pt.postid=p.PostId
            )
-         ) as tags,
+         ), '{}') as tags,
          p.PostIsDraft,u.UserID,u.UserName
   FROM post_t p
   INNER JOIN user_t u ON p.PostAuthorID=u.UserID
@@ -85,55 +86,56 @@ CREATE OR REPLACE VIEW v_posts_all AS
 CREATE OR REPLACE VIEW v_posts AS SELECT * FROM v_posts_all WHERE PostIsDraft IS FALSE;
 CREATE OR REPLACE VIEW v_drafts AS SELECT * FROM v_posts_all WHERE PostIsDraft IS TRUE;
 
-CREATE OR REPLACE FUNCTION add_tag(_postid BIGINT,_tag TEXT) RETURNS void AS $$
+-- Creates or updates a post. Behavior depends on _p_postid:
+-- 1. if _p_postid is NULL, then it creates a post.
+-- 2. otherwise, it updates a post with id _p_postid.
+-- Only non-NULL values are updated if #2 applies.
+-- Default values will replace NULLs if #1 applies.
+CREATE OR REPLACE FUNCTION upsert_post(_p_postid BIGINT, _p_title TEXT, _p_body TEXT, _p_isdraft BOOL, _p_tags TEXT[], _p_author_id BIGINT) RETURNS BIGINT AS $$
 DECLARE
+  _postid BIGINT; -- this isn't == to _p_postid. It is set after the post is updated or inserted.
+  _tag TEXT; -- iteration variable, see below
   _tagid BIGINT;
 BEGIN
-  SELECT t.TagID FROM tag_t t WHERE t.TagValue=_tag INTO _tagid;
-
-  IF _tagid IS NULL THEN
-    INSERT INTO tag_t (TagValue) VALUES (_tag) RETURNING TagID INTO _tagid;
+  IF _p_author_id IS NULL THEN
+    RAISE WARNING 'unauthenticated upsert attempted on %', _p_postid;
+    RETURN NULL;
   END IF;
-  
-  IF NOT EXISTS (SELECT * FROM post_tag_t pt WHERE pt.PostID=_postid AND pt.TagID=_tagid) THEN
-    INSERT INTO post_tag_t (PostId,TagId) VALUES (_postid,_tagid);
-  END IF;
-END;
-$$ LANGUAGE plpgsql;
 
-CREATE OR REPLACE FUNCTION insert_post(_title TEXT, _body TEXT, _isdraft BOOL, _tags TEXT[], _author_id BIGINT) RETURNS BIGINT AS $$
-DECLARE
-  _postid BIGINT;
-BEGIN
-  INSERT INTO post_t (PostTitle,PostBody,PostIsDraft,PostAuthorID)
-  VALUES (_title,_body,_isdraft,_author_id)
-  RETURNING PostID INTO _postid;
+  IF _p_postid IS NULL THEN
+    -- Insert a new post into the database
+    INSERT INTO post_t (PostTitle, PostBody, PostIsDraft, PostAuthorID)
+    VALUES (coalesce(_p_title, ''), coalesce(_p_body, ''), coalesce(_p_isdraft, TRUE), _p_author_id)
+    RETURNING PostID INTO _postid;
+  ELSE
+    _postid := _p_postid; -- we know the post id
+    -- Update the existing post in the database
+    UPDATE post_t
+    SET PostTitle=coalesce(_p_title, PostTitle),
+        PostBody=coalesce(_p_body, PostBody),
+        PostIsDraft=coalesce(_p_isdraft, PostIsDraft)
+    WHERE PostAuthorID=_p_author_id AND PostID=_postid;
+  END IF;
+
+  -- If there are tags passed in
+  IF _p_tags IS NOT NULL THEN
+    -- Then add each tag to the post
+    FOREACH _tag IN ARRAY _p_tags LOOP
+      _tagid := NULL; -- NULL out _tagid
+      
+      -- 1. Find the tag entry in the database
+      SELECT t.TagID FROM tag_t t WHERE t.TagValue=_tag INTO _tagid;
   
-  IF _postid IS NOT NULL THEN
-    FOR i IN 1 .. coalesce(array_upper(_tags, 1), 1)
-    LOOP
-       PERFORM add_tag(_postid,_tags[i]);
+      IF _tagid IS NULL THEN
+        -- 2a. Create a tag_t and a post_tag_t.
+        INSERT INTO tag_t (TagValue) VALUES (_tag) RETURNING TagID INTO _tagid;
+        INSERT INTO post_tag_t (PostId, TagId) VALUES (_postid, _tagid);
+      ELSIF NOT EXISTS (SELECT * FROM post_tag_t pt WHERE pt.PostID=_postid AND pt.TagID=_tagid) THEN
+        -- 2b. Create a post_tag_t if it doesn't already exist.
+        INSERT INTO post_tag_t (PostId, TagId) VALUES (_postid, _tagid);
+      END IF;
     END LOOP;
   END IF;
-  
-  return _postid;
-END;
-$$ LANGUAGE plpgsql;
-
--- N.B: put a statement like 'DROP FUNCTION IF EXISTS func(signature)' where signature
--- is the old signature of the function. These statements should not be removed.
-CREATE OR REPLACE FUNCTION update_post(_postid BIGINT, _title TEXT, _body TEXT, _isdraft BOOL, _tags TEXT[], _author_id BIGINT) RETURNS BIGINT AS $$
-BEGIN
-  UPDATE post_t
-  SET PostTitle=_title,
-      PostBody=_body,
-      PostIsDraft=_isdraft
-  WHERE PostAuthorID=_author_id AND PostID=_postid;
-
-  FOR i IN 1 .. coalesce(array_upper(_tags, 1), 1)
-  LOOP
-     PERFORM add_tag(_postid,_tags[i]);
-  END LOOP;
 
   return _postid;
 END;

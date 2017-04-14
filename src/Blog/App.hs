@@ -31,12 +31,14 @@ import qualified Data.Text.Encoding as T
 import qualified Data.Text.Lazy as TL
 import qualified Data.ByteString.Char8 as B
 
+-- TODO
+-- 1. Kill comments
+-- 2. Site footer (all posts copyright Nathaniel Symer)
+
 -- TODO features:
 -- Comment-optional posts
 -- Editor key commands (cmd-i, cmd-b, etc)
 -- Page numbers at bottom (would require extra db hit)
--- Site footer (copyright etc)
--- Links in comments *** nofollow them
 -- search
 
 -- Miscellaneous Ideas:
@@ -102,25 +104,21 @@ getLogin = do
 
 postPosts :: (MonadIO m) => RouteT AppState m ()
 postPosts = do
-  u <- authenticate
-  m <- maybeParam "method"
-  i <- maybeParam "id"
-  handleMethod u (m :: Maybe B.ByteString) i
+  m <- fromMaybe "POST" <$> maybeParam "method" 
+  handleMethod (m :: B.ByteString)
   where
-    handleMethod user (Just "DELETE") (Just p) = do
-      pid <- deletePost user p
-      case pid of
-        Nothing -> status status404
-        Just _ -> redirect "/"
-    handleMethod user _ pid = do
-      title <- (maybe "" $ T.decodeUtf8 . uncrlf)  <$> maybeParam "title"
-      bdy   <- (maybe "" $ T.decodeUtf8 . uncrlf)  <$> maybeParam "body"
-      tags  <- (maybe [] $ T.splitOn ",")          <$> maybeParam "tags"
-      draft <- (maybe True not)                    <$> maybeParam "draft"
-      p <- upsertPost pid title bdy tags draft user
-      case p of
-        Nothing -> status status400
-        Just p' -> redirect $ B.pack $ "/posts/" ++ show p'
+    handleMethod "DELETE" = do
+      pid <- join $ deletePost <$> authenticate <*> param "id"
+      maybe (status status404) (const $ redirect "/") pid
+    handleMethod _ = do
+      p <- join $ upsertPost
+                    <$> (maybeParam "id")
+                    <*> ((fmap $ T.decodeUtf8 . uncrlf) <$> maybeParam "title")
+                    <*> ((fmap $ T.decodeUtf8 . uncrlf) <$> maybeParam "body")
+                    <*> ((fmap $ T.splitOn ",")         <$> maybeParam "tags")
+                    <*> ((fmap not)                     <$> maybeParam "draft")
+                    <*> authenticate
+      maybe (status status400) (redirect . B.pack . (++) "/posts/" . show) p
       where uncrlf = B.foldl f B.empty
               where f bs c
                       | c == '\n' && B.last bs == '\r' = B.snoc (B.init bs) '\n'

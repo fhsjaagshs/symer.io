@@ -25,7 +25,7 @@ import Blog.AppState
 
 import Control.Monad.IO.Class
 
-import Data.Maybe (listToMaybe)
+import Data.Maybe (listToMaybe, fromMaybe)
 import Data.Text (Text)
 import qualified Data.Text as T (take)
 import Data.Time.Clock (UTCTime)
@@ -34,6 +34,8 @@ import Web.App
 import Database.PostgreSQL.Simple.FromRow (FromRow(..),field)
 import Database.PostgreSQL.Simple.ToField
 import Database.PostgreSQL.Simple.Types (PGArray(..),Only(..))
+
+import Debug.Trace
 
 -- |Represents a post - a row from the view @v_posts@.
 data Post = Post {
@@ -65,36 +67,39 @@ isOnLastPage :: (MonadIO m) => Integer -> RouteT AppState m Bool
 isOnLastPage = fmap (maybe True (<= postsPerPage)) . onlyQuery . postgresQuery sql . Only
   where sql = "SELECT count(p.PostID) FROM post_t p WHERE p.PostID > ?"
 
+-- TODO: build post querying interface. This module is insane
+
 -- TODO: use postgresql-simple's fold function instead of loading all posts into memory
 
 -- |Either @INSERT@ or @UPDATE@ a post in the database.
 upsertPost :: (MonadIO m)
            => Maybe Integer -- ^ post identifier
-           -> Text -- ^ post title
-           -> Text -- ^ post body
-           -> [Text] -- ^ post tags
-           -> Bool -- ^ whether the post is a draft
+           -> Maybe Text -- ^ post title
+           -> Maybe Text -- ^ post body
+           -> Maybe [Text] -- ^ post tags
+           -> Maybe Bool -- ^ whether the post is a draft
            -> User -- ^ post author
            -> RouteT AppState m (Maybe Integer) -- ^ the identifier of the post from the database
-upsertPost (Just pid) title body_ tags draft (User authorid _ _) =
-  onlyQuery $ postgresQuery "SELECT update_post(?,?,?,?,?,?)" (pid,title,body_,draft,mkTagsField tags,authorid)
-upsertPost Nothing title body_ tags draft (User authorid _ _) =
-  onlyQuery $ postgresQuery "SELECT insert_post(?,?,?,?,?)" (title,body_,draft,mkTagsField tags,authorid)
-
+upsertPost pid title body_ tags draft (User aid _ _) = onlyQuery $ postgresQuery sql (pid, title, body_, draft, mkTagsField $ fromMaybe [] (traceShowId tags), aid)
+  where sql = "SELECT upsert_post(?,?,?,?,?,?)"
+     --   args = (pid, title, body_, draft, mkTagsField $ fromMaybe [] tags, aid)
+  
 -- |Get a page of posts by tag.
 getPostsByTag :: (MonadIO m)
               => Text -- ^ a tag
               -> Integer -- ^ the page number
               -> RouteT AppState m [Post]
-getPostsByTag tag pageNum = postgresQuery sql (tag,pageNum*(fromIntegral postsPerPage),postsPerPage+1)
+getPostsByTag tag pageNum = postgresQuery sql args
   where sql = "SELECT * FROM v_posts WHERE ?=any(tags) OFFSET ? LIMIT ?"
+        args = (tag, pageNum * (fromIntegral postsPerPage), postsPerPage + 1)
 
 -- |Get a page of posts.
 getPosts :: (MonadIO m)
          => Integer -- ^ page number
          -> RouteT AppState m [Post]
-getPosts pageNum = postgresQuery sql (pageNum*(fromIntegral postsPerPage), postsPerPage+1)
+getPosts pageNum = postgresQuery sql args
   where sql = "SELECT * FROM v_posts OFFSET ? LIMIT ?"
+        args = (pageNum * (fromIntegral postsPerPage), postsPerPage + 1)
 
 -- |Get a page of a user's drafts.
 getDrafts :: (MonadIO m)
@@ -124,4 +129,4 @@ deletePost (User uid _ _) pid = onlyQuery $ postgresQuery sql (pid, uid)
 -- |Satisfy SQL type checking if the tags list is empty
 mkTagsField :: [Text] -- ^ the tags to serialize
             -> Action -- ^ the resulting type cast field value for the tags list
-mkTagsField tags = Many [toField $ PGArray tags,Plain "::text[]"]
+mkTagsField tags = Many [toField $ PGArray tags, Plain "::text[]"]

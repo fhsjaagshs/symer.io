@@ -1,4 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# OPTIONS_GHC -Wno-type-defaults #-}
+
 module Blog.HTML.SVG
 (
   goButton,
