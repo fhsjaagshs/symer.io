@@ -18,6 +18,10 @@ import Database.PostgreSQL.Simple.FromRow
 
 import Control.Monad.IO.Class
 
+import Network.Wai
+import qualified Data.Vault.Lazy as V
+import System.IO.Unsafe
+
 import Data.Maybe
 import Data.Bool
 import Data.Text (Text)
@@ -55,17 +59,20 @@ authenticate = getAuthenticatedUser >>= maybe onNothing return
   where onNothing = redirect "/login?err=Login%20required%2E" >> error ""
 
 getAuthenticatedUser :: (MonadIO m) => RouteT AppState m (Maybe User)
-getAuthenticatedUser = accessToken >>= maybe (return Nothing) f
-  where f t = fmap listToMaybe $ postgresQuery sql [t]
+getAuthenticatedUser = do
+  mu <- V.lookup authUserKey . vault <$> request
+  maybe (accessToken >>= maybe (pure Nothing) j) (pure . Just) mu
+  where j t = listToMaybe <$> postgresQuery sql [t]
         sql = "SELECT u.* FROM user_t u INNER JOIN session_t s ON s.UserID=u.UserID WHERE s.SessionID=? LIMIT 1"
 
 setAuthenticatedUser :: (MonadIO m) => User -> RouteT AppState m ()
-setAuthenticatedUser (User uid _ _) = do
+setAuthenticatedUser u@(User uid _ _) = do
   (token :: Maybe Integer) <- onlyQuery $ postgresQuery "INSERT INTO session_t (UserID) VALUES (?) RETURNING SessionID" [uid]
   case token of
     Just v -> do
       opts <- bool "" ";Secure" <$> isTLS
       addHeader "Set-Cookie" $ "token=" <> (B.pack $ show v) <> ";expires=Fri, 31 Dec 9999 23:59:59 GMT;HttpOnly" <> opts
+      mapRequest (\r -> r { vault = V.insert authUserKey u (vault r) } )
     Nothing -> return ()
 
 deleteAuth :: (MonadIO m) => RouteT AppState m ()
@@ -73,3 +80,8 @@ deleteAuth = accessToken >>= maybe (return ()) f
   where f token = do
           postgresExec "DELETE FROM session_t WHERE SessionID=?" [token]
           addHeader "Set-Cookie" "token=deleted;max-age=-1"
+          mapRequest (\r -> r { vault = V.delete authUserKey (vault r) } )
+          
+authUserKey :: V.Key User
+authUserKey = unsafePerformIO V.newKey
+{-# NOINLINE authUserKey #-}

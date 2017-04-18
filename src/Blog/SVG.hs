@@ -1,7 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# OPTIONS_GHC -Wno-type-defaults #-}
 
-module Blog.HTML.SVG
+module Blog.SVG
 (
   goButton,
   phillySkyline,

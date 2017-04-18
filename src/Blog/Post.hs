@@ -12,6 +12,7 @@ module Blog.Post
   getPostsByTag,
   getPosts,
   getDrafts,
+  getDraftsByTag,
   getPost,
   deletePost,
   -- * Config
@@ -34,8 +35,6 @@ import Web.App
 import Database.PostgreSQL.Simple.FromRow (FromRow(..),field)
 import Database.PostgreSQL.Simple.ToField
 import Database.PostgreSQL.Simple.Types (PGArray(..),Only(..))
-
-import Debug.Trace
 
 -- |Represents a post - a row from the view @v_posts@.
 data Post = Post {
@@ -67,8 +66,6 @@ isOnLastPage :: (MonadIO m) => Integer -> RouteT AppState m Bool
 isOnLastPage = fmap (maybe True (<= postsPerPage)) . onlyQuery . postgresQuery sql . Only
   where sql = "SELECT count(p.PostID) FROM post_t p WHERE p.PostID > ?"
 
--- TODO: build post querying interface. This module is insane
-
 -- TODO: use postgresql-simple's fold function instead of loading all posts into memory
 
 -- |Either @INSERT@ or @UPDATE@ a post in the database.
@@ -80,11 +77,12 @@ upsertPost :: (MonadIO m)
            -> Maybe Bool -- ^ whether the post is a draft
            -> User -- ^ post author
            -> RouteT AppState m (Maybe Integer) -- ^ the identifier of the post from the database
-upsertPost pid title body_ tags draft (User aid _ _) = onlyQuery $ postgresQuery sql (pid, title, body_, draft, mkTagsField $ fromMaybe [] (traceShowId tags), aid)
+upsertPost pid title body_ tags draft (User aid _ _) = onlyQuery $ postgresQuery sql args
   where sql = "SELECT upsert_post(?,?,?,?,?,?)"
-     --   args = (pid, title, body_, draft, mkTagsField $ fromMaybe [] tags, aid)
-  
--- |Get a page of posts by tag.
+        args = (pid, title, body_, draft, mkTagsField $ fromMaybe [] tags, aid)
+        mkTagsField ts = Many [toField $ PGArray ts, Plain "::text[]"]
+
+-- |Get a page of posts with a tag
 getPostsByTag :: (MonadIO m)
               => Text -- ^ a tag
               -> Integer -- ^ the page number
@@ -106,8 +104,19 @@ getDrafts :: (MonadIO m)
           => User -- ^ user to get drafts for
           -> Integer -- ^ page number
           -> RouteT AppState m [Post]
-getDrafts user pageNum = postgresQuery sql (userUID user, pageNum*(fromIntegral postsPerPage), postsPerPage+1)
+getDrafts user pageNum = postgresQuery sql args
   where sql = "SELECT * FROM v_drafts WHERE UserID=? OFFSET ? LIMIT ?"
+        args = (userUID user, pageNum * (fromIntegral postsPerPage), postsPerPage + 1)
+
+-- |Get a page of drafts with a tag.
+getDraftsByTag :: (MonadIO m)
+               => User -- ^ user to get drafts for
+               -> Text -- ^ a tag
+               -> Integer -- ^ the page number
+               -> RouteT AppState m [Post]
+getDraftsByTag user tag pageNum = postgresQuery sql args
+  where sql = "SELECT * FROM v_drafts WHERE UserId=? AND ?=any(tags) OFFSET ? LIMIT ?"
+        args = (userUID user, tag, pageNum * (fromIntegral postsPerPage), postsPerPage + 1)
 
 -- |Get a post by id.
 getPost :: (MonadIO m)
@@ -123,10 +132,3 @@ deletePost :: (MonadIO m)
            -> RouteT AppState m (Maybe Integer) -- ^ id of deleted post
 deletePost (User uid _ _) pid = onlyQuery $ postgresQuery sql (pid, uid)
   where sql = "DELETE FROM post_t WHERE PostID=? AND PostAuthorID=? RETURNING PostID"
-
-{- Internal -}
-
--- |Satisfy SQL type checking if the tags list is empty
-mkTagsField :: [Text] -- ^ the tags to serialize
-            -> Action -- ^ the resulting type cast field value for the tags list
-mkTagsField tags = Many [toField $ PGArray tags, Plain "::text[]"]

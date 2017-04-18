@@ -1,6 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-module Blog.HTML.CSS
+module Blog.CSS
 (
   blog,
   comments,

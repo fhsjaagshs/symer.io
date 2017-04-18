@@ -16,6 +16,7 @@ module Blog.AppState
   -- * Performing Queries
   postgresQuery,
   postgresExec,
+  postgresFold,
   onlyQuery
 )
 where
@@ -116,6 +117,15 @@ postgresQuery :: (FromRow a, ToRow b, MonadIO m)
               -> b -- ^ parameters
               -> RouteT AppState m [a] -- ^ returned rows
 postgresQuery q ps = withPostgres $ \pg -> query pg (stringToQuery q) ps
+  
+-- |Perform a fold on the result set of a PostgreSQL query.
+postgresFold :: (FromRow a, ToRow b, MonadIO m)
+             => String -- ^ query
+             -> b -- ^ parameters
+             -> v -- ^ initial fold value
+             -> (v -> a -> IO v)
+             -> RouteT AppState m v -- ^ result
+postgresFold q p z f = withPostgres $ \pg -> fold pg (stringToQuery q) p z f
   
 -- |Make a PostgreSQL query & don't return parameters.
 postgresExec :: (MonadIO m, ToRow a)

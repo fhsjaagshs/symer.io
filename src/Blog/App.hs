@@ -11,15 +11,17 @@ import Blog.Post
 import Blog.Comment
 import Blog.Assets
 import Blog.AppState
-import qualified Blog.HTML as HTML
-import qualified Blog.HTML.CSS as CSS
-import qualified Blog.HTML.SVG as SVG
+import Blog.Page
+import Blog.Util.Markdown
+import qualified Blog.CSS as CSS
+import qualified Blog.SVG as SVG
 
 import Web.App
 import Network.HTTP.Types.Status
 
 import Data.Maybe
-import Data.Niagra (NiagraT(..),css)
+import Data.Bool
+import Data.Niagra (css')
  
 import Control.Monad
 import Control.Monad.IO.Class
@@ -28,61 +30,109 @@ import qualified Crypto.BCrypt as BCrypt
 
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
-import qualified Data.Text.Lazy as TL
 import qualified Data.ByteString.Char8 as B
 
 -- TODO
--- 1. Kill comments
--- 2. Site footer (all posts copyright Nathaniel Symer)
-
--- TODO features:
--- Comment-optional posts
--- Editor key commands (cmd-i, cmd-b, etc)
--- Page numbers at bottom (would require extra db hit)
--- search
+-- 1. Fix pagination and drafts
+-- 2. Comment-optional posts
+-- 3. JSON API
 
 -- Miscellaneous Ideas:
--- 1. 'Top 5' tags map in side bar?
--- 2. JSON API
+-- Editor key commands (cmd-i, cmd-b, etc) - this is all javascript
+-- search - title (and body?) - requires changes to Postgres indeces
+-- 'Top 5' tags map in side bar?
 
 --------------------------------------------------------------------------------
 
 app :: [Route AppState IO]
 app = [
-  get  "/"                                 getRoot,
-  get  "/login"                            getLogin,
-  get  "/logout"                           $ deleteAuth >> redirect "/",
-  post "/login"                            postLogin,
-  get  "/drafts"                           getPageDrafts,
-  post "/posts"                            postPosts,
-  get  "/posts/new"                        $ authenticate >> (renderHtml $ HTML.postEditor Nothing),
-  get  "/posts/:id"                        getPagePostById,
-  get  "/posts/by/tag/:tag"                getPagePostsByTag,
-  get  "/posts/:id/edit"                   getPageEditor,
-  post "/posts/:id/comments"               postComments,
-  get  "/assets/css/blog.css"              $ cssFile CSS.blog,
-  get  "/assets/css/comments.css"          $ cssFile CSS.comments,
-  get  "/assets/css/editor.css"            $ cssFile CSS.editor,
-  get  "/assets/css/wordlist.css"          $ cssFile CSS.wordlist,
-  get  "/assets/images/gobutton.svg"       $ svgFile SVG.goButton,
-  get  "/assets/images/philly_skyline.svg" $ svgFile SVG.phillySkyline,
-  get  (regex "/assets/(.*)")              $ param "1" >>= loadAsset,
-  matchAll                                 $ renderHtml $ HTML.notFound
+  get      "/"                                 $ getPostsPage False,
+  get      "/drafts"                           $ getPostsPage True,
+  get      "/login"                            getLogin,
+  post     "/login"                            postLogin,
+  get      "/logout"                           $ deleteAuth >> redirect "/",
+  post     "/posts"                            postPosts,
+  delete   "/posts"                            deletePosts,
+  get      "/posts/new"                        $ authenticate >> getPostEditor True,
+  get      "/posts/:id"                        getPagePostById,
+  get      "/posts/by/tag/:tag"                $ getPostsPage False,
+  get      "/posts/:id/edit"                   $ getPostEditor False,
+  post     "/posts/:id/comments"               postComments,
+  get      "/assets/css/blog.css"              $ cssFile CSS.blog,
+  get      "/assets/css/comments.css"          $ cssFile CSS.comments,
+  get      "/assets/css/editor.css"            $ cssFile CSS.editor,
+  get      "/assets/css/wordlist.css"          $ cssFile CSS.wordlist,
+  get      "/assets/images/gobutton.svg"       $ svgFile SVG.goButton,
+  get      "/assets/images/philly_skyline.svg" $ svgFile SVG.phillySkyline,
+  get      (regex "/assets/(.*)")              $ param "1" >>= loadAsset,
+  matchAll                                     $ errorPage "Not Found" "The page you are looking for does not exist."
   ]
+  
+keywords :: [T.Text]
+keywords = ["nate", "nathaniel", "symer", "computer", "science", "software",
+            "functional", "programming", "web", "haskell", "ruby", "python",
+            "linux", "swift", "ios", "mac", "firmware", "iot", "internet", "things"]
+            
+copyright :: T.Text
+copyright = "© 2017, Nathaniel Symer"
+
+defaultDescription :: T.Text
+defaultDescription = "Nate Symer software engineer website and blog."
 
 {- Route functions -}
 
-getRoot :: (MonadIO m) => RouteT AppState m ()
-getRoot = renderHtmlM $ HTML.root <$> getAuthenticatedUser
-                                  <*> (getPageNumber >>= getPosts)
-                                  <*> getPageNumber
-  
-getPageDrafts :: (MonadIO m) => RouteT AppState m ()
-getPageDrafts = do
-  user <- authenticate
-  pg <- getPageNumber
-  drafts <- getDrafts user pg
-  renderHtml $ HTML.drafts user drafts pg
+getPostsPage :: (MonadIO m) => Bool -> RouteT AppState m ()
+getPostsPage isdrafts = do
+  pageNum <- pageNumber
+  if isdrafts
+    then do
+      u <- authenticate
+      getter <- maybe (getDrafts u) (getDraftsByTag u) <$> maybeParam "tag"
+      f pageNum =<< (getter pageNum)
+    else do
+      getter <- maybe getPosts getPostsByTag <$> maybeParam "tag"
+      f pageNum =<< getter pageNum
+  where f pageNum posts = page pghead (top ++ bottom)
+          where
+            pghead = Head (fromMaybe "Nate Symer" pgtitle) desc keywords False []
+            pgtitle = bool Nothing (Just "Drafts") isdrafts
+            top = ((Header False pgtitle):(map (PostRepr True) posts))
+            bottom = [
+              PageControls (length posts > postsPerPage) pageNum,
+              Footer copyright]
+            desc = bool defaultDescription mempty isdrafts
+
+getPagePostById :: (MonadIO m) => RouteT AppState m ()
+getPagePostById = param "id" >>= getPost >>= maybe (redirect "/notfound") f
+  where
+    f pst@(Post pid ptitle bdy _ ptags draft author) = void $ do
+      when draft $ do
+        maybeUser <- getAuthenticatedUser
+        when (maybe True (/= author) maybeUser) $ redirect "/notfound"
+      comments <- getCommentsForPost pid
+      let desc = T.take 500 $ stripMarkdown $ parseMarkdown bdy
+      page (Head ptitle desc (keywords ++ ptags) False [css' CSS.comments]) ([
+        Header False (Just ptitle),
+        PostRepr False pst,
+        CommentEditor pid Nothing
+        ] ++ map (CommentRepr 0) comments ++ [Footer copyright])
+
+getPostEditor :: (MonadIO m) => Bool -> RouteT AppState m ()
+getPostEditor allowEmpty = authenticate >> (param "id" >>= getPost >>= m)
+  where m = bool (maybe next (f . Just)) f allowEmpty
+        f pst = page (Head pgTitle "" [] True csses) [Header True (Just pgTitle), Editor pst]
+          where pgTitle = maybe "New Post" postTitle pst
+                csses = [css' CSS.editor, css' CSS.wordlist]
+
+getLogin :: (MonadIO m) => RouteT AppState m ()
+getLogin = do
+  maybeUser <- getAuthenticatedUser
+  when (isJust maybeUser) $ redirect "/"
+  login <- Login <$> maybeParam "err" <*> maybeParam "username"
+  page (Head "Login" "" [] True []) [Header True (Just "Login"), login]
+
+errorPage :: (MonadIO m) => T.Text -> T.Text -> RouteT AppState m ()
+errorPage t msg = page (Head t mempty [] True []) [Header False (Just "Whoops!"), Error msg]
 
 postLogin :: (MonadIO m) => RouteT AppState m ()
 postLogin = param "username" >>= getUser >>= f
@@ -95,79 +145,43 @@ postLogin = param "username" >>= getUser >>= f
           setAuthenticatedUser user
           redirect "/"
         else redirect "/login?err=Invalid%20password%2E"
-        
-getLogin :: (MonadIO m) => RouteT AppState m ()
-getLogin = do
-  maybeUser <- getAuthenticatedUser
-  when (isJust maybeUser) $ redirect "/"
-  maybeParam "err" >>= renderHtml . HTML.login
 
 postPosts :: (MonadIO m) => RouteT AppState m ()
-postPosts = do
-  m <- fromMaybe "POST" <$> maybeParam "method" 
-  handleMethod (m :: B.ByteString)
+postPosts = handleMethod =<< (fromMaybe "POST" <$> maybeParam "method")
   where
-    handleMethod "DELETE" = do
-      pid <- join $ deletePost <$> authenticate <*> param "id"
-      maybe (status status404) (const $ redirect "/") pid
+    handleMethod :: (MonadIO m) => B.ByteString -> RouteT AppState m ()
+    handleMethod "DELETE" = deletePosts
     handleMethod _ = do
       p <- join $ upsertPost
-                    <$> (maybeParam "id")
-                    <*> ((fmap $ T.decodeUtf8 . uncrlf) <$> maybeParam "title")
-                    <*> ((fmap $ T.decodeUtf8 . uncrlf) <$> maybeParam "body")
-                    <*> ((fmap $ T.splitOn ",")         <$> maybeParam "tags")
-                    <*> ((fmap not)                     <$> maybeParam "draft")
+                    <$> maybeParam "id"
+                    <*> (fmap (T.decodeUtf8 . uncrlf) <$> maybeParam "title")
+                    <*> (fmap (T.decodeUtf8 . uncrlf) <$> maybeParam "body")
+                    <*> (fmap (T.splitOn ",")         <$> maybeParam "tags")
+                    <*> (fmap not                     <$> maybeParam "draft")
                     <*> authenticate
       maybe (status status400) (redirect . B.pack . (++) "/posts/" . show) p
-      where uncrlf = B.foldl f B.empty
+      where uncrlf = B.foldl f mempty
               where f bs c
                       | c == '\n' && B.last bs == '\r' = B.snoc (B.init bs) '\n'
                       | otherwise = B.snoc bs c
-            
-getPagePostById :: (MonadIO m) => RouteT AppState m ()
-getPagePostById = param "id" >>= getPost >>= maybe (redirect "/notfound") f
-  where
-    f pst@(Post pid _ _ _ _ draft author) = do
-      maybeUser <- getAuthenticatedUser
-      if draft && (maybe True (/= author) maybeUser)
-        then redirect "/notfound"
-        else getCommentsForPost pid >>= renderHtml . HTML.postDetail maybeUser pst
-        
-getPagePostsByTag :: (MonadIO m) => RouteT AppState m ()
-getPagePostsByTag = do
-  tag <- param "tag"
-  pg <- getPageNumber
-  user <- getAuthenticatedUser
-  posts <- getPostsByTag tag pg
-  renderHtml $ HTML.postsByTag user (TL.fromStrict tag) posts pg
+                      
+deletePosts :: (MonadIO m) => RouteT AppState m ()
+deletePosts = maybe (status status404) (const $ redirect "/") =<< del
+  where del = join $ deletePost <$> authenticate <*> param "id"
   
 postComments :: (MonadIO m) => RouteT AppState m ()
-postComments = doInsert >>= maybe (status status500) (\c -> (param "id" >>= redirectPost (commentID c)))
+postComments = doInsert >>= maybe (status status500) f
   where
+    f c = redirect $ B.pack $ mconcat ["/posts/",
+                                       show $ commentPostID c,
+                                       "#comment",
+                                       show $ commentID c]
     doInsert = join $ insertComment
                       <$> maybeParam "parent_id"
                       <*> param "id"
                       <*> param "body"
-    redirectPost :: (MonadIO m) => Integer -> Integer -> RouteT AppState m ()
-    redirectPost cid pid = redirect $ B.pack $ "/posts/" ++ show pid ++ "#comment" ++ show cid
-  
-getPageEditor :: (MonadIO m) => RouteT AppState m ()
-getPageEditor = authenticate >> param "id" >>= getPost >>= f
-  where f = maybe next (renderHtml . HTML.postEditor . Just)
   
 {- Helper Functions -}
 
-cssFile :: (MonadIO m) => NiagraT (RouteT AppState m) () -> RouteT AppState m ()
-cssFile c = (css c >>= writeBody) >> addHeader "Content-Type" "text/css"
-
-svgFile :: (MonadIO m) => SVG.Svg -> RouteT AppState m ()
-svgFile s = writeBody s >> addHeader "Content-Type" "image/svg+xml"
-
-getPageNumber :: (WebAppState s, MonadIO m) => RouteT s m Integer
-getPageNumber = fromMaybe 0 <$> maybeParam "page"
-
-renderHtmlM :: (WebAppState s, Monad m) => RouteT s m HTML.Html -> RouteT s m ()
-renderHtmlM act = act >>= renderHtml
-
-renderHtml :: (WebAppState s, Monad m) => HTML.Html -> RouteT s m ()
-renderHtml html = addHeader "Content-Type" "text/html" >> writeBody html
+pageNumber :: (WebAppState s, MonadIO m) => RouteT s m Integer
+pageNumber = fromMaybe 0 <$> maybeParam "page"
