@@ -35,8 +35,9 @@ module Blog.FileCache
 where
 
 import           System.FSNotify
-import           System.Directory
+-- import           System.Directory
 import           System.FilePath
+import           System.Posix
 
 import qualified Data.HashTable.IO as HT
 import qualified Data.ByteString.Lazy.Char8 as BL
@@ -86,7 +87,7 @@ newFileCache path@('/':_) = do -- create a file cache based on an absolute path
     f fc@(FileCache bp _ _) (Modified pth _) = refresh fc (makeRelative bp pth)
     f fc@(FileCache bp _ _) (Removed pth _)  = invalidate fc (makeRelative bp pth)
 newFileCache path = mkAbsPath path >>= newFileCache -- resolve a relative path to an absolute path
-  where mkAbsPath p = (</>) <$> getCurrentDirectory <*> pure p
+  where mkAbsPath p = (</>) <$> getWorkingDirectory <*> pure p
 
 -- |Frees resources associated with a 'FileCache'
 teardownFileCache :: FileCache -> IO ()

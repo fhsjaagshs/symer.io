@@ -43,11 +43,11 @@ executable blog
                      mime-types,
                      network-uri,
                      css-text,
-                     hjsmin,
+                     language-javascript,
                      fsnotify,
-                     directory,
                      filepath,
                      hashtables,
                      zlib,
                      cryptohash,
-                     vault
+                     vault,
+                     unix

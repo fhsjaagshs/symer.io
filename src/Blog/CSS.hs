@@ -68,6 +68,10 @@ blog = do
     -- cls "read-more" ? do
       -- TODO: colors
       
+  cls "read-more" ? do
+    font       (pt 12) ["lato-regular","sans-serif"]
+    color      (hex 0x888888)
+      
   code ? do
     fontFamily ["monospace"]
     
@@ -138,7 +142,7 @@ blog = do
     color  (hex 0x717171)
     
   cls "post-content" ? do
-    font       (pt 14) ["lato-regular","sans-serif"] -- TODO: use Lato
+    font       (pt 14) ["lato-regular","sans-serif"]
     lineHeight (perc 135)
     
   cls "post-edit-button" ? do
@@ -146,7 +150,7 @@ blog = do
     display   "block"
 
   cls "button" ? do
-    hover ? boxShadow ["inset", px 0, px 3, "gray"]--  "box-shadow" .= "inset 0px 3px gray"
+    hover ? boxShadow ["inset", px 0, px 3, "gray"]
     active ? background [hex 0xC9BCA0]
     "text-decoration" .= "none"
     display    "inline-block"
@@ -157,6 +161,11 @@ blog = do
     color      (hex 0x876e71)
     border     (px 2)
     margin     (px 5)
+    
+  cls "footer" ? do
+    font       (pt 10) ["lato-regular","sans-serif"]
+    textAlign  "center"
+    color      (hex 0xCCCCCC)
 
   input ! "textfield" ? do
     "type" |=| "text" <> "type" |=| "password" ? do
