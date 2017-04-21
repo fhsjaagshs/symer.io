@@ -33,7 +33,6 @@ import qualified Data.Text.Encoding as T
 import qualified Data.ByteString.Char8 as B
 
 -- TODO
--- 0. Implement footer in Blog.Page
 -- 1. Fix pagination and drafts
 -- 2. Comment-optional posts
 -- 3. JSON API
