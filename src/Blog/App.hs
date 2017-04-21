@@ -18,6 +18,7 @@ import qualified Blog.SVG as SVG
 
 import Web.App
 import Network.HTTP.Types.Status
+import Network.HTTP.Types.URI
 
 import Data.Maybe
 import Data.Bool
@@ -34,13 +35,11 @@ import qualified Data.ByteString.Char8 as B
 
 -- TODO
 -- 1. Fix pagination and drafts
--- 2. Comment-optional posts
--- 3. JSON API
-
--- Miscellaneous Ideas:
--- Editor key commands (cmd-i, cmd-b, etc) - this is all javascript
--- search - title (and body?) - requires changes to Postgres indeces
--- 'Top 5' tags map in side bar?
+-- 2. Comment-optional posts - requires an additional column on post_t
+-- 3. Editor key commands (cmd-i, cmd-b, etc) - this is all javascript
+-- 4. search - title, body, and tags - requires changes to Postgres indeces
+-- 5. 'Top 5' tags map in side bar - requires another postgres view
+-- 6. JSON API - requires additions to webapp to parse JSON bodies
 
 --------------------------------------------------------------------------------
 
@@ -112,7 +111,7 @@ getPagePostById = param "id" >>= getPost >>= maybe (redirect "/notfound") f
       comments <- getCommentsForPost pid
       let desc = T.take 500 $ stripMarkdown $ parseMarkdown bdy
       page (Head ptitle desc (keywords ++ ptags) False [css' CSS.comments]) ([
-        Header False (Just ptitle),
+        Header False Nothing,
         PostRepr False pst,
         CommentEditor pid Nothing
         ] ++ map (CommentRepr 0) comments ++ [Footer copyright])
@@ -132,19 +131,20 @@ getLogin = do
   page (Head "Login" "" [] True []) [Header True (Just "Login"), login]
 
 errorPage :: (MonadIO m) => T.Text -> T.Text -> RouteT AppState m ()
-errorPage t msg = page (Head t mempty [] True []) [Header False (Just "Whoops!"), Error msg]
+errorPage t msg = page (Head t mempty [] True []) [Header False Nothing, Error msg]
 
 postLogin :: (MonadIO m) => RouteT AppState m ()
 postLogin = param "username" >>= getUser >>= f
   where
-    f Nothing = redirect "/login?err=Username%20does%20not%20exist%2E"
+    f Nothing = redirectLogin [("err", Just "Username does not exist.")]
     f (Just user@(User _ _ phash)) = do
-      pPassword <- T.encodeUtf8 <$> param "password"
+      pPassword <- param "password"
       if BCrypt.validatePassword (T.encodeUtf8 phash) pPassword
-        then do
-          setAuthenticatedUser user
-          redirect "/"
-        else redirect "/login?err=Invalid%20password%2E"
+        then setAuthenticatedUser user >> redirect "/"
+        else redirectLogin [("err", Just "Invalid password.")]
+    redirectLogin q = do
+      mu <- maybeParam "username"
+      redirect $ mappend "/login" $ renderQuery True (("username", mu):q)
 
 postPosts :: (MonadIO m) => RouteT AppState m ()
 postPosts = handleMethod =<< (fromMaybe "POST" <$> maybeParam "method")

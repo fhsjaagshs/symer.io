@@ -138,7 +138,7 @@ blog = do
     
   cls "post-subtitle" ? do
     margin [px 10, px 0, px 0, px 0]
-    font   (px 20) ["ostrich-bold","sans-serif"]
+    font   (px 17) ["ostrich-bold","sans-serif"]
     color  (hex 0x717171)
     
   cls "post-content" ? do

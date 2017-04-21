@@ -133,7 +133,7 @@ sectionToHtml (Header short t) = do
           a ! class_ "button" ! rel "nofollow" ! href "/logout"    $ "Log Out"
           a ! class_ "button" ! rel "nofollow" ! href "/posts/new" $ "New Post"
           a ! class_ "button" ! rel "nofollow" ! href "/drafts"    $ "Drafts"
-          h3 ! class_ "tagline" $ toHtml $ mconcat ["Logged in as ", uname]    
+          p ! class_ "tagline" $ toHtml uname  
         defaultHeader = when (not short) $ do
           h1 ! class_ "title" ! A.id "name-title" $ "NATE SYMER"
           h3 ! class_ "subtitle" $ "artisanal software development"
@@ -147,20 +147,17 @@ sectionToHtml (PostRepr short (Post pid title body ts tags _ (User aid aun _))) 
   pure $ div ! class_ "post" $ do
     div ! class_ "post-header" $ do
       div ! class_ "post-headerbox" $ do
-        a ! href postURL $ do
-          h1 ! class_ "post-title" ! A.id (toValue pid) $ toHtml title
-        h4 ! class_ "post-subtitle" $ toHtml subtitle
+        a ! class_ "post-title" ! href postURL ! A.id (toValue pid) $ toHtml title
+        p ! class_ "post-subtitle" $ toHtml $ formatTime defaultTimeLocale timeFormat ts
       div ! class_ "post-headerbox" $ forM_ tags $ \t -> do
         a ! class_ "taglink" ! href (toValue $ "/posts/by/tag/" <> t) $ toHtml t
-      when (maybe False ((==) aid . userUID) user) $ do
+      when ((maybe False ((==) aid . userUID) user) && not short) $ do
         a ! class_ "post-edit-button" ! rel "nofollow" ! href (postURL <> "/edit") $ "edit"
     div ! class_ "post-content" $ do
       renderDoc $ bool P.id (truncateMarkdown 500) short $ markdown def body
       when short $ a ! class_ "read-more" ! href postURL $ "read more..."
-  where
-    postURL = toValue $ "/posts/" ++ show pid
-    timeFormat = "%-m • %-e • %-y  " ++ T.unpack aun
-    subtitle = formatTime defaultTimeLocale timeFormat ts
+  where postURL = toValue $ "/posts/" ++ show pid
+        timeFormat = "%-m • %-e • %-y  " ++ T.unpack aun
 sectionToHtml (Footer str) = pure $ H.span ! class_ "footer" $ toHtml str
 sectionToHtml (Login merr uname) = pure $ do
   maybe (pure ()) (\v -> h3 ! class_ "subtitle" $ toHtml v) merr
