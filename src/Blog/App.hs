@@ -34,12 +34,11 @@ import qualified Data.Text.Encoding as T
 import qualified Data.ByteString.Char8 as B
 
 -- TODO
--- 1. Fix pagination and drafts
--- 2. Comment-optional posts - requires an additional column on post_t
--- 3. Editor key commands (cmd-i, cmd-b, etc) - this is all javascript
--- 4. search - title, body, and tags - requires changes to Postgres indeces
--- 5. 'Top 5' tags map in side bar - requires another postgres view
--- 6. JSON API - requires additions to webapp to parse JSON bodies
+-- 1. Comment-optional posts - requires an additional column on post_t
+-- 2. Editor key commands (cmd-i, cmd-b, etc) - this is all javascript
+-- 3. search - title, body, and tags - requires changes to Postgres indeces
+-- 4. 'Top 5' tags map in side bar - requires another postgres view
+-- 5. JSON API - requires additions to webapp to parse JSON bodies
 
 --------------------------------------------------------------------------------
 
@@ -69,7 +68,7 @@ app = [
   
 keywords :: [T.Text]
 keywords = ["nate", "nathaniel", "symer", "computer", "science", "software",
-            "functional", "programming", "web", "haskell", "ruby", "python",
+            "functional", "programmer", "engineer", "web", "haskell", "ruby", "python",
             "linux", "swift", "ios", "mac", "firmware", "iot", "internet", "things"]
             
 copyright :: T.Text
@@ -78,7 +77,7 @@ copyright = "© 2017, Nathaniel Symer"
 defaultDescription :: T.Text
 defaultDescription = "Nate Symer software engineer website and blog."
 
-{- Route functions -}
+{- Web App Frontend -}
 
 getPostsPage :: (MonadIO m) => Bool -> RouteT AppState m ()
 getPostsPage isdrafts = do
@@ -95,9 +94,9 @@ getPostsPage isdrafts = do
           where
             pghead = Head (fromMaybe "Nate Symer" pgtitle) desc keywords False []
             pgtitle = bool Nothing (Just "Drafts") isdrafts
-            top = ((Header False pgtitle):(map (PostRepr True) posts))
+            top = ((Header False True pgtitle):(map (PostRepr True) posts))
             bottom = [
-              PageControls (length posts > postsPerPage) pageNum,
+              PageControls (length posts > postsPerPage) pageNum isdrafts,
               Footer copyright]
             desc = bool defaultDescription mempty isdrafts
 
@@ -111,27 +110,30 @@ getPagePostById = param "id" >>= getPost >>= maybe (redirect "/notfound") f
       comments <- getCommentsForPost pid
       let desc = T.take 500 $ stripMarkdown $ parseMarkdown bdy
       page (Head ptitle desc (keywords ++ ptags) False [css' CSS.comments]) ([
-        Header False Nothing,
+        Header False True Nothing,
         PostRepr False pst,
         CommentEditor pid Nothing
         ] ++ map (CommentRepr 0) comments ++ [Footer copyright])
 
 getPostEditor :: (MonadIO m) => Bool -> RouteT AppState m ()
-getPostEditor allowEmpty = authenticate >> (param "id" >>= getPost >>= m)
-  where m = bool (maybe next (f . Just)) f allowEmpty
-        f pst = page (Head pgTitle "" [] True csses) [Header True (Just pgTitle), Editor pst]
+getPostEditor allowEmpty = authenticate >> (maybeParam "id" >>= maybe m getPost >>= n) 
+  where m = bool next (pure Nothing) allowEmpty
+        n = bool (maybe next (f . Just)) f allowEmpty
+        f pst = page (Head pgTitle "" [] True csses) [Header True False Nothing, Editor pst]
           where pgTitle = maybe "New Post" postTitle pst
-                csses = [css' CSS.editor, css' CSS.wordlist]
+                csses = map css' [CSS.editor, CSS.wordlist]
 
 getLogin :: (MonadIO m) => RouteT AppState m ()
 getLogin = do
   maybeUser <- getAuthenticatedUser
   when (isJust maybeUser) $ redirect "/"
   login <- Login <$> maybeParam "err" <*> maybeParam "username"
-  page (Head "Login" "" [] True []) [Header True (Just "Login"), login]
+  page (Head "Login" "" [] True []) [Header True False (Just "Login"), login]
 
 errorPage :: (MonadIO m) => T.Text -> T.Text -> RouteT AppState m ()
-errorPage t msg = page (Head t mempty [] True []) [Header False Nothing, Error msg]
+errorPage t msg = page (Head t mempty [] True []) [Header False True Nothing, Error msg]
+
+{- Web App Backend -}
 
 postLogin :: (MonadIO m) => RouteT AppState m ()
 postLogin = param "username" >>= getUser >>= f
@@ -180,7 +182,7 @@ postComments = doInsert >>= maybe (status status500) f
                       <$> maybeParam "parent_id"
                       <*> param "id"
                       <*> param "body"
-  
+
 {- Helper Functions -}
 
 pageNumber :: (WebAppState s, MonadIO m) => RouteT s m Integer

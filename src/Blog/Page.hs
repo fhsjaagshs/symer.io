@@ -64,11 +64,13 @@ data Head = Head {
 -- | A section of a webpage on the blog
 data Section = Header {
   _shShort :: Bool,
+  _shShowUser :: Bool,
   _shTitle :: Maybe Text
 }
              | PageControls {
   _spcShowNext :: Bool,
-  _spcPageNumber :: Integer
+  _spcPageNumber :: Integer,
+  _spcIsDrafts :: Bool
 }
              | PostRepr {
   _sprShort :: Bool,
@@ -122,26 +124,28 @@ headToHtml (Head t desc kws hide styles) = H.head $ do
   mapM_ (H.style . toHtml) styles
 
 sectionToHtml :: (MonadIO m) => Section -> RouteT AppState m Html
-sectionToHtml (Header short t) = do
+sectionToHtml (Header short showUser t) = do
   user <- getAuthenticatedUser
   pure $ div ! class_ headerClass $ do
     a ! href "/" $ SVG.phillySkyline
     maybe defaultHeader (\v -> h1 ! class_ "title" $ toHtml v) t
     maybe mempty (f . userUsername) user
+    when ((not showUser) || short) $ p ""
   where headerClass = stringValue $ "header" ++ bool mempty " nopadding" short
-        f uname = do
-          a ! class_ "button" ! rel "nofollow" ! href "/logout"    $ "Log Out"
-          a ! class_ "button" ! rel "nofollow" ! href "/posts/new" $ "New Post"
-          a ! class_ "button" ! rel "nofollow" ! href "/drafts"    $ "Drafts"
-          p ! class_ "tagline" $ toHtml uname  
+        f uname = when showUser $ do
+            a ! class_ "button" ! rel "nofollow" ! href "/logout"    $ "Log Out"
+            a ! class_ "button" ! rel "nofollow" ! href "/posts/new" $ "New Post"
+            a ! class_ "button" ! rel "nofollow" ! href "/drafts"    $ "Drafts"
+            p ! class_ "tagline" $ toHtml uname  
         defaultHeader = when (not short) $ do
-          h1 ! class_ "title" ! A.id "name-title" $ "NATE SYMER"
-          h3 ! class_ "subtitle" $ "artisanal software development"
-          h3 ! class_ "tagline" $ "nate@symer.io • 856-419-7654"
-sectionToHtml (PageControls hasNext pageNum) = pure $ do
-  when (pageNum > 0) $ a ! class_ "button" ! rel "nofollow" ! A.id "prevbutton" ! href (mkHref $ pageNum-1) $ "Newer"
-  when hasNext       $ a ! class_ "button" ! rel "nofollow" ! A.id "nextbutton" ! href (mkHref $ pageNum+1) $ "Older"
-  where mkHref = toValue . (++) "/?page=" . show
+            h1 ! class_ "title" ! A.id "name-title" $ "NATE SYMER"
+            h3 ! class_ "subtitle" $ "artisanal software development"
+            h3 ! class_ "tagline" $ "nate@symer.io • 856-419-7654"
+sectionToHtml (PageControls hasNext pageNum isdrafts) = pure $ do
+  when (pageNum > 0) $ a ! class_ "button" ! rel "nofollow" ! A.id "prevbutton" ! href (mkhref (pageNum - 1)) $ "Newer"
+  when hasNext       $ a ! class_ "button" ! rel "nofollow" ! A.id "nextbutton" ! href (mkhref (pageNum + 1)) $ "Older"
+  where mkhref pg = toValue $ bool path (path ++ "?page=" ++ show pg) (pg /= 0)
+        path = bool "/" "drafts" isdrafts
 sectionToHtml (PostRepr short (Post pid title body ts tags _ (User aid aun _))) = do
   user <- getAuthenticatedUser
   pure $ div ! class_ "post" $ do
