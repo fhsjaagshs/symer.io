@@ -8,7 +8,6 @@ where
 
 import Blog.User
 import Blog.Post
--- import Blog.Comment
 import Blog.Assets
 import Blog.AppState
 import Blog.Page
@@ -90,10 +89,10 @@ getPostsPage isdrafts = do
           where
             pghead = Head (fromMaybe "Nate Symer" pgtitle) desc keywords False []
             pgtitle = bool Nothing (Just "Drafts") isdrafts
-            top = ((Header False True pgtitle):(map (PostRepr True) posts))
+            top = ((pack $ Header False True pgtitle):(map (pack . PostRepr True) posts))
             bottom = [
-              PageControls (length posts > postsPerPage) pageNum isdrafts,
-              Footer copyright]
+              pack $ PageControls (length posts > postsPerPage) pageNum isdrafts,
+              pack $ Footer copyright]
             desc = bool defaultDescription mempty isdrafts
 
 getPagePostById :: (MonadIO m) => RouteT AppState m ()
@@ -106,15 +105,16 @@ getPagePostById = param "id" >>= getPost >>= maybe (redirect "/notfound") f
 
       let desc = T.take 500 $ stripMarkdown $ parseMarkdown bdy
       page (Head ptitle desc (keywords ++ ptags) False []) ([
-        Header False True Nothing,
-        PostRepr False pst,
-        Footer copyright])
+        pack $ Header False True Nothing,
+        pack $ PostRepr False pst,
+        pack $ Footer copyright])
 
 getPostEditor :: (MonadIO m) => Bool -> RouteT AppState m ()
 getPostEditor allowEmpty = authenticate >> (maybeParam "id" >>= maybe m getPost >>= n) 
   where m = bool next (pure Nothing) allowEmpty
         n = bool (maybe next (f . Just)) f allowEmpty
-        f pst = page (Head pgTitle "" [] True csses) [Header True False Nothing, Editor pst]
+        f pst = page (Head pgTitle "" [] True csses) [pack $ Header True False Nothing,
+                                                      pack $ Editor pst]
           where pgTitle = maybe "New Post" postTitle pst
                 csses = map css' [CSS.editor, CSS.wordlist]
 
@@ -123,10 +123,10 @@ getLogin = do
   maybeUser <- getAuthenticatedUser
   when (isJust maybeUser) $ redirect "/"
   login <- Login <$> maybeParam "err" <*> maybeParam "username"
-  page (Head "Login" "" [] True []) [Header True False (Just "Login"), login]
+  page (Head "Login" "" [] True []) [pack $ Header True False (Just "Login"), pack login]
 
 errorPage :: (MonadIO m) => T.Text -> T.Text -> RouteT AppState m ()
-errorPage t msg = page (Head t mempty [] True []) [Header False True Nothing, Error msg]
+errorPage t msg = page (Head t mempty [] True []) [pack $ Header False True Nothing, pack $ Error msg]
 
 {- Web App Backend -}
 
