@@ -197,11 +197,11 @@ sectionToHtml (Editor pst) = return $ do
     "body.onkeydown = function(e) {",
     "  if (oldkeydown) oldkeydown(e);",
     "  if (e.ctrlKey && e.key === \"i\") {",
-    "  body.value = body.value.substring(0, body.selectionStart) + '*' + body.value.substring(body.selectionStart, body.selectionEnd) + '*' + body.value.substring(body.selectionEnd, body.value.length);",
+    "    document.execCommand('insertText', false, '*' + body.value.substring(body.selectionStart, body.selectionEnd) + '*');",
     "    return false;",
     "  }",
     "  if (e.ctrlKey && e.key === \"b\") {",
-    "  body.value = body.value.substring(0, body.selectionStart) + '**' + body.value.substring(body.selectionStart, body.selectionEnd) + '**' + body.value.substring(body.selectionEnd, body.value.length);",
+    "    document.execCommand('insertText', false, '**' + body.value.substring(body.selectionStart, body.selectionEnd) + '**');",
     "    return false;",
     "  }",
     "}"]
