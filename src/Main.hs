@@ -14,6 +14,7 @@ import qualified Data.ByteString.Char8 as B (pack,unpack)
 import Crypto.BCrypt (hashPasswordUsingPolicy,HashingPolicy(..))
 import Database.PostgreSQL.Simple (connectPostgreSQL,close)
 import System.Environment
+import Control.Exception (bracket)
 
 import Data.Monoid
 
@@ -47,7 +48,4 @@ handleUtil :: Util -> IO ()
 handleUtil (BcryptHash s) = hsh s >>= maybe (return ()) putStrLn
   where
     hsh = fmap (fmap B.unpack) . hashPasswordUsingPolicy (HashingPolicy 12 "$2b$") . B.pack
-handleUtil MigrateDB = do
-  conn <- connectPostgreSQL ""
-  postgresMigrate conn
-  close conn
+handleUtil MigrateDB = bracket (connectPostgreSQL "") close postgresMigrate
