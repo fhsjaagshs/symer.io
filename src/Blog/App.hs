@@ -34,14 +34,12 @@ import qualified Data.Text.Encoding as T
 import qualified Data.ByteString.Char8 as B
 
 -- TODO
--- 1. Comment-optional posts - requires an additional column on post_t
--- 2. Editor key commands (cmd-i, cmd-b, etc) - this is all javascript
--- 3. search - title, body, and tags - requires changes to Postgres indeces
--- 4. 'Top 5' tags map in side bar - requires another postgres view
--- 5. JSON API - requires additions to webapp to parse JSON bodies
+-- 1. search - title, body, and tags - requires changes to Postgres indeces
+--   - below the search field, top 5 tags
+-- 2. Integration with a feed system like RSS
 
 --------------------------------------------------------------------------------
-
+ 
 app :: [Route AppState IO]
 app = [
   get      "/"                                 $ getPostsPage False,

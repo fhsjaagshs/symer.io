@@ -34,6 +34,7 @@ import Data.Niagra (NiagraT, css, css')
 
 import Data.Text (Text)
 import qualified Data.Text as T
+import Data.List (intersperse)
 
 import Data.Bool
 import Data.Maybe
@@ -130,9 +131,9 @@ sectionToHtml (Header short showUser t) = do
             a ! class_ "button" ! rel "nofollow" ! href "/drafts"    $ "Drafts"
             p ! class_ "tagline" $ toHtml uname  
         defaultHeader = when (not short) $ do
-            h1 ! class_ "title" ! A.id "name-title" $ "NATE SYMER"
-            h3 ! class_ "subtitle" $ "[ Software Engineer ]"
-            h3 ! class_ "tagline" $ "nate@symer.io • 856-419-7654"
+            p ! class_ "title" ! A.id "name-title" $ "NATE SYMER"
+            p ! class_ "subtitle" $ "[ Software Engineer ]"
+            p ! class_ "tagline" $ "nate@symer.io • 856-419-7654"
 sectionToHtml (PageControls hasNext pageNum isdrafts) = pure $ do
   when (pageNum > 0) $ a ! class_ "button" ! rel "nofollow" ! A.id "prevbutton" ! href (mkhref (pageNum - 1)) $ "Newer"
   when hasNext       $ a ! class_ "button" ! rel "nofollow" ! A.id "nextbutton" ! href (mkhref (pageNum + 1)) $ "Older"
@@ -189,6 +190,21 @@ sectionToHtml (Editor pst) = return $ do
     input ! A.id "save-button" ! class_ "button" ! type_ "submit" ! value "Save"
   
   maybe (pure ()) deleteForm pst
+
+  script $ mconcat $ intersperse "\n" [
+    "var body = document.getElementById('editor');",
+    "var oldkeydown = body.onkeydown;",
+    "body.onkeydown = function(e) {",
+    "  if (oldkeydown) oldkeydown(e);",
+    "  if (e.ctrlKey && e.key === \"i\") {",
+    "  body.value = body.value.substring(0, body.selectionStart) + '*' + body.value.substring(body.selectionStart, body.selectionEnd) + '*' + body.value.substring(body.selectionEnd, body.value.length);",
+    "    return false;",
+    "  }",
+    "  if (e.ctrlKey && e.key === \"b\") {",
+    "  body.value = body.value.substring(0, body.selectionStart) + '**' + body.value.substring(body.selectionStart, body.selectionEnd) + '**' + body.value.substring(body.selectionEnd, body.value.length);",
+    "    return false;",
+    "  }",
+    "}"]
   
   script ! src "/assets/js/wordlist-pure.js" $ ""
   script $ mconcat [

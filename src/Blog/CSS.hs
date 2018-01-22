@@ -3,7 +3,6 @@
 module Blog.CSS
 (
   blog,
---  comments,
   editor,
   wordlist
 )
@@ -41,7 +40,7 @@ blog = do
   
   cls "header" ? do
     not (cls "nopadding") <||> not lastChild ? do
-      marginBottom (px 80)
+      marginBottom (px 40)
       display      "block"
   
   a ? do
@@ -64,10 +63,7 @@ blog = do
       margin       (px 5)
       padding      [em' 0.4, em' 0.6]
       font         (px 16) ["lato-regular", "sans-serif"]
-      
-    -- cls "read-more" ? do
-      -- TODO: colors
-      
+
   cls "read-more" ? do
     font       (pt 12) ["lato-regular","sans-serif"]
     color      (hex 0x888888)
@@ -165,7 +161,7 @@ blog = do
   cls "footer" ? do
     font       (pt 10) ["lato-regular","sans-serif"]
     textAlign  "center"
-    color      (hex 0xCCCCCC)
+    color      (hex 0x444444)
 
   input ! "textfield" ? do
     "type" |=| "text" <> "type" |=| "password" ? do
@@ -195,49 +191,6 @@ blog = do
     display       "inline-block"
     outline       none
     "resize" .= "none"
-    
--- comments :: (Monad m) => NiagraT m ()
--- comments = do
---   cls "comment" ? do
---     textAlign  "left"
---     position   "relative"
---     padding    (px 10)
---     background (hex 0xEAEAEA)
---     borderLeft [px 1, "solid", "gray"]
---     after ? do -- partial bottom border
---       position   "absolute"
---       content    ""
---       width      (px 50)
---       height     (px 1)
---       bottom     (px 0)
---       left       (px 0)
---       background (v "gray")
-
---   div <||> cls "editor" ? do
---     textAlign  "left"
---     paddingTop (px 5)
-
---   cls "gobutton" ? do
---     active ? opacity 0.5
---     display    "block"
---     cursor     "pointer"
---     width      (px 100)
---     height     (px 40)
---     background [url "/assets/images/gobutton.svg", "no-repeat"]
---     margin     [px 10, auto]
---     outline    none
---     border     [none]
-      
---   textarea ! "comment-textarea" ! "textarea" ? do
---     focus ? borderLeft [px 2, "solid", hex 0x80B9B4]
---     width  (perc 95)
---     height (px 100)
-   
---   "summary" ? do
---     outline none
-    
---   "details" ? do
---     cursor "pointer"
     
 editor :: (Monad m) => NiagraT m ()
 editor = do
