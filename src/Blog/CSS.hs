@@ -3,7 +3,7 @@
 module Blog.CSS
 (
   blog,
-  comments,
+--  comments,
   editor,
   wordlist
 )
@@ -196,48 +196,48 @@ blog = do
     outline       none
     "resize" .= "none"
     
-comments :: (Monad m) => NiagraT m ()
-comments = do
-  cls "comment" ? do
-    textAlign  "left"
-    position   "relative"
-    padding    (px 10)
-    background (hex 0xEAEAEA)
-    borderLeft [px 1, "solid", "gray"]
-    after ? do -- partial bottom border
-      position   "absolute"
-      content    ""
-      width      (px 50)
-      height     (px 1)
-      bottom     (px 0)
-      left       (px 0)
-      background (v "gray")
+-- comments :: (Monad m) => NiagraT m ()
+-- comments = do
+--   cls "comment" ? do
+--     textAlign  "left"
+--     position   "relative"
+--     padding    (px 10)
+--     background (hex 0xEAEAEA)
+--     borderLeft [px 1, "solid", "gray"]
+--     after ? do -- partial bottom border
+--       position   "absolute"
+--       content    ""
+--       width      (px 50)
+--       height     (px 1)
+--       bottom     (px 0)
+--       left       (px 0)
+--       background (v "gray")
 
-  div <||> cls "editor" ? do
-    textAlign  "left"
-    paddingTop (px 5)
+--   div <||> cls "editor" ? do
+--     textAlign  "left"
+--     paddingTop (px 5)
 
-  cls "gobutton" ? do
-    active ? opacity 0.5
-    display    "block"
-    cursor     "pointer"
-    width      (px 100)
-    height     (px 40)
-    background [url "/assets/images/gobutton.svg", "no-repeat"]
-    margin     [px 10, auto]
-    outline    none
-    border     [none]
+--   cls "gobutton" ? do
+--     active ? opacity 0.5
+--     display    "block"
+--     cursor     "pointer"
+--     width      (px 100)
+--     height     (px 40)
+--     background [url "/assets/images/gobutton.svg", "no-repeat"]
+--     margin     [px 10, auto]
+--     outline    none
+--     border     [none]
       
-  textarea ! "comment-textarea" ! "textarea" ? do
-    focus ? borderLeft [px 2, "solid", hex 0x80B9B4]
-    width  (perc 95)
-    height (px 100)
+--   textarea ! "comment-textarea" ! "textarea" ? do
+--     focus ? borderLeft [px 2, "solid", hex 0x80B9B4]
+--     width  (perc 95)
+--     height (px 100)
    
-  "summary" ? do
-    outline none
+--   "summary" ? do
+--     outline none
     
-  "details" ? do
-    cursor "pointer"
+--   "details" ? do
+--     cursor "pointer"
     
 editor :: (Monad m) => NiagraT m ()
 editor = do

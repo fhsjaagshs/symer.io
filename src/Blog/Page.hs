@@ -24,7 +24,7 @@ where
 import Blog.AppState
 import Blog.User
 import Blog.Post
-import Blog.Comment
+-- import Blog.Comment
 import Blog.CSS as CSS (blog)
 import Blog.SVG as SVG
 import Blog.Util.Markdown
@@ -89,14 +89,6 @@ data Section = Header {
              | Error {
   _seError :: Text
 }
-             | CommentEditor {
-  _scePostId :: Integer,
-  _sceParentId :: Maybe Integer
-}
-             | CommentRepr {
-  _scrDepth :: Integer,
-  _scrReprComment :: Comment
-}
 
 cssFile :: (MonadIO m) => NiagraT (RouteT AppState m) () -> RouteT AppState m ()
 cssFile c = (css c >>= writeBody) >> addHeader "Content-Type" "text/css"
@@ -139,7 +131,7 @@ sectionToHtml (Header short showUser t) = do
             p ! class_ "tagline" $ toHtml uname  
         defaultHeader = when (not short) $ do
             h1 ! class_ "title" ! A.id "name-title" $ "NATE SYMER"
-            h3 ! class_ "subtitle" $ "artisanal software development"
+            h3 ! class_ "subtitle" $ "[ Software Engineer ]"
             h3 ! class_ "tagline" $ "nate@symer.io • 856-419-7654"
 sectionToHtml (PageControls hasNext pageNum isdrafts) = pure $ do
   when (pageNum > 0) $ a ! class_ "button" ! rel "nofollow" ! A.id "prevbutton" ! href (mkhref (pageNum - 1)) $ "Newer"
@@ -209,24 +201,3 @@ sectionToHtml (Editor pst) = return $ do
       input ! type_ "hidden" ! name "id"     ! value (toValue $ postID pst')
       input ! type_ "hidden" ! name "method" ! value "DELETE"
       input ! A.id "delete-button" ! class_ "button" ! type_ "submit" ! value "Delete"
-sectionToHtml (CommentEditor postid parentid) = pure $ do
-  div ! class_ "editor" ! style "text-align:center;display:block" $ do
-    H.form ! A.id fname
-           ! action (toValue $ "/posts/" <> show postid <> "/comments")
-           ! A.method "POST" $ do
-      maybe (pure ()) parentIdInput parentid
-      textarea ! A.form fname ! name "body" ! class_ "comment-textarea textarea" ! placeholder "Write a comment" $ ""
-      input ! class_ "gobutton" ! type_ "submit" ! value ""
-  where parentIdInput pid = input ! type_ "hidden" ! name "parent_id" ! value (toValue $ show pid)
-        fname = toValue $ "form" <> show postid <> maybe "" show parentid
-sectionToHtml (CommentRepr depth (Comment cid _ pid body _ cs)) = mconcat <$> ((:) <$> editorDiv <*> cs')
-  where
-    cs' = mapM (sectionToHtml . CommentRepr (depth + 1)) cs
-    editorDiv = do
-      editor <- sectionToHtml $ CommentEditor pid (Just cid)
-      pure $ H.div
-        ! class_ "comment"
-        ! A.id (toValue $ "comment" <> show cid)
-        ! style (toValue $ "margin-left:" <> (show (depth * 50)) <> "px;") $ do
-          H.p ! class_ "comment-body" $ toHtml body
-          H.details $ H.summary "Reply" <> editor

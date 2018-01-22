@@ -58,39 +58,30 @@ instance WebAppState AppState where
   
 -- |Create a pool that pools PostgreSQL connections.
 -- Configure connections via LibPQ environment variables
--- or Heroku-style DATABASE_URL environment variable.
--- In production, no configuration is hardcoded. In
--- development, the database is set to @blog@ and
--- the host is set to @localhost@.
+-- or the Heroku-style DATABASE_URL environment variable.
+-- No database is hardcoded, so you'll need to supply a
+-- database, user, and host via ENV vars.
 makePostgresPool :: IO (Pool Connection)
 makePostgresPool = do
   readDBURL
   putStrLn "Initializing PostgreSQL connection pool"
-  env <- lookupEnv "ENV"
-  pool <- createPool (connectPostgreSQL $ connString env) close 2 5.0 5
+  pool <- createPool (connectPostgreSQL "") close 2 5.0 5
   withResource pool postgresMigrate
   return pool
   where
-    connString (Just "production") = "" -- postgres config loaded *only* from env vars
-    connString _                   = "dbname='blog' host='localhost'"
     readDBURL = do
       uri <- lookupEnv "DATABASE_URL"
       case uri >>= parseURI of
         Just (URI "postgres:" auth pth _ _) -> do
-          let host = (uriRegName <$> auth) >>= strToMaybe
-              port = (uriPort <$> auth) >>= fmap tail . strToMaybe
-              database = T.unpack <$> (listToMaybe $ decodePathSegments $ B.pack pth)
-              uinfo = auth >>= strToMaybe . uriUserInfo
-              user = takeWhile (/= ':') <$> uinfo
-              password = init .tail . dropWhile (/= ':') <$> uinfo
-          setPGEnv "PGHOST" host
-          setPGEnv "PGPORT" port
-          setPGEnv "PGUSER" user
-          setPGEnv "PGPASSWORD" password
-          setPGEnv "PGDATABASE" database
+          let uinfo = auth >>= strToMaybe . uriUserInfo
+          setPGEnv "PGHOST" (auth >>= strToMaybe . uriRegName)
+          setPGEnv "PGPORT" (auth >>= fmap tail . strToMaybe . uriPort)
+          setPGEnv "PGUSER" (takeWhile (/= ':') <$> uinfo)
+          setPGEnv "PGPASSWORD" (init . tail . dropWhile (/= ':') <$> uinfo)
+          setPGEnv "PGDATABASE" (T.unpack <$> (listToMaybe $ decodePathSegments $ B.pack pth))
         _ -> return ()
       where
-        strToMaybe v = bool(Just v) Nothing (null v)
+        strToMaybe v = bool (Just v) Nothing (null v)
         setPGEnv k = maybe (return ()) (setEnv k)
 
 -- |Empty a postgres connection pool.

@@ -26,8 +26,8 @@ import Network.Wai.Middleware.Gzip
 -- sudo chmod 4775 dist/build/blog/blog
 -- sudo chown root dist/build/blog/blog
 
-data Util = Password String
-          | MigrateDB String
+data Util = BcryptHash String
+          | MigrateDB
 
 main :: IO ()
 main = do
@@ -37,19 +37,17 @@ main = do
   where ccontrol = "public,max-age=3600,s-max-age=3600,no-cache,must-revalidate,proxy-revalidate,no-transform"
 
 parseUtil :: Parser Util
-parseUtil = subparser $ (mkcmd "password" "Hash a password" parsePassword) <>
-                        (mkcmd "migrate-db" "Migrate database" parseMigrateDB)
+parseUtil = subparser $ (mkcmd "bcrypt" "Generate a Bcrypt checksum for a string." parsePassword) <>
+                        (mkcmd "migrate-db" "Migrate the site's database" (pure MigrateDB))
   where
-    parsePassword = Password <$> (strArgument $ metavar "PASSWORD" <> help "password to hash")
-    parseMigrateDB = MigrateDB <$> connstr
-    connstr = strOption $ long "connstr" <> short 'c' <> value "" <> metavar "CONNSTR" <> help "connect to Postgres at CONNSTR."
+    parsePassword = BcryptHash <$> (strArgument $ metavar "STRING" <> help "string for which to generate checksum")
     mkcmd cmd desc p = command cmd $ info (helper <*> p) $ progDesc desc
-    
+
 handleUtil :: Util -> IO ()
-handleUtil (Password s) = hsh s >>= maybe (return ()) putStrLn
+handleUtil (BcryptHash s) = hsh s >>= maybe (return ()) putStrLn
   where
     hsh = fmap (fmap B.unpack) . hashPasswordUsingPolicy (HashingPolicy 12 "$2b$") . B.pack
-handleUtil (MigrateDB connstr) = do
-  conn <- connectPostgreSQL $ B.pack connstr
+handleUtil MigrateDB = do
+  conn <- connectPostgreSQL ""
   postgresMigrate conn
   close conn

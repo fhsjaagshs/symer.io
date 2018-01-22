@@ -8,7 +8,7 @@ where
 
 import Blog.User
 import Blog.Post
-import Blog.Comment
+-- import Blog.Comment
 import Blog.Assets
 import Blog.AppState
 import Blog.Page
@@ -55,9 +55,7 @@ app = [
   get      "/posts/:id"                        getPagePostById,
   get      "/posts/by/tag/:tag"                $ getPostsPage False,
   get      "/posts/:id/edit"                   $ getPostEditor False,
-  post     "/posts/:id/comments"               postComments,
   get      "/assets/css/blog.css"              $ cssFile CSS.blog,
-  get      "/assets/css/comments.css"          $ cssFile CSS.comments,
   get      "/assets/css/editor.css"            $ cssFile CSS.editor,
   get      "/assets/css/wordlist.css"          $ cssFile CSS.wordlist,
   get      "/assets/images/gobutton.svg"       $ svgFile SVG.goButton,
@@ -103,17 +101,16 @@ getPostsPage isdrafts = do
 getPagePostById :: (MonadIO m) => RouteT AppState m ()
 getPagePostById = param "id" >>= getPost >>= maybe (redirect "/notfound") f
   where
-    f pst@(Post pid ptitle bdy _ ptags draft author) = void $ do
+    f pst@(Post _ ptitle bdy _ ptags draft author) = void $ do
       when draft $ do
         maybeUser <- getAuthenticatedUser
         when (maybe True (/= author) maybeUser) $ redirect "/notfound"
-      comments <- getCommentsForPost pid
+
       let desc = T.take 500 $ stripMarkdown $ parseMarkdown bdy
-      page (Head ptitle desc (keywords ++ ptags) False [css' CSS.comments]) ([
+      page (Head ptitle desc (keywords ++ ptags) False []) ([
         Header False True Nothing,
         PostRepr False pst,
-        CommentEditor pid Nothing
-        ] ++ map (CommentRepr 0) comments ++ [Footer copyright])
+        Footer copyright])
 
 getPostEditor :: (MonadIO m) => Bool -> RouteT AppState m ()
 getPostEditor allowEmpty = authenticate >> (maybeParam "id" >>= maybe m getPost >>= n) 
@@ -171,18 +168,6 @@ deletePosts :: (MonadIO m) => RouteT AppState m ()
 deletePosts = maybe (status status404) (const $ redirect "/") =<< del
   where del = join $ deletePost <$> authenticate <*> param "id"
   
-postComments :: (MonadIO m) => RouteT AppState m ()
-postComments = doInsert >>= maybe (status status500) f
-  where
-    f c = redirect $ B.pack $ mconcat ["/posts/",
-                                       show $ commentPostID c,
-                                       "#comment",
-                                       show $ commentID c]
-    doInsert = join $ insertComment
-                      <$> maybeParam "parent_id"
-                      <*> param "id"
-                      <*> param "body"
-
 {- Helper Functions -}
 
 pageNumber :: (WebAppState s, MonadIO m) => RouteT s m Integer

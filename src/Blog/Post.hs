@@ -61,6 +61,7 @@ postDescription = T.take 150 . stripMarkdown . parseMarkdown . postBody
 postsPerPage :: Int
 postsPerPage = 10
 
+-- FIXME: what about the drafts page?
 -- |Determine if a post is on the last page.
 isOnLastPage :: (MonadIO m) => Integer -> RouteT AppState m Bool
 isOnLastPage = fmap (maybe True (<= postsPerPage)) . onlyQuery . postgresQuery sql . Only
