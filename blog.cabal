@@ -51,3 +51,4 @@ executable blog
                      cryptohash,
                      vault,
                      unix
+
