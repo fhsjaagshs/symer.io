@@ -1,6 +1,6 @@
 name:                blog
 version:             0.3.0
-synopsis:            The software behind the blog at symer.io
+synopsis:            The webapp, symer.io
 homepage:            https://symer.io/
 license:             MIT
 author:              Nathaniel
