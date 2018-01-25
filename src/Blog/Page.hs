@@ -41,7 +41,6 @@ import Data.Niagra (NiagraT, css, css')
 
 import Data.Text (Text)
 import qualified Data.Text as T
-import Data.List (intersperse)
 
 import Data.Bool
 import Data.Maybe
@@ -196,26 +195,8 @@ instance Section Editor where
     
     maybe (pure ()) deleteForm pst
     
-    script $ mconcat $ intersperse "\n" [
-      "var body = document.getElementById('editor');",
-      "var oldkeydown = body.onkeydown;",
-      "body.onkeydown = function(e) {",
-      "  if (oldkeydown) oldkeydown(e);",
-      "  if (e.ctrlKey && e.key === \"i\") {",
-      "    document.execCommand('insertText', false, '*' + body.value.substring(body.selectionStart, body.selectionEnd) + '*');",
-      "    return false;",
-      "  }",
-      "  if (e.ctrlKey && e.key === \"b\") {",
-      "    document.execCommand('insertText', false, '**' + body.value.substring(body.selectionStart, body.selectionEnd) + '**');",
-      "    return false;",
-      "  }",
-      "}"]
-    
     script ! src "/assets/js/wordlist-pure.js" $ ""
-    script $ mconcat [
-      "var e=document.getElementById('editor');",
-      "var i=document.getElementById('input-tags');",
-      "e.parentNode.insertBefore((new WordList(i)).div,e.nextSibling);"]
+    script ! src "/assets/js/editor.js" $ ""
     where
       idParam pst' = input ! type_ "hidden" ! name "id" ! value (toValue $ postID pst')
       deleteForm pst' = H.form ! A.id "delete-form" ! enctype "text/plain" ! action "/posts" ! A.method "POST" $ do

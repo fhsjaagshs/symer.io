@@ -81,15 +81,13 @@ getPostsPage isdrafts = do
     then do
       u <- authenticate
       getter <- maybe (getDrafts u) (getDraftsByTag u) <$> maybeParam "tag"
-      f pageNum =<< (getter pageNum)
-    else do
-      getter <- maybe getPosts getPostsByTag <$> maybeParam "tag"
       f pageNum =<< getter pageNum
+    else (join ((maybe getPosts getPostsByTag <$> maybeParam "tag") <*> pure pageNum)) >>= f pageNum
   where f pageNum posts = page pghead (top ++ bottom)
           where
             pghead = Head (fromMaybe "Nate Symer" pgtitle) desc keywords False []
             pgtitle = bool Nothing (Just "Drafts") isdrafts
-            top = ((pack $ Header False True pgtitle):(map (pack . PostRepr True) posts))
+            top = (pack $ Header False True pgtitle):(map (pack . PostRepr True) posts)
             bottom = [
               pack $ PageControls (length posts > postsPerPage) pageNum isdrafts,
               pack $ Footer copyright]
@@ -120,8 +118,6 @@ getPostEditor allowEmpty = authenticate >> (maybeParam "id" >>= maybe m getPost 
 
 getLogin :: (MonadIO m) => RouteT AppState m ()
 getLogin = do
-  maybeUser <- getAuthenticatedUser
-  when (isJust maybeUser) $ redirect "/"
   login <- Login <$> maybeParam "err" <*> maybeParam "username"
   page (Head "Login" "" [] True []) [pack $ Header True False (Just "Login"), pack login]
 
@@ -151,16 +147,12 @@ postPosts = handleMethod =<< (fromMaybe "POST" <$> maybeParam "method")
     handleMethod _ = do
       p <- join $ upsertPost
                     <$> maybeParam "id"
-                    <*> (fmap (T.decodeUtf8 . uncrlf) <$> maybeParam "title")
-                    <*> (fmap (T.decodeUtf8 . uncrlf) <$> maybeParam "body")
-                    <*> (fmap (T.splitOn ",")         <$> maybeParam "tags")
-                    <*> (fmap not                     <$> maybeParam "draft")
+                    <*> (fmap (T.decodeUtf8 . B.filter (/= '\r')) <$> maybeParam "title")
+                    <*> (fmap (T.decodeUtf8 . B.filter (/= '\r')) <$> maybeParam "body")
+                    <*> (fmap (T.splitOn ",")                     <$> maybeParam "tags")
+                    <*> (fmap not                                 <$> maybeParam "draft")
                     <*> authenticate
       maybe (status status400) (redirect . B.pack . (++) "/posts/" . show) p
-      where uncrlf = B.foldl f mempty
-              where f bs c
-                      | c == '\n' && B.last bs == '\r' = B.snoc (B.init bs) '\n'
-                      | otherwise = B.snoc bs c
                       
 deletePosts :: (MonadIO m) => RouteT AppState m ()
 deletePosts = maybe (status status404) (const $ redirect "/") =<< del
@@ -170,3 +162,4 @@ deletePosts = maybe (status status404) (const $ redirect "/") =<< del
 
 pageNumber :: (WebAppState s, MonadIO m) => RouteT s m Integer
 pageNumber = fromMaybe 0 <$> maybeParam "page"
+
