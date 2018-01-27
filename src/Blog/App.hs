@@ -142,6 +142,8 @@ postLogin = param "username" >>= getUser >>= f
 postPosts :: (MonadIO m) => RouteT AppState m ()
 postPosts = handleMethod =<< (fromMaybe "POST" <$> maybeParam "method")
   where
+    publicToDraftBool :: Maybe B.ByteString -> Maybe Bool
+    publicToDraftBool = Just . isNothing
     handleMethod :: (MonadIO m) => B.ByteString -> RouteT AppState m ()
     handleMethod "DELETE" = deletePosts
     handleMethod _ = do
@@ -150,7 +152,7 @@ postPosts = handleMethod =<< (fromMaybe "POST" <$> maybeParam "method")
                     <*> (fmap (T.decodeUtf8 . B.filter (/= '\r')) <$> maybeParam "title")
                     <*> (fmap (T.decodeUtf8 . B.filter (/= '\r')) <$> maybeParam "body")
                     <*> (fmap (T.splitOn ",")                     <$> maybeParam "tags")
-                    <*> (fmap not                                 <$> maybeParam "draft")
+                    <*> (publicToDraftBool                        <$> maybeParam "draft")
                     <*> authenticate
       maybe (status status400) (redirect . B.pack . (++) "/posts/" . show) p
                       

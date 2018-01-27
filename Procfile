@@ -1,1 +1,1 @@
-web: blog
+web: $(find . -name blog -type f -executable)
